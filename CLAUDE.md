@@ -18,4 +18,6 @@ Every function you write should match one to one with a function in real firmwar
 
 Our firmware needs to have all the functionality of the real firmware, with all edge cases, state machines, and methods correctly implemented to match the behavior of the stock firmware.
 
-Comparing the size of our compiled firmware and the stock firmware is a good way to check progress.
+Do not write things like `XDATA8(0xC8B6)`, instead define that as a register in registers.h with a good name and use that register.
+
+Prioritize functions that you have already reversed the caller of.

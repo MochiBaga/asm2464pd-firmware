@@ -127,12 +127,177 @@ void dma_load_transfer_params(void)
 {
     uint8_t param1, param2;
 
-    param1 = XDATA8(0x0472);
-    param2 = XDATA8(0x0473);
+    param1 = REG_DMA_LOAD_PARAM1;
+    param2 = REG_DMA_LOAD_PARAM2;
 
     /* TODO: Call flash_func_0c0f(0, BANK0_R3, param1, param2) */
     (void)param1;
     (void)param2;
+}
+
+/*
+ * dma_config_channel - Configure DMA channel with mode select
+ * Address: 0x4a57-0x4a93 (61 bytes)
+ *
+ * Configures DMA channel based on R1 value:
+ * - If R1 < 1: Use register 0xC8D8
+ * - If R1 >= 1: Use register 0xC8D6
+ * Then configures 0xC8B6 and 0xC8B7 registers.
+ *
+ * Original disassembly:
+ *   4a57: mov r1, 0x07        ; R1 = R7
+ *   4a59: mov a, r1
+ *   4a5a: setb c              ; set carry
+ *   4a5b: subb a, #0x01       ; compare with 1
+ *   4a5d: jc 0x4a6a           ; if R1 < 1, jump
+ *   ... (branches based on R1 value)
+ *   4a78: mov dptr, #0xc8b7
+ *   4a7b: clr a
+ *   4a7c: movx @dptr, a       ; XDATA[0xC8B7] = 0
+ *   4a7d: mov dptr, #0xc8b6
+ *   4a80-4a93: Configure 0xC8B6 bits
+ */
+void dma_config_channel(uint8_t channel, uint8_t r4_param)
+{
+    uint8_t val;
+    uint8_t mode;
+
+    /* Suppress unused parameter warning */
+    (void)r4_param;
+
+    /* Calculate mode based on channel */
+    if (channel >= 1) {
+        mode = (channel - 2) * 2;  /* (channel - 2) << 1 */
+        /* Configure DMA status register */
+        val = REG_DMA_STATUS;
+        val = (val & 0xFD) | mode;
+        REG_DMA_STATUS = val;
+    } else {
+        mode = channel * 2;  /* channel << 1 */
+        /* Configure DMA status 2 register */
+        val = REG_DMA_STATUS2;
+        val = (val & 0xFD) | mode;
+        REG_DMA_STATUS2 = val;
+    }
+
+    /* Clear channel status 2 */
+    REG_DMA_CHAN_STATUS2 = 0;
+
+    /* Configure channel control 2: Set bit 2, clear bit 0, clear bit 1, set bit 7 */
+    val = REG_DMA_CHAN_CTRL2;
+    val = (val & 0xFB) | 0x04;  /* Set bit 2 */
+    REG_DMA_CHAN_CTRL2 = val;
+
+    val = REG_DMA_CHAN_CTRL2;
+    val &= 0xFE;  /* Clear bit 0 */
+    REG_DMA_CHAN_CTRL2 = val;
+
+    val = REG_DMA_CHAN_CTRL2;
+    val &= 0xFD;  /* Clear bit 1 */
+    REG_DMA_CHAN_CTRL2 = val;
+
+    val = REG_DMA_CHAN_CTRL2;
+    val = (val & 0x7F) | 0x80;  /* Set bit 7 */
+    REG_DMA_CHAN_CTRL2 = val;
+}
+
+/*
+ * dma_setup_transfer - Setup DMA transfer parameters
+ * Address: 0x523c-0x525f (36 bytes)
+ *
+ * Writes transfer parameters to DMA control registers and sets flag.
+ *
+ * Original disassembly:
+ *   523c: mov dptr, #0x0203
+ *   523f: mov a, r7
+ *   5240: movx @dptr, a       ; XDATA[0x0203] = R7
+ *   5241: mov dptr, #0x020d
+ *   5244: mov a, r5
+ *   5245: movx @dptr, a       ; XDATA[0x020D] = R5
+ *   5246: inc dptr
+ *   5247: mov a, r3
+ *   5248: movx @dptr, a       ; XDATA[0x020E] = R3
+ *   5249: mov dptr, #0x07e5
+ *   524c: mov a, #0x01
+ *   524e: movx @dptr, a       ; XDATA[0x07E5] = 1
+ *   524f: mov dptr, #0x9000
+ *   5252: movx a, @dptr
+ *   5253: jb 0xe0.0, 0x525f   ; if bit 0 set, return
+ *   5256: mov dptr, #0xd80c
+ *   5259: mov a, #0x01
+ *   525b: movx @dptr, a       ; XDATA[0xD80C] = 1
+ *   525c: lcall 0x1bcb
+ *   525f: ret
+ */
+void dma_setup_transfer(uint8_t r7_mode, uint8_t r5_param, uint8_t r3_param)
+{
+    uint8_t status;
+
+    /* Write transfer parameters */
+    REG_DMA_MODE_SELECT = r7_mode;
+    REG_DMA_PARAM1 = r5_param;
+    REG_DMA_PARAM2 = r3_param;
+
+    /* Set transfer active flag */
+    REG_TRANSFER_ACTIVE = 1;
+
+    /* Check USB status */
+    status = REG_USB_STATUS;
+    if (!(status & 0x01)) {
+        /* Start transfer */
+        REG_BUFFER_XFER_START = 1;
+        /* lcall 0x1bcb - TODO: implement */
+    }
+}
+
+/*
+ * dma_check_scsi_status - Check SCSI DMA completion status
+ * Address: 0x5260-0x5283 (36 bytes)
+ *
+ * Checks SCSI DMA status at 0xCE5C and calls appropriate handler.
+ * Returns 1 if operation succeeded, 0 if failed.
+ *
+ * Original disassembly:
+ *   5260: mov a, r7
+ *   5261: jnz 0x526f          ; if R7 != 0, skip
+ *   5263: mov dptr, #0xce5c
+ *   5266: movx a, @dptr
+ *   5267: jnb 0xe0.0, 0x526f  ; if bit 0 clear, skip
+ *   526a: lcall 0x1709        ; dma_set_scsi_param3
+ *   526d: sjmp 0x527d
+ *   526f: mov a, r7
+ *   5270: cjne a, #0x10, 0x5281  ; if R7 != 0x10, return 0
+ *   5273: mov dptr, #0xce5c
+ *   5276: movx a, @dptr
+ *   5277: jnb 0xe0.1, 0x5281  ; if bit 1 clear, return 0
+ *   527a: lcall 0x1713        ; dma_set_scsi_param1
+ *   527d: movx @dptr, a       ; write to current DPTR
+ *   527e: mov r7, #0x01       ; return 1
+ *   5280: ret
+ *   5281: mov r7, #0x00       ; return 0
+ *   5283: ret
+ */
+uint8_t dma_check_scsi_status(uint8_t mode)
+{
+    uint8_t status;
+
+    if (mode == 0) {
+        /* Check bit 0 of SCSI completion status */
+        status = REG_SCSI_DMA_COMPL;
+        if (status & 0x01) {
+            dma_set_scsi_param3();
+            return 1;
+        }
+    } else if (mode == 0x10) {
+        /* Check bit 1 of SCSI completion status */
+        status = REG_SCSI_DMA_COMPL;
+        if (status & 0x02) {
+            dma_set_scsi_param1();
+            return 1;
+        }
+    }
+
+    return 0;
 }
 
 /* Additional DMA functions will be added as they are reversed */
