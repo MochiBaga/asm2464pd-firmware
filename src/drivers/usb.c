@@ -233,6 +233,105 @@ static void usb_ep_handler(void)
  *   0ef9: jc 0x0e99           ; loop if counter < 32
  */
 /*===========================================================================
+ * Buffer Handler (0xD810)
+ *===========================================================================*/
+
+/*
+ * usb_buffer_handler - Buffer transfer dispatch handler
+ * Address: 0xd810-0xd851 (66 bytes)
+ *
+ * Complex handler that checks various status flags and configures
+ * timer registers for buffer operations.
+ *
+ * Original disassembly:
+ *   d810: mov dptr, #0x0b41
+ *   d813: movx a, @dptr
+ *   d814: jz 0xd851           ; if 0, return
+ *   d816: mov dptr, #0x9091
+ *   d819: movx a, @dptr
+ *   d81a: jb 0xe0.0, 0xd851   ; if bit 0 set, return
+ *   d81d: mov dptr, #0x07e4
+ *   d820: movx a, @dptr
+ *   d821: xrl a, #0x01
+ *   d823: jnz 0xd851          ; if != 1, return
+ *   d825: mov dptr, #0x9000
+ *   d828: movx a, @dptr
+ *   d829: jnb 0xe0.0, 0xd83a  ; if bit 0 clear, skip to 0xd83a
+ *   d82c: mov dptr, #0xc471
+ *   d82f: movx a, @dptr
+ *   d830: jb 0xe0.0, 0xd851   ; if bit 0 set, return
+ *   d833: mov dptr, #0x000a
+ *   d836: movx a, @dptr
+ *   d837: jz 0xd846           ; if 0, skip to 0xd846
+ *   d839: ret                 ; early return
+ *   d83a: mov dptr, #0x9101
+ *   d83d: movx a, @dptr
+ *   d83e: jb 0xe0.6, 0xd851   ; if bit 6 set, return
+ *   d841: mov r0, #0x6a
+ *   d843: mov a, @r0
+ *   d844: jnz 0xd851          ; if IDATA[0x6A] != 0, return
+ *   d846: mov dptr, #0xcc17   ; Timer 1 CSR
+ *   d849: mov a, #0x04
+ *   d84b: movx @dptr, a       ; Write 0x04
+ *   d84c: mov a, #0x02
+ *   d84e: movx @dptr, a       ; Write 0x02
+ *   d84f: dec a               ; A = 0x01
+ *   d850: movx @dptr, a       ; Write 0x01
+ *   d851: ret
+ */
+void usb_buffer_handler(void)
+{
+    uint8_t status;
+
+    /* Check XDATA[0x0B41] */
+    if (XDATA8(0x0B41) == 0) {
+        return;
+    }
+
+    /* Check USB interrupt flags bit 0 */
+    status = REG_INT_FLAGS_EX0;
+    if (status & 0x01) {
+        return;
+    }
+
+    /* Check flags base - must be 1 */
+    if (G_SYS_FLAGS_BASE != 1) {
+        return;
+    }
+
+    /* Check USB status bit 0 */
+    status = REG_USB_STATUS;
+    if (status & 0x01) {
+        /* USB status bit 0 set - check NVMe queue pointer */
+        status = XDATA8(0xC471);  /* REG_NVME_QUEUE_PTR area */
+        if (status & 0x01) {
+            return;
+        }
+
+        /* Check endpoint check flag */
+        if (G_EP_CHECK_FLAG != 0) {
+            return;  /* Early return */
+        }
+    } else {
+        /* USB status bit 0 clear - check USB peripheral status */
+        status = REG_USB_PERIPH_STATUS;
+        if (status & 0x40) {  /* Bit 6 */
+            return;
+        }
+
+        /* Check IDATA[0x6A] */
+        if (*(__idata uint8_t *)0x6A != 0) {
+            return;
+        }
+    }
+
+    /* Configure Timer 1 CSR with sequence: 0x04, 0x02, 0x01 */
+    REG_TIMER1_CSR = 0x04;
+    REG_TIMER1_CSR = 0x02;
+    REG_TIMER1_CSR = 0x01;
+}
+
+/*===========================================================================
  * USB Endpoint Configuration Functions
  *===========================================================================*/
 

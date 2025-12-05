@@ -4,9 +4,7 @@ We are trying to match each function in the original firmware to ours, giving go
 
 Our firmware should build and the output should match fw.bin as close as possible. Build temporaries and artifacts should go in build/ The firmware we build should run on the device.
 
-You can use radare on the fw.bin files to get the 8051 assembly.
-
-registers.h is some reverse engineer registers. They may be wrong.
+You can use radare on the fw.bin files to get the 8051 assembly. Be aware 8051 only has a 64kb code size, so addresses after 0x10000 are in the second bank. There's likely an indirect jump/call to get to that bank.
 
 ghidra.c is ghidra's attempt at C disassembly of the functions, you are welcome to reference it. Note: all the names in there may be wrong.
 

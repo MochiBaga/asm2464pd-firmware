@@ -479,6 +479,114 @@ void handler_0525(void)
     nvme_util_get_status_flags(0xBAA0);
 }
 
+/*
+ * Handler at 0x039a - Buffer dispatch handler
+ * Address: 0x039a-0x039e (5 bytes)
+ *
+ * Dispatches to buffer handler at 0xD810 via nvme_util_get_status_flags.
+ *
+ * Original disassembly:
+ *   039a: mov dptr, #0xd810
+ *   039d: ajmp 0x0300
+ */
+void handler_039a(void)
+{
+    nvme_util_get_status_flags(0xD810);
+}
+
+/*
+ * Handler at 0x0520
+ * Address: 0x0520-0x0524 (5 bytes)
+ *
+ * Calls nvme_util_get_status_flags with register 0xB4BA.
+ * Called from ext1_isr when system interrupt status bit 0 is set.
+ *
+ * Original disassembly:
+ *   0520: mov dptr, #0xb4ba
+ *   0523: ajmp 0x0300
+ */
+void handler_0520(void)
+{
+    nvme_util_get_status_flags(0xB4BA);
+}
+
+/*
+ * Handler at 0x052f
+ * Address: 0x052f-0x0533 (5 bytes)
+ *
+ * Calls nvme_util_get_status_flags with register 0xAF5E.
+ * Called from ext1_isr when PCIe/NVMe status bit 6 is set.
+ *
+ * Original disassembly:
+ *   052f: mov dptr, #0xaf5e
+ *   0532: ajmp 0x0300
+ */
+void handler_052f(void)
+{
+    nvme_util_get_status_flags(0xAF5E);
+}
+
+/*
+ * Handler at 0x0570
+ * Address: 0x0570-0x0574 (5 bytes)
+ *
+ * Calls nvme_util_get_error_flags with register 0xE911.
+ * Called from ext1_isr when PCIe/NVMe status & 0x0F != 0.
+ *
+ * Original disassembly:
+ *   0570: mov dptr, #0xe911
+ *   0573: ajmp 0x0311
+ */
+void handler_0570(void)
+{
+    nvme_util_get_error_flags(0xE911);
+}
+
+/*
+ * Handler at 0x061a
+ * Address: 0x061a-0x061e (5 bytes)
+ *
+ * Called from ext1_isr when event flags & 0x83 and PCIe/NVMe status bit 5 set.
+ *
+ * Original disassembly (from pattern):
+ *   061a: mov dptr, #0xXXXX
+ *   061d: ajmp 0x0311
+ */
+void handler_061a(void)
+{
+    nvme_util_get_error_flags(0xA066);
+}
+
+/*
+ * Handler at 0x0593
+ * Address: 0x0593-0x0597 (5 bytes)
+ *
+ * Called from ext1_isr when event flags & 0x83 and PCIe/NVMe status bit 4 set.
+ *
+ * Original disassembly:
+ *   0593: mov dptr, #0xc105
+ *   0596: ajmp 0x0300
+ */
+void handler_0593(void)
+{
+    nvme_util_get_status_flags(0xC105);
+}
+
+/*
+ * Handler at 0x0642
+ * Address: 0x0642-0x0646 (5 bytes)
+ *
+ * Called from ext1_isr when system status bit 4 is set.
+ *
+ * Original disassembly:
+ *   0642: mov dptr, #0xef4e
+ *   0645: ajmp 0x0311
+ */
+void handler_0642(void)
+{
+    nvme_util_get_error_flags(0xEF4E);
+}
+
 /*===========================================================================
  * Interrupt Service Routines
  *===========================================================================*/
