@@ -372,5 +372,107 @@ uint8_t scsi_get_tag_count_status(void)
     return (count >= 0x10) ? 1 : 0;
 }
 
+/*
+ * dma_check_state_counter - Check if state counter reached threshold
+ * Address: 0x172c-0x173a (15 bytes)
+ *
+ * Reads 16-bit state counter from 0x0AA3-0x0AA4 and compares with 40.
+ * Returns with carry set if counter < 40.
+ *
+ * Original disassembly:
+ *   172c: mov dptr, #0x0aa3
+ *   172f: movx a, @dptr       ; R4 = [0x0AA3]
+ *   1730: mov r4, a
+ *   1731: inc dptr
+ *   1732: movx a, @dptr       ; R5 = [0x0AA4]
+ *   1733: mov r5, a
+ *   1734: clr c
+ *   1735: subb a, #0x28       ; compare low with 40
+ *   1737: mov a, r4
+ *   1738: subb a, #0x00       ; compare high with borrow
+ *   173a: ret
+ */
+uint8_t dma_check_state_counter(void)
+{
+    uint16_t counter;
+
+    counter = ((uint16_t)G_STATE_COUNTER_HI << 8) | G_STATE_COUNTER_LO;
+
+    /* Return 1 if counter >= 40, 0 otherwise */
+    return (counter >= 40) ? 1 : 0;
+}
+
+/*
+ * dma_clear_dword - Clear 32-bit value at DPTR
+ * Address: 0x173b-0x1742 (8 bytes)
+ *
+ * Clears R4-R7 to 0 and calls xdata_store_dword.
+ *
+ * Original disassembly:
+ *   173b: clr a
+ *   173c: mov r7, a
+ *   173d: mov r6, a
+ *   173e: mov r5, a
+ *   173f: mov r4, a
+ *   1740: ljmp 0x0dc5         ; xdata_store_dword
+ */
+void dma_clear_dword_at(__xdata uint8_t *ptr)
+{
+    ptr[0] = 0;
+    ptr[1] = 0;
+    ptr[2] = 0;
+    ptr[3] = 0;
+}
+
+/*
+ * scsi_get_queue_status - Get SCSI queue status and check threshold
+ * Address: 0x17c1-0x17cc (12 bytes)
+ *
+ * Reads queue status from 0xCE67, masks to 4 bits, stores to IDATA 0x40,
+ * and returns carry set if count >= 8.
+ *
+ * Original disassembly:
+ *   17c1: mov dptr, #0xce67
+ *   17c4: movx a, @dptr       ; read queue status
+ *   17c5: anl a, #0x0f        ; mask to 4 bits (0-15)
+ *   17c7: mov 0x40, a         ; store to IDATA[0x40]
+ *   17c9: clr c
+ *   17ca: subb a, #0x08       ; compare with 8
+ *   17cc: ret                 ; carry set if count < 8
+ */
+uint8_t scsi_get_queue_status(void)
+{
+    uint8_t status;
+
+    status = REG_SCSI_DMA_QUEUE_STAT & 0x0F;
+    *(__idata uint8_t *)0x40 = status;
+
+    /* Return 1 if status >= 8, 0 otherwise */
+    return (status >= 0x08) ? 1 : 0;
+}
+
+/*
+ * dma_shift_and_check - Right shift by 3 and compare with 3
+ * Address: 0x17cd-0x17d7 (11 bytes)
+ *
+ * Shifts input right 3 bits, masks to 5 bits, compares with 3.
+ * Returns shifted value, carry set if value > 3.
+ *
+ * Original disassembly:
+ *   17cd: rrc a
+ *   17ce: rrc a
+ *   17cf: rrc a               ; A >>= 3
+ *   17d0: anl a, #0x1f        ; mask to 5 bits
+ *   17d2: mov r7, a
+ *   17d3: clr c
+ *   17d4: mov a, #0x03
+ *   17d6: subb a, r7          ; compare: 3 - R7
+ *   17d7: ret                 ; carry set if R7 > 3
+ */
+uint8_t dma_shift_and_check(uint8_t val)
+{
+    return (val >> 3) & 0x1F;
+}
+
 /* Additional DMA functions will be added as they are reversed */
 

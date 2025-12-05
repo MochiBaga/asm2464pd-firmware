@@ -326,3 +326,148 @@ uint8_t pcie_check_status_error(void)
 {
     return REG_PCIE_STATUS & 0x01;
 }
+
+/*
+ * pcie_setup_buffer_params - Setup buffer parameters for TLP
+ * Address: 0x9a18-0x9a1f (8 bytes)
+ *
+ * Writes TLP buffer size parameters (0x34, 0x04) to consecutive
+ * locations pointed to by DPTR. Called with DPTR pointing to
+ * PCIe buffer descriptor area (0xB234, 0xB240, 0xB244).
+ *
+ * Original disassembly:
+ *   9a18: mov a, #0x34
+ *   9a1a: movx @dptr, a         ; [DPTR] = 0x34
+ *   9a1b: inc dptr
+ *   9a1c: mov a, #0x04
+ *   9a1e: movx @dptr, a         ; [DPTR+1] = 0x04
+ *   9a1f: ret
+ */
+void pcie_setup_buffer_params(uint16_t addr)
+{
+    XDATA8(addr) = 0x34;
+    XDATA8(addr + 1) = 0x04;
+}
+
+/*
+ * pcie_clear_reg_at_offset - Clear PCIe register at given offset
+ * Address: 0x9a53-0x9a5f (13 bytes)
+ *
+ * Computes PCIe register address from offset (0xB2xx) and clears it.
+ * offset + 0x10 forms the low byte, 0xB2 is the high byte.
+ *
+ * Original disassembly:
+ *   9a53: add a, #0x10          ; a = offset + 0x10
+ *   9a55: mov r7, a
+ *   9a56: clr a
+ *   9a57: addc a, #0xb2         ; a = 0xB2 (with carry)
+ *   9a59: mov DPL, r7           ; DPL = offset + 0x10
+ *   9a5b: mov DPH, a            ; DPH = 0xB2
+ *   9a5d: clr a
+ *   9a5e: movx @dptr, a         ; [0xB2xx] = 0
+ *   9a5f: ret
+ */
+void pcie_clear_reg_at_offset(uint8_t offset)
+{
+    uint16_t addr = 0xB200 | (uint16_t)(offset + 0x10);
+    XDATA8(addr) = 0;
+}
+
+/*
+ * pcie_wait_for_completion - Wait for PCIe transaction to complete
+ * Address: polling loop pattern from pcie_set_address
+ *
+ * Polls status register until completion or error bit is set.
+ * Returns 0 on success, non-zero on error.
+ */
+uint8_t pcie_wait_for_completion(void)
+{
+    uint8_t status;
+
+    /* First wait for busy bit to clear */
+    do {
+        status = pcie_get_completion_status();
+    } while (status == 0);
+
+    /* Write completion status */
+    pcie_write_status_complete();
+
+    /* Now wait for completion or error */
+    while (1) {
+        status = REG_PCIE_STATUS;
+        if (status & 0x02) {
+            /* Transaction complete */
+            return 0;
+        }
+        if (status & 0x01) {
+            /* Error occurred */
+            REG_PCIE_STATUS = 0x01;  /* Clear error */
+            return 0xFE;  /* Error code */
+        }
+    }
+}
+
+/*
+ * pcie_setup_config_tlp - Setup PCIe configuration space TLP
+ * Address: 0xadc3-0xae2f (approximately 109 bytes)
+ *
+ * Sets up a PCIe configuration space read or write TLP based on
+ * parameters in IDATA:
+ *   IDATA[0x60] bit 0: 0=read, 1=write
+ *   IDATA[0x61]: Type (0=type0, non-0=type1)
+ *   IDATA[0x61-0x64]: Address bytes
+ *   IDATA[0x65]: Byte enables
+ *
+ * PCIe Config TLP format types:
+ *   0x04: Type 0 Config Read
+ *   0x05: Type 1 Config Read
+ *   0x44: Type 0 Config Write
+ *   0x45: Type 1 Config Write
+ *
+ * Original disassembly starts at 0xadc3:
+ *   adc3: mov r0, #0x60
+ *   adc5: mov a, @r0           ; check direction
+ *   adc6: jnb acc.0, 0xadd3    ; if read, jump
+ *   adc9: inc r0
+ *   adca: mov a, @r0           ; check type
+ *   adcb: mov r7, #0x44        ; type 0 write
+ *   adcd: jz 0xadd1
+ *   adcf: mov r7, #0x45        ; type 1 write
+ *   ...
+ */
+void pcie_setup_config_tlp(void)
+{
+    uint8_t fmt_type;
+    uint8_t direction;
+    uint8_t type;
+    uint8_t byte_en;
+    uint8_t addr0, addr1, addr2, addr3;
+
+    /* Read parameters from IDATA */
+    direction = ((__idata uint8_t *)0x60)[0];
+    type = ((__idata uint8_t *)0x61)[0];
+    addr0 = ((__idata uint8_t *)0x61)[0];
+    addr1 = ((__idata uint8_t *)0x62)[0];
+    addr2 = ((__idata uint8_t *)0x63)[0];
+    addr3 = ((__idata uint8_t *)0x64)[0];
+    byte_en = ((__idata uint8_t *)0x65)[0];
+
+    /* Determine format/type based on direction and type */
+    if (direction & 0x01) {
+        /* Config write */
+        fmt_type = (type != 0) ? 0x45 : 0x44;  /* Type 1 or Type 0 */
+    } else {
+        /* Config read */
+        fmt_type = (type != 0) ? 0x05 : 0x04;  /* Type 1 or Type 0 */
+    }
+
+    /* Setup PCIe TLP registers */
+    REG_PCIE_FMT_TYPE = fmt_type;
+    XDATA8(0xB213) = 0x01;  /* Control/enable bit */
+    REG_PCIE_BYTE_EN = byte_en & 0x0F;
+
+    /* Set address bytes (0xB218-0xB21B) */
+    XDATA8(0xB218) = addr0;
+    XDATA8(0xB219) = addr1;
+    /* Remaining address setup involves bit manipulation for config address format */
+}

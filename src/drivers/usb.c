@@ -758,6 +758,77 @@ void usb_add_masked_counter(uint8_t value)
 }
 
 /*===========================================================================
+ * Address Calculation Helpers
+ *===========================================================================*/
+
+/*
+ * usb_calc_indexed_addr - Calculate indexed address
+ * Address: 0x179d-0x17a8 (12 bytes)
+ *
+ * Calculates DPTR = 0x00C2 + IDATA[0x52].
+ * Returns pointer to indexed location.
+ *
+ * Original disassembly:
+ *   179d: mov a, #0xc2
+ *   179f: add a, 0x52         ; A = 0xC2 + IDATA[0x52]
+ *   17a1: mov 0x82, a         ; DPL
+ *   17a3: clr a
+ *   17a4: addc a, #0x00       ; DPH = carry
+ *   17a6: mov 0x83, a
+ *   17a8: ret
+ */
+__xdata uint8_t *usb_calc_indexed_addr(void)
+{
+    uint8_t offset = *(__idata uint8_t *)0x52;
+    return (__xdata uint8_t *)(0x00C2 + offset);
+}
+
+/*
+ * usb_read_queue_status_masked - Read and mask queue status
+ * Address: 0x17c1-0x17cc (12 bytes)
+ *
+ * Reads REG_SCSI_DMA_QUEUE_STAT, masks to 4 bits, stores to IDATA[0x40],
+ * returns the masked value.
+ *
+ * Original disassembly:
+ *   17c1: mov dptr, #0xce67
+ *   17c4: movx a, @dptr       ; read queue status
+ *   17c5: anl a, #0x0f        ; mask to 4 bits
+ *   17c7: mov 0x40, a         ; store to IDATA[0x40]
+ *   17c9: clr c
+ *   17ca: subb a, #0x08       ; compare with 8
+ *   17cc: ret
+ */
+uint8_t usb_read_queue_status_masked(void)
+{
+    uint8_t val = REG_SCSI_DMA_QUEUE_STAT & 0x0F;
+    *(__idata uint8_t *)0x40 = val;
+    return val;
+}
+
+/*
+ * usb_shift_right_3 - Right shift value by 3 bits
+ * Address: 0x17cd-0x17d7 (11 bytes)
+ *
+ * Shifts input right 3 bits, masks to 5 bits.
+ *
+ * Original disassembly:
+ *   17cd: rrc a
+ *   17ce: rrc a
+ *   17cf: rrc a               ; A >>= 3
+ *   17d0: anl a, #0x1f        ; mask
+ *   17d2: mov r7, a
+ *   17d3: clr c
+ *   17d4: mov a, #0x03
+ *   17d6: subb a, r7          ; carry if R7 > 3
+ *   17d7: ret
+ */
+uint8_t usb_shift_right_3(uint8_t val)
+{
+    return (val >> 3) & 0x1F;
+}
+
+/*===========================================================================
  * Table-Driven Endpoint Dispatch
  *===========================================================================*/
 
