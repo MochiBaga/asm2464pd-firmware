@@ -11,6 +11,7 @@
 #include "types.h"
 #include "sfr.h"
 #include "registers.h"
+#include "globals.h"
 
 /*===========================================================================
  * Forward declarations
@@ -90,19 +91,19 @@ void main(void)
      * For now, we do basic initialization directly. */
 
     /* Basic system initialization */
-    REG_SYSTEM_CTRL_0000 = 0x33;
+    G_SYSTEM_CTRL = 0x33;
 
     /* Initialize USB endpoint configuration */
-    XDATA8(0x054B) = 0x20;
-    XDATA8(0x054E) = 0x04;
-    XDATA8(0x05A8) = 0x02;
-    XDATA8(0x05F8) = 0x04;
+    G_EP_CONFIG_BASE = 0x20;
+    G_EP_CONFIG_ARRAY = 0x04;
+    G_EP_CONFIG_05A8 = 0x02;
+    G_EP_CONFIG_05F8 = 0x04;
 
     /* Initialize system flags */
-    XDATA8(0x07EC) = 0x01;
-    XDATA8(0x07ED) = 0x00;
-    XDATA8(0x07EE) = 0x00;
-    XDATA8(0x07EF) = 0x00;
+    G_SYS_FLAGS_07EC = 0x01;
+    G_SYS_FLAGS_07ED = 0x00;
+    G_SYS_FLAGS_07EE = 0x00;
+    G_SYS_FLAGS_07EF = 0x00;
 
     /* Initialize NVMe */
     REG_NVME_LBA_0 = 0x02;
@@ -140,7 +141,7 @@ void main_loop(void)
     uint8_t state;
 
     /* Clear loop state flag */
-    REG_LOOP_STATE = 0x00;
+    G_LOOP_STATE = 0x00;
 
     while (1) {
         /* Set bit 0 of REG_CPU_EXEC_STATUS - timer/system handler */
@@ -154,7 +155,7 @@ void main_loop(void)
         handler_0327();
 
         /* Check event flags */
-        events = REG_EVENT_FLAGS;
+        events = G_EVENT_FLAGS;
         if (events & 0x83) {
             if (events & 0x81) {
                 handler_0494();
@@ -176,10 +177,10 @@ void main_loop(void)
         EA = 0;
 
         /* Check system state at 0x0AE2 */
-        state = REG_SYSTEM_STATE_0AE2;
+        state = G_SYSTEM_STATE_0AE2;
         if (state != 0 && state != 0x10) {
             /* Process based on state - see firmware at 0x2fc5 */
-            if (REG_LOOP_STATE == 0) {
+            if (G_LOOP_STATE == 0) {
                 /* Additional state machine processing */
             }
         }
@@ -387,7 +388,7 @@ void handler_4fb6(void)
     nvme_util_get_status_flags(0x92C5);  /* FUN_CODE_032c */
 
     /* Check state flag and conditionally clear bit 0 of CPU exec status */
-    if (REG_STATE_FLAG_0AE3 != 0) {
+    if (G_STATE_FLAG_0AE3 != 0) {
         REG_CPU_EXEC_STATUS = REG_CPU_EXEC_STATUS & 0xFE;
     }
 
@@ -398,7 +399,7 @@ void handler_4fb6(void)
     nvme_util_get_status_flags(0xBF8E);  /* FUN_CODE_0340 */
 
     /* Set flag indicating processing complete */
-    REG_STATE_FLAG_06E6 = 1;
+    G_STATE_FLAG_06E6 = 1;
 }
 
 /*
@@ -613,7 +614,7 @@ void ext1_isr(void) __interrupt(INT_EXT1) __using(1)
     }
 
     /* Check event flags */
-    events = REG_EVENT_FLAGS & 0x83;
+    events = G_EVENT_FLAGS & 0x83;
     if (events != 0) {
         status = REG_INT_PCIE_NVME;
 

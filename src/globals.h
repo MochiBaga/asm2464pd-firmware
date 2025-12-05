@@ -59,6 +59,8 @@
 #define G_EP_QUEUE_STATUS       XDATA_VAR8(0x0565)  /* Endpoint queue status */
 #define G_BUF_OFFSET_HI         XDATA_VAR8(0x0568)  /* Buffer offset result high */
 #define G_BUF_OFFSET_LO         XDATA_VAR8(0x0569)  /* Buffer offset result low */
+#define G_EP_CONFIG_05A8        XDATA_VAR8(0x05A8)  /* EP config 0x05A8 */
+#define G_EP_CONFIG_05F8        XDATA_VAR8(0x05F8)  /* EP config 0x05F8 */
 
 //=============================================================================
 // Transfer Work Area (0x0600-0x07FF)
@@ -66,6 +68,10 @@
 #define G_STATE_FLAG_06E6       XDATA_VAR8(0x06E6)  /* Processing complete flag */
 #define G_SYS_FLAGS_BASE        XDATA_VAR8(0x07E4)  /* Flags base */
 #define G_TRANSFER_ACTIVE       XDATA_VAR8(0x07E5)  /* Transfer active flag */
+#define G_SYS_FLAGS_07EC        XDATA_VAR8(0x07EC)  /* System flags 0x07EC */
+#define G_SYS_FLAGS_07ED        XDATA_VAR8(0x07ED)  /* System flags 0x07ED */
+#define G_SYS_FLAGS_07EE        XDATA_VAR8(0x07EE)  /* System flags 0x07EE */
+#define G_SYS_FLAGS_07EF        XDATA_VAR8(0x07EF)  /* System flags 0x07EF */
 
 //=============================================================================
 // Event/Loop State Work Area (0x0900-0x09FF)

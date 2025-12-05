@@ -14,6 +14,7 @@
 #include "types.h"
 #include "sfr.h"
 #include "registers.h"
+#include "globals.h"
 
 /*
  * nvme_set_usb_mode_bit - Set USB mode bit 0 of register 0x9006
@@ -57,7 +58,7 @@ void nvme_set_usb_mode_bit(void)
  */
 __xdata uint8_t *nvme_get_config_offset(void)
 {
-    uint8_t val = REG_SYS_STATUS_PRIMARY;
+    uint8_t val = G_SYS_STATUS_PRIMARY;
     uint16_t addr = 0x0400 + val + 0x56;
     return (__xdata uint8_t *)addr;
 }
@@ -97,15 +98,15 @@ void nvme_calc_buffer_offset(uint8_t index)
     offset = (uint16_t)index * 0x40;
 
     /* Read base address (big-endian) */
-    base = REG_BUF_BASE_HI;
-    base = (base << 8) | REG_BUF_BASE_LO;
+    base = G_BUF_BASE_HI;
+    base = (base << 8) | G_BUF_BASE_LO;
 
     /* Calculate result = base + offset */
     result = base + offset;
 
     /* Store result (big-endian) */
-    REG_BUF_OFFSET_HI = (uint8_t)(result >> 8);
-    REG_BUF_OFFSET_LO = (uint8_t)(result & 0xFF);
+    G_BUF_OFFSET_HI = (uint8_t)(result >> 8);
+    G_BUF_OFFSET_LO = (uint8_t)(result & 0xFF);
 }
 
 /*

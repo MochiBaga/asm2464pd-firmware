@@ -319,8 +319,8 @@ uint8_t dma_check_scsi_status(uint8_t mode)
 void dma_clear_state_counters(void)
 {
     /* Clear 16-bit state counter in work area */
-    XDATA8(0x0AA3) = 0;  /* State counter high */
-    XDATA8(0x0AA4) = 0;  /* State counter low */
+    G_STATE_COUNTER_HI = 0;
+    G_STATE_COUNTER_LO = 0;
 }
 
 /*
@@ -341,8 +341,8 @@ void dma_clear_state_counters(void)
 void dma_init_ep_queue(void)
 {
     /* Initialize endpoint queue in work area */
-    XDATA8(0x0565) = 0;     /* Endpoint queue status */
-    XDATA8(0x0564) = 0x08;  /* Endpoint queue control */
+    G_EP_QUEUE_STATUS = 0;
+    G_EP_QUEUE_CTRL = 0x08;
 }
 
 /*

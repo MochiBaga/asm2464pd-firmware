@@ -10,6 +10,7 @@
 #include "types.h"
 #include "sfr.h"
 #include "registers.h"
+#include "globals.h"
 
 /* External utility functions from utils.c */
 extern uint32_t idata_load_dword(__idata uint8_t *ptr);
@@ -164,13 +165,13 @@ static const __code uint8_t ep_offset_table[8] = {
 static void usb_ep_init_handler(void)
 {
     /* Clear state variables in work area */
-    XDATA8(0x0B2E) = 0;  /* USB transfer flag */
+    G_USB_TRANSFER_FLAG = 0;
 
     /* Clear IDATA[0x6A] */
     *(__idata uint8_t *)0x6A = 0;
 
     /* Clear processing complete flag in work area */
-    XDATA8(0x06E6) = 0;  /* Processing complete flag */
+    G_STATE_FLAG_06E6 = 0;
 
     /* Original jumps to 0x039a which dispatches to 0xD810 (buffer handler) */
     /* TODO: Call buffer handler */
@@ -192,7 +193,7 @@ static void usb_ep_init_handler(void)
  */
 static void usb_ep_handler(void)
 {
-    if (XDATA8(0x000A) == 0) {
+    if (G_EP_CHECK_FLAG == 0) {
         usb_ep_init_handler();
     }
 }
@@ -291,7 +292,7 @@ void usb_ep_config_int(void)
  */
 void usb_set_transfer_flag(void)
 {
-    REG_USB_TRANSFER_FLAG = 1;
+    G_USB_TRANSFER_FLAG = 1;
 }
 
 /*
@@ -377,7 +378,7 @@ void dma_clear_dword(__xdata uint8_t *ptr)
  */
 uint8_t usb_get_sys_status_offset(void)
 {
-    uint8_t status = REG_SYS_STATUS_PRIMARY;
+    uint8_t status = G_SYS_STATUS_PRIMARY;
     uint16_t addr = 0x0500 + status + 0xA8;
     return XDATA8(addr);
 }
@@ -416,7 +417,7 @@ __xdata uint8_t *usb_calc_addr_with_offset(uint8_t offset)
  */
 void usb_set_done_flag(void)
 {
-    REG_STATE_FLAG_06E6 = 1;
+    G_STATE_FLAG_06E6 = 1;
 }
 
 /*===========================================================================
@@ -473,10 +474,10 @@ void usb_ep_dispatch_loop(void)
         ep_index1 = ep_index_table[status];
 
         /* Store to endpoint dispatch value 1 */
-        REG_EP_DISPATCH_VAL1 = ep_index1;
+        G_EP_DISPATCH_VAL1 = ep_index1;
 
         /* Re-read (original firmware does this) */
-        ep_index1 = REG_EP_DISPATCH_VAL1;
+        ep_index1 = G_EP_DISPATCH_VAL1;
 
         /* If index >= 8, no endpoint to process - exit */
         if (ep_index1 >= 8) {
@@ -490,10 +491,10 @@ void usb_ep_dispatch_loop(void)
         ep_index2 = ep_index_table[status];
 
         /* Store to endpoint dispatch value 2 */
-        REG_EP_DISPATCH_VAL2 = ep_index2;
+        G_EP_DISPATCH_VAL2 = ep_index2;
 
         /* Re-read */
-        ep_index2 = REG_EP_DISPATCH_VAL2;
+        ep_index2 = G_EP_DISPATCH_VAL2;
 
         /* If second index >= 8, exit */
         if (ep_index2 >= 8) {
@@ -504,7 +505,7 @@ void usb_ep_dispatch_loop(void)
         offset = ep_offset_table[ep_index1];
 
         /* Calculate combined offset: offset + ep_index2 */
-        REG_EP_DISPATCH_OFFSET = offset + ep_index2;
+        G_EP_DISPATCH_OFFSET = offset + ep_index2;
 
         /* Call endpoint handler */
         usb_ep_handler();
