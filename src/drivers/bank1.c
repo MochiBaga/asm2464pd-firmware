@@ -51,5 +51,311 @@
  *   r2 -a 8051 -q -c 's 0x16911; pd 50' fw.bin
  */
 
-/* Bank 1 functions will be added here as they are reversed */
+/*
+ * error_clear_e760_flags - Clear error flags in E760/E761 registers
+ * Bank 1 Address: 0xE920 (file offset 0x16920)
+ * Size: 50 bytes (0x16920-0x16951)
+ *
+ * This function clears and sets specific error/event flag bits in the
+ * 0xE760-0xE763 register region, likely handling error acknowledgment.
+ *
+ * Original disassembly:
+ *   e920: mov dptr, #0xc808     ; Hardware control register
+ *   e923: lcall 0xd1a8          ; Call helper function
+ *   e926: mov dptr, #0xe761
+ *   e929: mov a, #0xff
+ *   e92b: movx @dptr, a         ; Write 0xFF to 0xE761
+ *   e92c: mov dptr, #0xe760
+ *   e92f: movx a, @dptr
+ *   e930: anl a, #0xfb          ; Clear bit 2
+ *   e932: orl a, #0x04          ; Set bit 2
+ *   e934: movx @dptr, a
+ *   e935: inc dptr              ; DPTR = 0xE761
+ *   e936: movx a, @dptr
+ *   e937: anl a, #0xfb          ; Clear bit 2
+ *   e939: movx @dptr, a
+ *   e93a: mov dptr, #0xe760
+ *   e93d: movx a, @dptr
+ *   e93e: anl a, #0xf7          ; Clear bit 3
+ *   e940: orl a, #0x08          ; Set bit 3
+ *   e942: movx @dptr, a
+ *   e943: inc dptr              ; DPTR = 0xE761
+ *   e944: movx a, @dptr
+ *   e945: anl a, #0xf7          ; Clear bit 3
+ *   e947: movx @dptr, a
+ *   e948: mov dptr, #0xe763
+ *   e94b: mov a, #0x04
+ *   e94d: movx @dptr, a         ; Write 0x04 to 0xE763
+ *   e94e: mov a, #0x08
+ *   e950: movx @dptr, a         ; Write 0x08 to 0xE763
+ *   e951: ret
+ */
+void error_clear_e760_flags(void)
+{
+    uint8_t val;
+
+    /* Call helper with DPTR=0xC808 - TODO: identify this helper */
+    /* lcall 0xd1a8 */
+
+    /* Write 0xFF to error mask register */
+    XDATA8(0xE761) = 0xFF;
+
+    /* Set bit 2 in 0xE760, clear bit 2 in 0xE761 */
+    val = XDATA8(0xE760);
+    val = (val & 0xFB) | 0x04;
+    XDATA8(0xE760) = val;
+
+    val = XDATA8(0xE761);
+    val = val & 0xFB;
+    XDATA8(0xE761) = val;
+
+    /* Set bit 3 in 0xE760, clear bit 3 in 0xE761 */
+    val = XDATA8(0xE760);
+    val = (val & 0xF7) | 0x08;
+    XDATA8(0xE760) = val;
+
+    val = XDATA8(0xE761);
+    val = val & 0xF7;
+    XDATA8(0xE761) = val;
+
+    /* Write 0x04 then 0x08 to 0xE763 (command/ack register?) */
+    XDATA8(0xE763) = 0x04;
+    XDATA8(0xE763) = 0x08;
+}
+
+/*
+ * error_handler_e911 - PCIe/NVMe error handler (mid-function entry point)
+ * Bank 1 Address: 0xE911 (file offset 0x16911)
+ * Size: 15 bytes (0x16911-0x1691f)
+ *
+ * Called by handler_0570 when PCIe/NVMe status & 0x0F != 0.
+ *
+ * This is a MID-FUNCTION ENTRY POINT. The caller (handler_0570) sets up
+ * registers before dispatching here via jump_bank_1. On entry:
+ *   - A = XDATA8(0xC80A) & 0x0F (error status bits)
+ *   - R7 = some pre-set value from caller context
+ *   - DPTR = target register address to write
+ *
+ * Original disassembly:
+ *   e911: dec r7             ; R7 = R7 - 1
+ *   e912: orl a, r7          ; A = A | R7
+ *   e913: movx @dptr, a      ; Write to [DPTR]
+ *   e914: lcall 0xc343       ; Call error_log_and_process (at 0xC343)
+ *   e917: orl a, #0x80       ; A = A | 0x80 (set MSB - error flag)
+ *   e919: lcall 0xc32d       ; Call error_status_update (at 0xC32D)
+ *   e91c: orl a, #0x80       ; A = A | 0x80 (set MSB)
+ *   e91e: movx @dptr, a      ; Write to [DPTR]
+ *   e91f: ret
+ *
+ * NOTE: Cannot be directly translated to C as it requires register-based
+ * calling convention. This entry point merges error status bits, logs
+ * the error, and updates status registers with the error-active flag (0x80).
+ */
+void error_handler_e911(void)
+{
+    /*
+     * This function uses 8051 register calling convention which cannot be
+     * directly expressed in C. The function:
+     * 1. Decrements R7 and ORs it with accumulator
+     * 2. Writes to memory at DPTR
+     * 3. Calls helper at 0xC343 to log/process error
+     * 4. Sets bit 7 and calls helper at 0xC32D
+     * 5. Sets bit 7 again and writes to DPTR
+     *
+     * For now, this is a stub. The actual implementation would require
+     * inline assembly or would need to match the register state.
+     */
+}
+
+/*
+ * event_handler_e56f - Event handler for 0x81 events (mid-function entry point)
+ * Bank 1 Address: 0xE56F (file offset 0x1656F)
+ * Size: ~174 bytes (0x1656F-0x1661C, complex with multiple paths)
+ *
+ * Called by handler_0494 when events & 0x81 is set.
+ *
+ * This is a complex event state machine with multiple execution paths:
+ * - Checks bit 3 of XDATA[DPTR], optionally calls 0xE6F0 with R7=1
+ * - Reads state from 0x09EF, 0x0991, 0x098E
+ * - May jump to 0xEE11 (bank 1) for further processing
+ * - Writes 0x84 to 0x097A on some paths
+ * - Uses lookup table at 0x5C9D for dispatch
+ * - Multiple return points and ljmp destinations
+ *
+ * Original disassembly at e56f:
+ *   e56f: movx a, @dptr        ; Read from [DPTR] set by caller
+ *   e570: jnb 0xe0.3, 0x6578   ; Jump if bit 3 clear
+ *   e573: mov r7, #0x01
+ *   e575: lcall 0xe6f0         ; Call helper with R7=1
+ *   e578: mov dptr, #0x09ef    ; Check state at 0x09EF
+ *   e57b: movx a, @dptr
+ *   e57c: jnb 0xe0.0, 0x6596   ; Jump if bit 0 clear
+ *   ... (continues with state machine)
+ *   e596: mov dptr, #0x097a
+ *   e599: mov a, #0x84
+ *   e59b: movx @dptr, a        ; Write 0x84 to state register
+ *   e59c: ret
+ *
+ * NOTE: This function is too complex for direct C translation without
+ * fully reverse engineering the entire state machine and all called
+ * helper functions.
+ */
+void event_handler_e56f(void)
+{
+    /*
+     * Complex event state machine - reads from DPTR, checks multiple
+     * state registers (0x09EF, 0x0991, 0x098E), and dispatches to
+     * various handlers. Multiple exit points with different state
+     * register writes.
+     *
+     * Key registers accessed:
+     * - 0x097A: State/control register (writes 0x84)
+     * - 0x09EF: Event flags
+     * - 0x0991: State variable
+     * - 0x098E: Mode indicator
+     * - 0x0214: Return value storage
+     *
+     * Calls to: 0xE6F0, 0xABC9, 0x43D3, 0xAA71, 0x544C, 0xAA1D,
+     *           0xAA13, 0xAA4E, 0x425F
+     */
+}
+
+/*
+ * error_handler_b230 - Error handler (mid-function entry point)
+ * Bank 1 Address: 0xB230 (file offset 0x13230)
+ * Size: ~104 bytes (0x13230-0x13297+, with multiple paths)
+ *
+ * Called by handler_0606.
+ *
+ * This is an error recovery/handling function that:
+ * - Manipulates bits in accumulator (clear bit 4, set bit 4)
+ * - Calls several helper functions for status updates
+ * - Clears/sets bits in hardware registers (0xE7FC, 0xCCD8, 0xC801)
+ * - Sets up IDATA parameters for error logging
+ *
+ * Original disassembly at b230:
+ *   b230: anl a, #0xef        ; Clear bit 4
+ *   b232: orl a, #0x10        ; Set bit 4
+ *   b234: lcall 0x96b7        ; Call helper
+ *   b237: lcall 0x980d        ; Call helper
+ *   b23a: mov dptr, #0xe7fc   ; Hardware status register
+ *   b23d: movx a, @dptr
+ *   b23e: anl a, #0xfc        ; Clear bits 0,1
+ *   b240: movx @dptr, a
+ *   b241: sjmp 0x3258         ; Jump to common path
+ *   ...
+ *   b258: mov r1, #0xd1       ; Set up IDATA pointer
+ *   b25a: lcall 0x968e        ; Call helper
+ *   b25d: lcall 0x99e0        ; Call helper
+ *   ...
+ *   b284: mov dptr, #0xccd8   ; DMA/transfer control
+ *   b287: movx a, @dptr
+ *   b288: anl a, #0xef        ; Clear bit 4
+ *   b28a: movx @dptr, a
+ *   b28b: mov dptr, #0xc801   ; System control
+ *   b28e: movx a, @dptr
+ *   b28f: anl a, #0xef        ; Clear bit 4
+ *   b291: orl a, #0x10        ; Set bit 4
+ *   b293: movx @dptr, a
+ *   ...
+ *
+ * NOTE: This is a complex error handler with many helper function calls
+ * and hardware register manipulations. Full implementation requires
+ * reversing all the helper functions.
+ */
+void error_handler_b230(void)
+{
+    /*
+     * Complex error handler with multiple hardware register manipulations
+     * and helper function calls. Key operations:
+     *
+     * 1. Initial bit manipulation: (A & 0xEF) | 0x10
+     * 2. Call helpers at 0x96B7, 0x980D
+     * 3. Clear bits 0,1 in 0xE7FC
+     * 4. Setup IDATA parameters at 0xD1
+     * 5. Call helpers at 0x968E, 0x99E0
+     * 6. Clear bit 4 in 0xCCD8
+     * 7. Toggle bit 4 in 0xC801
+     *
+     * Helpers called: 0x96B7, 0x980D, 0x968E, 0x99E0, 0x0BE6, 0x0D59,
+     *                 0x0C7A, 0x97EF
+     */
+}
+
+/*
+ * error_handler_a066 - Error handler for PCIe status bit 5 (mid-function entry)
+ * Bank 1 Address: 0xA066 (file offset 0x12066)
+ * Size: ~115 bytes (0x12066-0x120D8+, with multiple paths)
+ *
+ * Called by handler_061a when event flags & 0x83 and PCIe status bit 5 set.
+ *
+ * This is a complex error handler with multiple conditional branches:
+ * - Entry uses registers set by caller (A, R0, R1 from earlier code)
+ * - Calls helper at 0x96C7 for status updates
+ * - Clears bit 1 in accumulator
+ * - Calls helper at 0x0BE6
+ * - Calls helper at 0xDEA1
+ * - Checks bit 1 of 0x9780 result for further branching
+ * - Sets up error recovery parameters
+ *
+ * Original disassembly at a066:
+ *   a066: subb a, r1          ; A = A - R1 - C
+ *   a067: anl a, r0           ; A = A & R0
+ *   a068: lcall 0x96c7        ; Call status helper
+ *   a06b: anl a, #0xfd        ; Clear bit 1
+ *   a06d: lcall 0x0be6        ; Call helper
+ *   a070: lcall 0xdea1        ; Call helper
+ *   a073: sjmp 0x20a7         ; Jump to common path
+ *   a075: lcall 0x9780        ; Check status
+ *   a078: anl a, #0x02        ; Mask bit 1
+ *   a07a: mov r7, a           ; R7 = result
+ *   a07b: clr c               ; Clear carry
+ *   a07c: rrc a               ; Rotate right
+ *   a07d: jnz 0x20a7          ; Jump if non-zero
+ *   ...
+ *   a0a7: lcall 0x96cd        ; Common exit point
+ *   ...
+ *
+ * NOTE: This is a complex error handler with multiple conditional paths
+ * and helper function calls. Full implementation requires reversing
+ * all helper functions.
+ */
+void error_handler_a066(void)
+{
+    /*
+     * Complex error handler for PCIe status bit 5 condition.
+     * Multiple execution paths based on status register values.
+     *
+     * Key operations:
+     * 1. Arithmetic with R0, R1 from caller context
+     * 2. Call 0x96C7 for status update
+     * 3. Clear bit 1 and call 0x0BE6
+     * 4. Call 0xDEA1 for error processing
+     * 5. Check 0x9780 status, branch on bit 1
+     * 6. Optional error recovery path with 0x538D, 0x96F5
+     *
+     * Helpers called: 0x96C7, 0x0BE6, 0xDEA1, 0x9780, 0x0BC8, 0x538D,
+     *                 0x96F5, 0x96CD, 0x96EC, 0xA5D8, 0xEED6, 0x9874, 0x96E3
+     */
+}
+
+/*
+ * error_handler_ef4e - System error handler (UNUSED)
+ * Bank 1 Address: 0xEF4E (file offset 0x16F4E)
+ *
+ * Called by handler_0642 when system status bit 4 is set.
+ *
+ * NOTE: This address contains all NOPs (0x00) in the original firmware.
+ * This is likely unused/padding space. The handler exists in the dispatch
+ * table but the target function is empty.
+ *
+ * Original disassembly:
+ *   ef4e: nop
+ *   ef4f: nop
+ *   ... (all NOPs)
+ */
+void error_handler_ef4e(void)
+{
+    /* Empty - original firmware has NOPs at this address */
+}
 

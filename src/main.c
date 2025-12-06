@@ -455,31 +455,33 @@ void handler_0327(void)
  * Handler at 0x0494
  * Address: 0x0494-0x0498 (5 bytes)
  *
- * Calls jump_bank_1 with register 0xE56F
+ * Dispatches to bank 1 code at 0xE56F (file offset 0x1656F)
  * Called when events & 0x81 is set
  *
  * Original disassembly:
  *   0494: mov dptr, #0xe56f
  *   0497: ajmp 0x0311
  */
+extern void event_handler_e56f(void);  /* Bank 1: file 0x1656F */
 void handler_0494(void)
 {
-    jump_bank_1(0xE56F);
+    event_handler_e56f();
 }
 
 /*
  * Handler at 0x0606
  * Address: 0x0606-0x060a (5 bytes)
  *
- * Calls jump_bank_1 with register 0xB230
+ * Dispatches to bank 1 code at 0xB230 (file offset 0x13230)
  *
  * Original disassembly:
  *   0606: mov dptr, #0xb230
  *   0609: ajmp 0x0311
  */
+extern void error_handler_b230(void);  /* Bank 1: file 0x13230 */
 void handler_0606(void)
 {
-    jump_bank_1(0xB230);
+    error_handler_b230();
 }
 
 /*
@@ -563,31 +565,34 @@ void handler_052f(void)
  * Handler at 0x0570
  * Address: 0x0570-0x0574 (5 bytes)
  *
- * Calls jump_bank_1 with register 0xE911.
+ * Dispatches to bank 1 code at 0xE911 (file offset 0x16911)
  * Called from ext1_isr when PCIe/NVMe status & 0x0F != 0.
  *
  * Original disassembly:
  *   0570: mov dptr, #0xe911
  *   0573: ajmp 0x0311
  */
+extern void error_handler_e911(void);  /* Bank 1: file 0x16911 */
 void handler_0570(void)
 {
-    jump_bank_1(0xE911);
+    error_handler_e911();
 }
 
 /*
  * Handler at 0x061a
  * Address: 0x061a-0x061e (5 bytes)
  *
+ * Dispatches to bank 1 code at 0xA066 (file offset 0x12066)
  * Called from ext1_isr when event flags & 0x83 and PCIe/NVMe status bit 5 set.
  *
- * Original disassembly (from pattern):
- *   061a: mov dptr, #0xXXXX
+ * Original disassembly:
+ *   061a: mov dptr, #0xa066
  *   061d: ajmp 0x0311
  */
+extern void error_handler_a066(void);  /* Bank 1: file 0x12066 */
 void handler_061a(void)
 {
-    jump_bank_1(0xA066);
+    error_handler_a066();
 }
 
 /*
@@ -609,15 +614,17 @@ void handler_0593(void)
  * Handler at 0x0642
  * Address: 0x0642-0x0646 (5 bytes)
  *
+ * Dispatches to bank 1 code at 0xEF4E (file offset 0x16F4E)
  * Called from ext1_isr when system status bit 4 is set.
  *
  * Original disassembly:
  *   0642: mov dptr, #0xef4e
  *   0645: ajmp 0x0311
  */
+extern void error_handler_ef4e(void);  /* Bank 1: file 0x16F4E */
 void handler_0642(void)
 {
-    jump_bank_1(0xEF4E);
+    error_handler_ef4e();
 }
 
 /*===========================================================================

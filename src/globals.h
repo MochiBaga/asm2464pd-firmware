@@ -94,6 +94,14 @@
 #define G_EP_DISPATCH_VAL2      XDATA_VAR8(0x0A7C)  /* Endpoint dispatch value 2 */
 #define G_STATE_COUNTER_HI      XDATA_VAR8(0x0AA3)  /* State counter high */
 #define G_STATE_COUNTER_LO      XDATA_VAR8(0x0AA4)  /* State counter low */
+#define G_FLASH_ERROR_0         XDATA_VAR8(0x0AA8)  /* Flash error flag 0 */
+#define G_FLASH_ERROR_1         XDATA_VAR8(0x0AA9)  /* Flash error flag 1 */
+#define G_FLASH_ADDR_0          XDATA_VAR8(0x0AAD)  /* Flash address byte 0 (low) */
+#define G_FLASH_ADDR_1          XDATA_VAR8(0x0AAE)  /* Flash address byte 1 */
+#define G_FLASH_ADDR_2          XDATA_VAR8(0x0AAF)  /* Flash address byte 2 */
+#define G_FLASH_ADDR_3          XDATA_VAR8(0x0AB0)  /* Flash address byte 3 (high) */
+#define G_FLASH_LEN_LO          XDATA_VAR8(0x0AB1)  /* Flash data length low */
+#define G_FLASH_LEN_HI          XDATA_VAR8(0x0AB2)  /* Flash data length high */
 #define G_SYSTEM_STATE_0AE2     XDATA_VAR8(0x0AE2)  /* System state */
 #define G_STATE_FLAG_0AE3       XDATA_VAR8(0x0AE3)  /* System state flag */
 #define G_TRANSFER_FLAG_0AF2    XDATA_VAR8(0x0AF2)  /* Transfer flag 0x0AF2 */
