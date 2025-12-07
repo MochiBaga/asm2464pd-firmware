@@ -858,7 +858,7 @@ __xdata uint8_t *dma_calc_addr_00c2(void)
  */
 void dma_store_to_0a7d(uint8_t val)
 {
-    XDATA8(0x0A7D) = val;
+    G_EP_DISPATCH_VAL3 = val;
 }
 
 /* Additional DMA functions will be added as they are reversed */

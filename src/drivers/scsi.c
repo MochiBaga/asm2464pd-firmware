@@ -176,13 +176,13 @@ void scsi_setup_status_regs(void)
         r7_val = 0;
     }
 
-    /* Write to status registers */
-    XDATA8(0x9007) = r6_val;
-    XDATA8(0x9008) = r7_val;
+    /* Write to SCSI buffer length registers */
+    REG_USB_SCSI_BUF_LEN_L = r6_val;
+    REG_USB_SCSI_BUF_LEN_H = r7_val;
 
-    /* Write to mode registers */
-    XDATA8(0x9093) = 0x08;
-    XDATA8(0x9094) = 0x02;
+    /* Write to endpoint config registers */
+    REG_USB_EP_CFG1 = 0x08;
+    REG_USB_EP_CFG2 = 0x02;
 }
 
 /*

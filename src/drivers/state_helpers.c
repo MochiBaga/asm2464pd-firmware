@@ -222,12 +222,12 @@ void state_write_0474_and_calc(void)
     uint8_t masked;
     __xdata uint8_t *ptr;
 
-    /* Write to 0x0474 */
-    XDATA8(0x0474) = val_41;
+    /* Write to state helper storage */
+    G_STATE_HELPER_41 = val_41;
 
-    /* Calculate masked value and write to 0x0475 */
+    /* Calculate masked value and write to state helper 42 */
     masked = (val_41 + val_3f) & 0x1F;
-    XDATA8(0x0475) = masked;
+    G_STATE_HELPER_42 = masked;
 
     /* Write val_41 to 0x0059 + IDATA[0x43] */
     ptr = (__xdata uint8_t *)(0x0059 + val_43);

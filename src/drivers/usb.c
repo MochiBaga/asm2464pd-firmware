@@ -417,8 +417,8 @@ void usb_buffer_handler(void)
 {
     uint8_t status;
 
-    /* Check XDATA[0x0B41] */
-    if (XDATA8(0x0B41) == 0) {
+    /* Check USB state */
+    if (G_USB_STATE_0B41 == 0) {
         return;
     }
 
@@ -437,7 +437,7 @@ void usb_buffer_handler(void)
     status = REG_USB_STATUS;
     if (status & 0x01) {
         /* USB status bit 0 set - check NVMe queue pointer */
-        status = XDATA8(0xC471);  /* REG_NVME_QUEUE_PTR area */
+        status = REG_NVME_QUEUE_PTR_C471;
         if (status & 0x01) {
             return;
         }
@@ -709,10 +709,10 @@ void usb_set_transfer_active_flag(void)
  */
 void usb_copy_status_to_buffer(void)
 {
-    XDATA8(0xD804) = REG_USB_STATUS_1F;
-    XDATA8(0xD805) = REG_USB_STATUS_20;
-    XDATA8(0xD806) = REG_USB_STATUS_21;
-    XDATA8(0xD807) = REG_USB_STATUS_22;
+    REG_BUFFER_PTR_HIGH = REG_USB_STATUS_1F;
+    REG_BUFFER_LENGTH_LOW = REG_USB_STATUS_20;
+    REG_BUFFER_STATUS = REG_USB_STATUS_21;
+    REG_BUFFER_LENGTH_HIGH = REG_USB_STATUS_22;
 }
 
 /*
@@ -887,8 +887,8 @@ void usb_store_idata_16(uint8_t hi, uint8_t lo)
  */
 void usb_add_masked_counter(uint8_t value)
 {
-    uint8_t current = XDATA8(0x014E);
-    XDATA8(0x014E) = (current + value) & 0x1F;
+    uint8_t current = G_USB_INDEX_COUNTER;
+    G_USB_INDEX_COUNTER = (current + value) & 0x1F;
 }
 
 /*===========================================================================
@@ -1131,8 +1131,8 @@ uint8_t usb_get_ep_config_indexed(void)
  */
 uint16_t usb_read_buf_addr_pair(void)
 {
-    uint8_t hi = XDATA8(0x0218);
-    uint8_t lo = XDATA8(0x0219);
+    uint8_t hi = G_BUF_ADDR_HI;
+    uint8_t lo = G_BUF_ADDR_LO;
     return ((uint16_t)hi << 8) | lo;
 }
 
@@ -1244,8 +1244,8 @@ void usb_init_pcie_txn_state(void)
     uint8_t val;
     uint16_t addr;
 
-    /* Clear state at 0x0AAA */
-    XDATA8(0x0AAA) = 0;
+    /* Clear flash reset flag */
+    G_FLASH_RESET_0AAA = 0;
 
     /* Read PCIe transaction count low */
     txn_lo = G_PCIE_TXN_COUNT_LO;

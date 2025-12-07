@@ -363,8 +363,8 @@ void handler_04d0(void)
     uint8_t status;
     uint8_t val;
 
-    /* Read link status register 0xCC3F */
-    status = XDATA8(0xCC3F);
+    /* Read link status register */
+    status = REG_CPU_CTRL_CC3F;
 
     /* Check if bit 1 or bit 2 is set - if so, call helper to clear flags */
     if ((status & 0x02) || (status & 0x04)) {
@@ -376,10 +376,10 @@ void handler_04d0(void)
          * - More delay loops
          * - Clears bit 7 of 0xCC3D
          */
-        XDATA8(0xCC3F) = (XDATA8(0xCC3F) & 0xFB) | 0x04;  /* Set bit 2 */
+        REG_CPU_CTRL_CC3F = (REG_CPU_CTRL_CC3F & 0xFB) | 0x04;  /* Set bit 2 */
         /* Note: Full helper implementation would include delays */
-        XDATA8(0xCC3F) = XDATA8(0xCC3F) & 0xFD;  /* Clear bit 1 */
-        XDATA8(0xCC3D) = XDATA8(0xCC3D) & 0x7F;  /* Clear bit 7 */
+        REG_CPU_CTRL_CC3F = REG_CPU_CTRL_CC3F & 0xFD;  /* Clear bit 1 */
+        REG_CPU_CTRL_CC3D = REG_CPU_CTRL_CC3D & 0x7F;  /* Clear bit 7 */
     }
 
     /* Helper at 0xCF28: Configure timer/link registers
@@ -391,30 +391,30 @@ void handler_04d0(void)
      * - Clears bit 0 of 0xCC3E
      * - Configures 0xCA81
      */
-    val = XDATA8(0xCC30);
+    val = REG_CPU_CTRL_CC30;
     val = (val & 0xFB) | 0x04;  /* Set bit 2 */
-    XDATA8(0xCC30) = val;
+    REG_CPU_CTRL_CC30 = val;
 
-    XDATA8(0xCC33) = 0x04;
+    REG_CPU_EXEC_STATUS_2 = 0x04;
 
-    XDATA8(0xE324) = XDATA8(0xE324) & 0xFB;  /* Clear bit 2 */
-    XDATA8(0xCC3B) = XDATA8(0xCC3B) & 0xFE;  /* Clear bit 0 */
+    REG_LINK_CTRL_E324 = REG_LINK_CTRL_E324 & 0xFB;  /* Clear bit 2 */
+    REG_CPU_CTRL_CC3B = REG_CPU_CTRL_CC3B & 0xFE;  /* Clear bit 0 */
 
     /* Set bits 5,6 in 0xCC3A */
-    XDATA8(0xCC3A) = (XDATA8(0xCC3A) & 0x9F) | 0x60;
+    REG_CPU_CTRL_CC3A = (REG_CPU_CTRL_CC3A & 0x9F) | 0x60;
 
-    XDATA8(0xCC3E) = XDATA8(0xCC3E) & 0xFE;  /* Clear bit 0 */
+    REG_CPU_CTRL_CC3E = REG_CPU_CTRL_CC3E & 0xFE;  /* Clear bit 0 */
 
     /* Dispatch to bank 1 handler at 0xED02 via 0x0610 */
     jump_bank_1(0xED02);
 
-    /* Clear bits 0-1 of PHY config register 0xC233 */
+    /* Clear bits 0-1 of PHY config register */
     REG_PHY_CONFIG = REG_PHY_CONFIG & 0xFC;
 
     /* Helper at 0xBD5E: read @DPTR, clear bit 2, set bit 2 */
-    val = XDATA8(0xC233);
+    val = REG_PHY_CONFIG;
     val = (val & 0xFB) | 0x04;  /* Set bit 2 */
-    XDATA8(0xC233) = val;
+    REG_PHY_CONFIG = val;
 
     /* Timing delay - R4:R5=0x0014, R7=0x02 */
     /* In original firmware this calls 0xE80A delay function */
@@ -424,9 +424,9 @@ void handler_04d0(void)
 
     /* More timing delay - R4:R5=0x000A, R7=0x03 */
 
-    /* Polling loop: wait for status bits in 0xE712 and 0xCC11 */
+    /* Polling loop: wait for status bits in link status and timer */
     do {
-        status = XDATA8(0xE712);
+        status = REG_LINK_STATUS_E712;
         /* Check bit 0 - if set, call helper and exit */
         if (status & 0x01) {
             break;
@@ -435,7 +435,7 @@ void handler_04d0(void)
         if ((status & 0x02) != 0) {
             break;
         }
-        /* Check bit 1 of timer CSR 0xCC11 - if not set, continue polling */
+        /* Check bit 1 of timer CSR - if not set, continue polling */
     } while ((REG_TIMER0_CSR & 0x02) == 0);
 
     /* Final handlers - would call 0xE8EF, 0xDD42, then jump to 0xD996 */
@@ -602,57 +602,57 @@ void handler_0327(void)
     val = (val & 0x7F) | 0x80;
     REG_POWER_CTRL_92C0 = val;
 
-    /* Configure USB peripheral register 0x91D1 */
-    XDATA8(0x91D1) = 0x0F;
+    /* Configure USB PHY control register */
+    REG_USB_PHY_CTRL_91D1 = 0x0F;
 
-    /* Configure registers 0x9300-0x9302 */
-    XDATA8(0x9300) = 0x0C;
-    XDATA8(0x9301) = 0xC0;
-    XDATA8(0x9302) = 0xBF;  /* 0xC0 - 1 = 0xBF */
+    /* Configure buffer config registers */
+    REG_BUF_CFG_9300 = 0x0C;
+    REG_BUF_CFG_9301 = 0xC0;
+    REG_BUF_CFG_9302 = 0xBF;  /* 0xC0 - 1 = 0xBF */
 
-    /* Configure USB interrupt flags register 0x9091 */
+    /* Configure USB interrupt flags register */
     REG_INT_FLAGS_EX0 = 0x1F;
 
-    /* Configure USB endpoint config 0x9093 */
+    /* Configure USB endpoint config */
     REG_USB_EP_CFG1 = 0x0F;
 
-    /* Configure USB peripheral register 0x91C1 */
-    XDATA8(0x91C1) = 0xF0;
+    /* Configure USB PHY control register */
+    REG_USB_PHY_CTRL_91C1 = 0xF0;
 
-    /* Configure registers 0x9303-0x9305 */
-    XDATA8(0x9303) = 0x33;
-    XDATA8(0x9304) = 0x3F;
-    XDATA8(0x9305) = 0x40;  /* 0x3F + 1 = 0x40 */
+    /* Configure buffer config registers */
+    REG_BUF_CFG_9303 = 0x33;
+    REG_BUF_CFG_9304 = 0x3F;
+    REG_BUF_CFG_9305 = 0x40;  /* 0x3F + 1 = 0x40 */
 
-    /* Configure USB control register 0x9002 */
+    /* Configure USB control register */
     REG_USB_CONFIG = 0xE0;
 
-    /* Configure USB register 0x9005 */
-    XDATA8(0x9005) = 0xF0;
+    /* Configure USB EP0 length high register */
+    REG_USB_EP0_LEN_H = 0xF0;
 
-    /* Configure USB register 0x90E2 */
-    XDATA8(0x90E2) = 0x01;
+    /* Configure USB mode register */
+    REG_USB_MODE_90E2 = 0x01;
 
-    /* Clear bit 0 of USB register 0x905E */
-    XDATA8(0x905E) = XDATA8(0x905E) & 0xFE;
+    /* Clear bit 0 of USB EP control register */
+    REG_USB_EP_CTRL_905E = REG_USB_EP_CTRL_905E & 0xFE;
 
-    /* Configure NVMe command NSID register 0xC42C */
+    /* Configure NVMe command NSID register */
     REG_NVME_CMD_NSID = 0x01;
 
-    /* Clear bit 0 of register 0xC42D */
-    XDATA8(0xC42D) = XDATA8(0xC42D) & 0xFE;
+    /* Clear bit 0 of NVMe PRP1 register */
+    REG_NVME_CMD_PRP1 = REG_NVME_CMD_PRP1 & 0xFE;
 
     /* Call helper functions at 0xD07F, 0xE214 for additional setup */
     /* These would be implemented as separate functions */
 
-    /* Clear bit 5 of register 0x91C3 */
-    XDATA8(0x91C3) = XDATA8(0x91C3) & 0xDF;
+    /* Clear bit 5 of USB PHY control 3 register */
+    REG_USB_PHY_CTRL_91C3 = REG_USB_PHY_CTRL_91C3 & 0xDF;
 
-    /* Configure register 0x91C0: set bit 0, then clear bit 0 */
-    val = XDATA8(0x91C0);
+    /* Configure USB PHY control 0: set bit 0, then clear bit 0 */
+    val = REG_USB_PHY_CTRL_91C0;
     val = (val & 0xFE) | 0x01;
-    XDATA8(0x91C0) = val;
-    XDATA8(0x91C0) = XDATA8(0x91C0) & 0xFE;
+    REG_USB_PHY_CTRL_91C0 = val;
+    REG_USB_PHY_CTRL_91C0 = REG_USB_PHY_CTRL_91C0 & 0xFE;
 
     /* Additional timing delay with R4:R5=0x018F, R7=0x04 would follow */
 }
@@ -694,8 +694,8 @@ void handler_0494(void)
     uint8_t val;
     uint8_t r7;
 
-    /* Read state flag at 0x0AEE and check bit 3 */
-    val = XDATA8(0x0AEE);
+    /* Read state flag and check bit 3 */
+    val = G_STATE_CHECK_0AEE;
     if (val & 0x08) {
         /* Call helper at 0xE6F0 with R7=1 */
         r7 = 0x01;
@@ -703,14 +703,14 @@ void handler_0494(void)
         (void)r7;
     }
 
-    /* Read event state at 0x09EF */
-    val = XDATA8(0x09EF);
+    /* Read event state */
+    val = G_EVENT_CHECK_09EF;
     if ((val & 0x01) == 0) {
-        /* Check 0x0991 state */
-        val = XDATA8(0x0991);
+        /* Check loop state */
+        val = G_LOOP_STATE_0991;
         if (val != 0) {
-            /* Check 0x098E for state 1 */
-            val = XDATA8(0x098E);
+            /* Check loop check for state 1 */
+            val = G_LOOP_CHECK_098E;
             if (val == 0x01) {
                 /* Call helper 0xABC9 with R7=0x0A */
                 r7 = 0x0A;
@@ -722,8 +722,8 @@ void handler_0494(void)
         }
     }
 
-    /* Write final state 0x84 to 0x097A */
-    XDATA8(0x097A) = 0x84;
+    /* Write final state 0x84 to event init */
+    G_EVENT_INIT_097A = 0x84;
 }
 
 /*
@@ -763,27 +763,27 @@ void handler_0606(void)
     val = val & 0xFC;
     REG_LINK_MODE_CTRL = val;
 
-    /* Clear error counter at 0x06EC */
-    XDATA8(0x06EC) = 0x00;
+    /* Clear error counter */
+    G_MISC_FLAG_06EC = 0x00;
 
-    /* Configure 0xCCD8 - clear bit 4 */
-    val = XDATA8(0xCCD8);
+    /* Configure CPU DMA control - clear bit 4 */
+    val = REG_CPU_DMA_CCD8;
     val = val & 0xEF;
-    XDATA8(0xCCD8) = val;
+    REG_CPU_DMA_CCD8 = val;
 
-    /* Configure 0xC801 - clear bit 4, set bit 4 */
-    val = XDATA8(0xC801);
+    /* Configure interrupt control - clear bit 4, set bit 4 */
+    val = REG_INT_CTRL_C801;
     val = (val & 0xEF) | 0x10;
-    XDATA8(0xC801) = val;
+    REG_INT_CTRL_C801 = val;
 
-    /* Configure 0xCCD8 - clear bits 0-2, set bits 0-2 to 4 */
-    val = XDATA8(0xCCD8);
+    /* Configure CPU DMA control - clear bits 0-2, set bits 0-2 to 4 */
+    val = REG_CPU_DMA_CCD8;
     val = (val & 0xF8) | 0x04;
-    XDATA8(0xCCD8) = val;
+    REG_CPU_DMA_CCD8 = val;
 
-    /* Write 0x00 to 0xCCDA, 0xC8 to 0xCCDB */
-    XDATA8(0xCCDA) = 0x00;
-    XDATA8(0xCCDB) = 0xC8;
+    /* Write 0x00 to CPU DMA control A, 0xC8 to CPU DMA control B */
+    REG_CPU_DMA_CCDA = 0x00;
+    REG_CPU_DMA_CCDB = 0xC8;
 }
 
 /*
@@ -821,25 +821,25 @@ void handler_0589(void)
 {
     uint8_t val;
 
-    /* Configure register 0xC809 - clear bit 1, set bit 1 */
-    val = XDATA8(0xC809);
+    /* Configure interrupt control 2 - clear bit 1, set bit 1 */
+    val = REG_INT_CTRL_C809;
     val = (val & 0xFD) | 0x02;
-    XDATA8(0xC809) = val;
+    REG_INT_CTRL_C809 = val;
 
-    /* Read 0x0AF1 and check bit 1 */
-    val = XDATA8(0x0AF1);
+    /* Read state flag and check bit 1 */
+    val = G_STATE_FLAG_0AF1;
     if (val & 0x02) {
         /* If bit 1 set, call handler 0x057A with R7=0x03 */
         /* This would handle a specific condition */
     }
 
-    /* Configure register 0xB402 if needed */
-    val = XDATA8(0xB402);
+    /* Configure PCIe control register */
+    val = REG_PCIE_CTRL_B402;
     val = val & 0xFE;  /* Clear bit 0 */
-    XDATA8(0xB402) = val;
-    val = XDATA8(0xB402);
+    REG_PCIE_CTRL_B402 = val;
+    val = REG_PCIE_CTRL_B402;
     val = val & 0xFD;  /* Clear bit 1 */
-    XDATA8(0xB402) = val;
+    REG_PCIE_CTRL_B402 = val;
 }
 
 /*
@@ -902,13 +902,13 @@ void handler_0525(void)
         /* Call helper 0x538D with R3=0xFF, R2=0x22, R1=0x25 */
     }
 
-    /* Configure 0xCC98 register - set bits 0-2 to 6 */
-    val = XDATA8(0xCC98);
+    /* Configure CPU status register - set bits 0-2 to 6 */
+    val = REG_CPU_STATUS_CC98;
     val = (val & 0xF8) | 0x06;
-    XDATA8(0xCC98) = val;
+    REG_CPU_STATUS_CC98 = val;
 
-    /* Write state 0x04 to 0x09FA */
-    XDATA8(0x09FA) = 0x04;
+    /* Write state 0x04 to event control */
+    G_EVENT_CTRL_09FA = 0x04;
 }
 
 /*
@@ -941,50 +941,50 @@ void handler_039a(void)
 {
     uint8_t val;
 
-    /* Check 0x0B41 - if zero, exit */
-    val = XDATA8(0x0B41);
+    /* Check USB state - if zero, exit */
+    val = G_USB_STATE_0B41;
     if (val == 0) {
         return;
     }
 
-    /* Check 0x9091 bit 0 - if set, exit */
-    val = XDATA8(0x9091);
+    /* Check interrupt flags bit 0 - if set, exit */
+    val = REG_INT_FLAGS_EX0;
     if (val & 0x01) {
         return;
     }
 
-    /* Check 0x07E4 - must equal 1 */
-    val = G_SYS_FLAGS_BASE;  /* 0x07E4 */
+    /* Check system flags - must equal 1 */
+    val = G_SYS_FLAGS_BASE;
     if (val != 0x01) {
         return;
     }
 
-    /* Check 0x9000 bit 0 */
-    val = XDATA8(0x9000);
+    /* Check USB status bit 0 */
+    val = REG_USB_STATUS;
     if (val & 0x01) {
-        /* Check 0xC471 bit 0 */
-        val = XDATA8(0xC471);
+        /* Check NVMe queue pointer bit 0 */
+        val = REG_NVME_QUEUE_PTR_C471;
         if (val & 0x01) {
             return;
         }
 
         /* Check G_EP_CHECK_FLAG */
-        val = G_EP_CHECK_FLAG;  /* 0x000A */
+        val = G_EP_CHECK_FLAG;
         if (val != 0) {
             return;
         }
     } else {
-        /* Check 0x9101 bit 6 */
-        val = XDATA8(0x9101);
+        /* Check USB peripheral status bit 6 */
+        val = REG_USB_PERIPH_STATUS;
         if (val & 0x40) {
             return;
         }
     }
 
-    /* Initiate buffer transfer - write sequence to 0xCC17 */
-    XDATA8(0xCC17) = 0x04;
-    XDATA8(0xCC17) = 0x02;
-    XDATA8(0xCC17) = 0x01;  /* dec a gives 0x01 */
+    /* Initiate buffer transfer - write sequence to timer CSR */
+    REG_TIMER1_CSR = 0x04;
+    REG_TIMER1_CSR = 0x02;
+    REG_TIMER1_CSR = 0x01;  /* dec a gives 0x01 */
 }
 
 /*
@@ -1018,23 +1018,23 @@ void handler_0520(void)
     uint8_t val;
     uint8_t state;
 
-    /* Read 0xCC23 and check bit 1 */
-    val = XDATA8(0xCC23);
+    /* Read timer 3 CSR and check bit 1 */
+    val = REG_TIMER3_CSR;
     if (val & 0x02) {
         /* Call helper 0xE3D8 */
         /* Write 0x02 to acknowledge */
-        XDATA8(0xCC23) = 0x02;
+        REG_TIMER3_CSR = 0x02;
     }
 
-    /* Read 0xCC81 and check bit 1 */
-    val = XDATA8(0xCC81);
+    /* Read CPU status 81 and check bit 1 */
+    val = REG_CPU_STATUS_CC81;
     if (val & 0x02) {
         /* Read state from G_FLASH_OP_COUNTER */
         state = G_FLASH_OP_COUNTER;
 
         if (state == 0x0E || state == 0x0D) {
-            /* Write 0x02 to 0xCC81 */
-            XDATA8(0xCC81) = 0x02;
+            /* Write 0x02 to CPU status 81 */
+            REG_CPU_STATUS_CC81 = 0x02;
 
             /* Check G_FLASH_CMD_TYPE for further dispatch */
             val = G_FLASH_CMD_TYPE;
@@ -1044,14 +1044,14 @@ void handler_0520(void)
             /* Call helper 0xD676 */
         } else {
             /* Call 0xE90B for other states */
-            XDATA8(0xCC81) = 0x02;
+            REG_CPU_STATUS_CC81 = 0x02;
         }
     }
 
-    /* Read 0xCC91 and check bit 1 */
-    val = XDATA8(0xCC91);
+    /* Read CPU status 91 and check bit 1 */
+    val = REG_CPU_STATUS_CC91;
     if (val & 0x02) {
-        XDATA8(0xCC91) = 0x02;  /* Acknowledge */
+        REG_CPU_STATUS_CC91 = 0x02;  /* Acknowledge */
     }
 }
 
@@ -1088,38 +1088,38 @@ void handler_052f(void)
 {
     uint8_t val;
 
-    /* Write NVMe command sequence to 0xC001 */
-    XDATA8(0xC001) = 0x0A;
-    XDATA8(0xC001) = 0x0D;
+    /* Write NVMe command sequence to UART THR (debug output) */
+    REG_UART_THR = 0x0A;
+    REG_UART_THR = 0x0D;
 
     /* Call helper 0x538D with R3=0xFF, R2=0x23, R1=0xEE */
     /* This reads/processes NVMe response data */
 
-    /* Read NVMe status from 0xE40F */
-    val = XDATA8(0xE40F);
+    /* Read NVMe status from command control register */
+    val = REG_CMD_CTRL_E40F;
 
     /* Call helper 0x51C7 with status in R7 */
 
     /* Write next command 0x3A */
-    XDATA8(0xC001) = 0x3A;
+    REG_UART_THR = 0x3A;
 
-    /* Read 0xE410 and process */
-    val = XDATA8(0xE410);
+    /* Read command control 10 and process */
+    val = REG_CMD_CTRL_E410;
 
     /* Write command 0x5D */
-    XDATA8(0xC001) = 0x5D;
+    REG_UART_THR = 0x5D;
 
-    /* Check status bits in 0xE40F */
-    val = XDATA8(0xE40F);
+    /* Check status bits in command control register */
+    val = REG_CMD_CTRL_E40F;
 
     if (val & 0x80) {
         /* Bit 7 set: call 0xDFDC helper */
     } else if (val & 0x01) {
-        /* Bit 0 set: write 0x01 to 0xE40F, call 0x83D6 */
-        XDATA8(0xE40F) = 0x01;
+        /* Bit 0 set: acknowledge, call 0x83D6 */
+        REG_CMD_CTRL_E40F = 0x01;
     } else if (val & 0x20) {
-        /* Bit 5 set: write 0x20 to 0xE40F, call 0xDFDC */
-        XDATA8(0xE40F) = 0x20;
+        /* Bit 5 set: acknowledge, call 0xDFDC */
+        REG_CMD_CTRL_E40F = 0x20;
     }
 }
 

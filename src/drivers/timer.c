@@ -101,14 +101,16 @@
 #include "registers.h"
 #include "globals.h"
 
-/* Additional registers used by timer ISR (not in main registers.h) */
-#define REG_TIMER_STATUS_C806   XDATA_REG8(0xC806)  /* Timer/interrupt status */
-#define REG_TIMER_STATUS_CC33   XDATA_REG8(0xCC33)  /* Timer event status */
-#define REG_TIMER_STATUS_C80A   XDATA_REG8(0xC80A)  /* Event flags */
-#define REG_NVME_EVENT_EC06     XDATA_REG8(0xEC06)  /* NVMe event status */
-#define REG_NVME_EVENT_EC04     XDATA_REG8(0xEC04)  /* NVMe event control */
-#define REG_PHY_STATUS_0AF1     XDATA_REG8(0x0AF1)  /* PHY link status */
-#define REG_PHY_CTRL_E7E3       XDATA_REG8(0xE7E3)  /* PHY control */
+/*
+ * Register aliases for timer ISR (using standard names from registers.h/globals.h)
+ * 0xC806 = REG_INT_SYSTEM      - System interrupt status
+ * 0xCC33 = REG_CPU_EXEC_STATUS_2 - CPU execution status
+ * 0xC80A = REG_INT_PCIE_NVME   - PCIe/NVMe interrupt status
+ * 0xEC06 = REG_NVME_EVENT_STATUS - NVMe event status
+ * 0xEC04 = REG_NVME_EVENT_ACK  - NVMe event acknowledge
+ * 0x0AF1 = G_STATE_FLAG_0AF1   - State flag (global variable)
+ * 0xE7E3 = REG_PHY_LINK_CTRL   - PHY link control
+ */
 
 /*
  * timer0_poll_handler_0520 - Dispatch stub for timer handler
@@ -260,20 +262,20 @@ void timer0_isr(void) __interrupt(1) __using(0)
     uint8_t status;
 
     /* Check timer status register 0xC806 bit 0 */
-    status = REG_TIMER_STATUS_C806;
+    status = REG_INT_SYSTEM;
     if (status & 0x01) {
         timer0_poll_handler_0520();
     }
 
     /* Check status register 0xCC33 bit 2 */
-    status = REG_TIMER_STATUS_CC33;
+    status = REG_CPU_EXEC_STATUS_2;
     if (status & 0x04) {
-        REG_TIMER_STATUS_CC33 = 0x04;  /* Clear/acknowledge */
+        REG_CPU_EXEC_STATUS_2 = 0x04;  /* Clear/acknowledge */
         /* lcall 0x0390 - dispatch stub */
     }
 
     /* Check status register 0xC80A bit 6 */
-    status = REG_TIMER_STATUS_C80A;
+    status = REG_INT_PCIE_NVME;
     if (status & 0x40) {
         timer0_poll_handler_052f();
     }
@@ -282,29 +284,29 @@ void timer0_isr(void) __interrupt(1) __using(0)
     status = G_EVENT_FLAGS;
     if (status & 0x83) {
         /* Check 0xC80A bit 5 */
-        if (REG_TIMER_STATUS_C80A & 0x20) {
+        if (REG_INT_PCIE_NVME & 0x20) {
             timer0_poll_handler_061a();
         }
 
         /* Check 0xC80A bit 4 */
-        if (REG_TIMER_STATUS_C80A & 0x10) {
+        if (REG_INT_PCIE_NVME & 0x10) {
             timer0_poll_handler_0593();
         }
 
         /* Check NVMe event at 0xEC06 bit 0 */
-        if (REG_NVME_EVENT_EC06 & 0x01) {
+        if (REG_NVME_EVENT_STATUS & 0x01) {
             /* Acknowledge NVMe event */
-            REG_NVME_EVENT_EC04 = 0x01;
+            REG_NVME_EVENT_ACK = 0x01;
 
             /* Check PHY status at 0x0AF1 bit 5 */
-            if (REG_PHY_STATUS_0AF1 & 0x20) {
-                /* Clear bits 6 and 7 of PHY control */
-                status = REG_PHY_CTRL_E7E3;
+            if (G_STATE_FLAG_0AF1 & 0x20) {
+                /* Clear bits 6 and 7 of PHY link control */
+                status = REG_PHY_LINK_CTRL;
                 status &= 0xBF;  /* Clear bit 6 */
-                REG_PHY_CTRL_E7E3 = status;
-                status = REG_PHY_CTRL_E7E3;
+                REG_PHY_LINK_CTRL = status;
+                status = REG_PHY_LINK_CTRL;
                 status &= 0x7F;  /* Clear bit 7 */
-                REG_PHY_CTRL_E7E3 = status;
+                REG_PHY_LINK_CTRL = status;
             }
 
             timer0_poll_handler_0499();
@@ -312,13 +314,13 @@ void timer0_isr(void) __interrupt(1) __using(0)
     }
 
     /* Check 0xC80A low nibble for additional events */
-    status = REG_TIMER_STATUS_C80A;
+    status = REG_INT_PCIE_NVME;
     if (status & 0x0F) {
         timer0_poll_handler_0570();
     }
 
     /* Check 0xC806 bit 4 */
-    status = REG_TIMER_STATUS_C806;
+    status = REG_INT_SYSTEM;
     if (status & 0x10) {
         timer0_poll_handler_0642();
     }

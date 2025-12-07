@@ -345,9 +345,9 @@ __xdata uint8_t *nvme_calc_addr_01xx(uint8_t offset)
  */
 void nvme_inc_circular_counter(void)
 {
-    uint8_t val = XDATA8(0x0B00);
+    uint8_t val = G_USB_PARAM_0B00;
     val = (val + 1) & 0x1F;
-    XDATA8(0x0B00) = val;
+    G_USB_PARAM_0B00 = val;
 }
 
 /*
@@ -521,7 +521,7 @@ __xdata uint8_t *nvme_calc_addr_04b7(void)
  */
 void nvme_add_to_global_053a(void)
 {
-    uint8_t val = XDATA8(0x053A);
+    uint8_t val = G_NVME_PARAM_053A;
     val += 0x20;
-    XDATA8(0x053A) = val;
+    G_NVME_PARAM_053A = val;
 }

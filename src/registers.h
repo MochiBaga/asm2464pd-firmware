@@ -98,6 +98,20 @@
 #define REG_TIMER3_CSR          XDATA_REG8(0xCC23)  // Control/status (RW)
 #define REG_TIMER3_IDLE_TIMEOUT XDATA_REG8(0xCC24)  // Idle timeout (half-seconds, RW)
 
+// CPU Control Extended (0xCC30-0xCCFF)
+#define REG_CPU_CTRL_CC30       XDATA_REG8(0xCC30)  // CPU control 30 (RW)
+#define REG_CPU_CTRL_CC3A       XDATA_REG8(0xCC3A)  // CPU control 3A (RW)
+#define REG_CPU_CTRL_CC3B       XDATA_REG8(0xCC3B)  // CPU control 3B (RW)
+#define REG_CPU_CTRL_CC3D       XDATA_REG8(0xCC3D)  // CPU control 3D (RW)
+#define REG_CPU_CTRL_CC3E       XDATA_REG8(0xCC3E)  // CPU control 3E (RW)
+#define REG_CPU_CTRL_CC3F       XDATA_REG8(0xCC3F)  // CPU control 3F (RW)
+#define REG_CPU_STATUS_CC81     XDATA_REG8(0xCC81)  // CPU status 81 (RW)
+#define REG_CPU_STATUS_CC91     XDATA_REG8(0xCC91)  // CPU status 91 (RW)
+#define REG_CPU_STATUS_CC98     XDATA_REG8(0xCC98)  // CPU status 98 (RW)
+#define REG_CPU_DMA_CCD8        XDATA_REG8(0xCCD8)  // CPU DMA control D8 (RW)
+#define REG_CPU_DMA_CCDA        XDATA_REG8(0xCCDA)  // CPU DMA control DA (RW)
+#define REG_CPU_DMA_CCDB        XDATA_REG8(0xCCDB)  // CPU DMA control DB (RW)
+
 //=============================================================================
 // CPU Control Registers
 //=============================================================================
@@ -109,8 +123,10 @@
 //=============================================================================
 // Interrupt Controller Registers (0xC800-0xC80F)
 //=============================================================================
+#define REG_INT_CTRL_C801       XDATA_REG8(0xC801)  // Interrupt control (RW)
 #define REG_INT_USB_MASTER      XDATA_REG8(0xC802)  // USB master interrupt status (RW)
 #define REG_INT_SYSTEM          XDATA_REG8(0xC806)  // System interrupt status (RW)
+#define REG_INT_CTRL_C809       XDATA_REG8(0xC809)  // Interrupt control 2 (RW)
 #define REG_INT_PCIE_NVME       XDATA_REG8(0xC80A)  // PCIe/NVMe interrupt status (RW)
 
 
@@ -178,6 +194,8 @@
 #define REG_USB_PHY_CTRL_91D1   XDATA_REG8(0x91D1)  // USB PHY control D1 (RW)
 #define REG_USB_EP0_CONFIG      XDATA_REG8(0x9006)  // EP0 config (RW)
 #define REG_USB_SCSI_BUF_LEN    XDATA_REG16(0x9007) // SCSI buffer length (RW, 2 bytes)
+#define REG_USB_SCSI_BUF_LEN_L  XDATA_REG8(0x9007)  // SCSI buffer length low byte (RW)
+#define REG_USB_SCSI_BUF_LEN_H  XDATA_REG8(0x9008)  // SCSI buffer length high byte (RW)
 #define REG_USB_DATA_L          XDATA_REG8(0x9010)  // Data low (RW)
 #define REG_USB_DATA_H          XDATA_REG8(0x9011)  // Data high (RW)
 #define REG_USB_FIFO_L          XDATA_REG8(0x9012)  // FIFO low (RW)
@@ -248,6 +266,8 @@
 #define REG_PHY_CTRL            XDATA_REG8(0xC205)  // PHY control (RW)
 #define REG_PHY_CONFIG          XDATA_REG8(0xC233)  // PHY configuration (RW)
 #define REG_PHY_STATUS          XDATA_REG8(0xC284)  // PHY status (RW)
+#define REG_LINK_CTRL_E324      XDATA_REG8(0xE324)  // Link control (RW)
+#define REG_LINK_STATUS_E712    XDATA_REG8(0xE712)  // Link status (RO)
 
 // Link control bits
 #define LINK_ENABLE             0x80
@@ -323,6 +343,7 @@
 #define REG_NVME_CMD_CDW10      XDATA_REG8(0xC435)  // Command DWord 10 (WO)
 #define REG_NVME_CMD_CDW11      XDATA_REG8(0xC439)  // Command DWord 11 (WO)
 #define REG_NVME_QUEUE_PTR      XDATA_REG8(0xC43D)  // Queue pointer (RW)
+#define REG_NVME_QUEUE_PTR_C471 XDATA_REG8(0xC471)  // Queue pointer alt (RW)
 #define REG_NVME_QUEUE_DEPTH    XDATA_REG8(0xC43E)  // Queue depth (RW)
 #define REG_NVME_PHASE          XDATA_REG8(0xC43F)  // Phase bit (RW)
 #define REG_NVME_QUEUE_CTRL     XDATA_REG8(0xC440)  // Queue control (RW)
@@ -457,10 +478,10 @@
 #define REG_BUFFER_SELECT       XDATA_REG8(0xD801)  // Buffer select (RW)
 #define REG_BUFFER_DATA         XDATA_REG8(0xD802)  // Buffer data/pointer (WO)
 #define REG_BUFFER_PTR_LOW      XDATA_REG8(0xD803)  // Pointer low (RW)
-#define REG_BUFFER_PTR_HIGH     XDATA_REG8(0xD804)  // Pointer high (RW)
-#define REG_BUFFER_LENGTH_LOW   XDATA_REG8(0xD805)  // Length low (RW)
-#define REG_BUFFER_STATUS       XDATA_REG8(0xD806)  // Status (RW)
-#define REG_BUFFER_LENGTH_HIGH  XDATA_REG8(0xD807)  // Length high (RW)
+#define REG_BUFFER_PTR_HIGH     XDATA_REG8(0xD804)  // Pointer high / USB status copy dest (RW)
+#define REG_BUFFER_LENGTH_LOW   XDATA_REG8(0xD805)  // Length low / USB status copy dest (RW)
+#define REG_BUFFER_STATUS       XDATA_REG8(0xD806)  // Status / USB status copy dest (RW)
+#define REG_BUFFER_LENGTH_HIGH  XDATA_REG8(0xD807)  // Length high / USB status copy dest (RW)
 #define REG_BUFFER_CTRL_GLOBAL  XDATA_REG8(0xD808)  // Control global (RW)
 #define REG_BUFFER_THRESHOLD_HIGH XDATA_REG8(0xD809) // Threshold high (RW)
 #define REG_BUFFER_THRESHOLD_LOW  XDATA_REG8(0xD80A) // Threshold low (RW)
@@ -534,6 +555,8 @@
 // Command Engine Registers (0xE400-0xE4FF)
 //=============================================================================
 #define REG_CMD_CONFIG          XDATA_REG8(0xE40B)  // Config (RW)
+#define REG_CMD_CTRL_E40F       XDATA_REG8(0xE40F)  // Command control F (RW)
+#define REG_CMD_CTRL_E410       XDATA_REG8(0xE410)  // Command control 10 (RW)
 #define REG_CMD_PARAM           XDATA_REG8(0xE422)  // Parameter (RW)
 #define REG_CMD_OPCODE          XDATA_REG8(0xE422)  // Alias
 #define REG_CMD_STATUS          XDATA_REG8(0xE423)  // Status (RW)
@@ -575,7 +598,11 @@
 //=============================================================================
 // System Status Registers (0xE700-0xE7FF)
 //=============================================================================
+#define REG_SYS_CTRL_E760       XDATA_REG8(0xE760)  // System control 60 (RW)
+#define REG_SYS_CTRL_E761       XDATA_REG8(0xE761)  // System control 61 (RW)
+#define REG_SYS_CTRL_E763       XDATA_REG8(0xE763)  // System control 63 (RW)
 #define REG_FLASH_READY_STATUS  XDATA_REG8(0xE795)  // Flash ready status (bit 5 = ready)
+#define REG_PHY_LINK_CTRL       XDATA_REG8(0xE7E3)  // PHY link control (bits 6,7: link control)
 #define REG_LINK_MODE_CTRL      XDATA_REG8(0xE7FC)  // Link mode control (RW)
 
 //=============================================================================

@@ -98,29 +98,29 @@ void error_clear_e760_flags(void)
     /* lcall 0xd1a8 */
 
     /* Write 0xFF to error mask register */
-    XDATA8(0xE761) = 0xFF;
+    REG_SYS_CTRL_E761 = 0xFF;
 
-    /* Set bit 2 in 0xE760, clear bit 2 in 0xE761 */
-    val = XDATA8(0xE760);
+    /* Set bit 2 in system control 60, clear bit 2 in system control 61 */
+    val = REG_SYS_CTRL_E760;
     val = (val & 0xFB) | 0x04;
-    XDATA8(0xE760) = val;
+    REG_SYS_CTRL_E760 = val;
 
-    val = XDATA8(0xE761);
+    val = REG_SYS_CTRL_E761;
     val = val & 0xFB;
-    XDATA8(0xE761) = val;
+    REG_SYS_CTRL_E761 = val;
 
-    /* Set bit 3 in 0xE760, clear bit 3 in 0xE761 */
-    val = XDATA8(0xE760);
+    /* Set bit 3 in system control 60, clear bit 3 in system control 61 */
+    val = REG_SYS_CTRL_E760;
     val = (val & 0xF7) | 0x08;
-    XDATA8(0xE760) = val;
+    REG_SYS_CTRL_E760 = val;
 
-    val = XDATA8(0xE761);
+    val = REG_SYS_CTRL_E761;
     val = val & 0xF7;
-    XDATA8(0xE761) = val;
+    REG_SYS_CTRL_E761 = val;
 
-    /* Write 0x04 then 0x08 to 0xE763 (command/ack register?) */
-    XDATA8(0xE763) = 0x04;
-    XDATA8(0xE763) = 0x08;
+    /* Write 0x04 then 0x08 to system control 63 (command/ack register?) */
+    REG_SYS_CTRL_E763 = 0x04;
+    REG_SYS_CTRL_E763 = 0x08;
 }
 
 /*

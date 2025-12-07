@@ -206,7 +206,7 @@ void error_log_process(void)
     /* Main processing loop */
     while (1) {
         /* Read max entries count */
-        max_entries = XDATA8(0x06E5);
+        max_entries = G_MAX_LOG_ENTRIES;
 
         /* Get current index */
         current_index = *(__idata uint8_t *)IDATA_LOG_INDEX;
@@ -223,7 +223,7 @@ void error_log_process(void)
         entry_type = *entry_ptr;
 
         /* Read currently processed entry index */
-        processed_index = XDATA8(0x0AA1);
+        processed_index = G_LOG_PROCESSED_INDEX;
 
         /* Compare entry type with processed index */
         if (entry_type != processed_index) {
@@ -253,11 +253,11 @@ void error_log_process(void)
 
                 /* Check if non-zero - if so, skip some processing */
                 if (log_entry_value != 0) {
-                    /* Store index to 0x0464 */
+                    /* Store index to system status primary */
                     G_SYS_STATUS_PRIMARY = current_index;
 
                     /* Set processing state to 2 */
-                    XDATA8(0x0574) = 0x02;
+                    G_LOG_PROCESS_STATE = 0x02;
 
                     /* Read R6 (processed_index) or temp value */
                     temp = processed_index;
@@ -269,8 +269,8 @@ void error_log_process(void)
                         temp = *(__idata uint8_t *)IDATA_LOG_TEMP;
                     }
 
-                    /* Store to 0x0575 */
-                    XDATA8(0x0575) = temp;
+                    /* Store to log entry value */
+                    G_LOG_ENTRY_VALUE = temp;
 
                     /* Call complex helper at 0x23F7 with R7=0x09 */
                     /* This helper does extensive state machine processing */
@@ -278,8 +278,8 @@ void error_log_process(void)
                 }
             }
 
-            /* Update the processed entry index at 0x0AA1 */
-            processed_index = XDATA8(0x0AA1);
+            /* Update the processed entry index */
+            processed_index = G_LOG_PROCESSED_INDEX;
             /* Call error_log_calc_entry_addr again and write back */
             entry_ptr = error_log_calc_entry_addr();
             *entry_ptr = processed_index;

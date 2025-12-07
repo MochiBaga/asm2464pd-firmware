@@ -64,6 +64,8 @@
 #define G_EP_QUEUE_CTRL         XDATA_VAR8(0x0564)  /* Endpoint queue control */
 #define G_EP_QUEUE_STATUS       XDATA_VAR8(0x0565)  /* Endpoint queue status */
 #define G_BUF_OFFSET_HI         XDATA_VAR8(0x0568)  /* Buffer offset result high */
+#define G_LOG_PROCESS_STATE     XDATA_VAR8(0x0574)  /* Log processing state */
+#define G_LOG_ENTRY_VALUE       XDATA_VAR8(0x0575)  /* Log entry value */
 #define G_BUF_OFFSET_LO         XDATA_VAR8(0x0569)  /* Buffer offset result low */
 #define G_PCIE_TXN_COUNT_LO     XDATA_VAR8(0x05A6)  /* PCIe transaction count low */
 #define G_PCIE_TXN_COUNT_HI     XDATA_VAR8(0x05A7)  /* PCIe transaction count high */
@@ -78,6 +80,7 @@
 //=============================================================================
 // Transfer Work Area (0x0600-0x07FF)
 //=============================================================================
+#define G_MAX_LOG_ENTRIES       XDATA_VAR8(0x06E5)  /* Max error log entries */
 #define G_STATE_FLAG_06E6       XDATA_VAR8(0x06E6)  /* Processing complete flag / error flag */
 #define G_ERROR_CODE_06EA       XDATA_VAR8(0x06EA)  /* Error code */
 #define G_MISC_FLAG_06EC        XDATA_VAR8(0x06EC)  /* Miscellaneous flag */
@@ -110,6 +113,7 @@
 #define G_EP_DISPATCH_VAL3      XDATA_VAR8(0x0A7D)  /* Endpoint dispatch value 3 */
 #define G_STATE_COUNTER_HI      XDATA_VAR8(0x0AA3)  /* State counter high */
 #define G_STATE_COUNTER_LO      XDATA_VAR8(0x0AA4)  /* State counter low */
+#define G_LOG_PROCESSED_INDEX   XDATA_VAR8(0x0AA1)  /* Current processed log index */
 #define G_FLASH_ERROR_0         XDATA_VAR8(0x0AA8)  /* Flash error flag 0 */
 #define G_FLASH_ERROR_1         XDATA_VAR8(0x0AA9)  /* Flash error flag 1 */
 #define G_FLASH_RESET_0AAA      XDATA_VAR8(0x0AAA)  /* Flash reset flag */
