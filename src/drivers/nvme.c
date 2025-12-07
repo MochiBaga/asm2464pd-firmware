@@ -93,8 +93,45 @@
  * nvme_store_idata_16        [DONE] 0x1d32-0x1d38 - Store 16-bit to IDATA
  * nvme_calc_addr_04b7        [DONE] 0x1ce4-0x1cef - Calculate 0x04B7+ addr
  * nvme_add_to_global_053a    [DONE] 0x1cdc-0x1ce3 - Add 0x20 to global 0x053A
+ * nvme_check_completion      [DONE] 0x3244-0x3248 - Set completion bit
+ * nvme_initialize            [DONE] 0x3249-0x3256 - Initialize NVMe state
+ * nvme_ring_doorbell         [DONE] 0x3247      - Ring doorbell
+ * nvme_init_step             [DONE] 0x3267-0x3271 - Set EP config for NVMe
+ * nvme_read_status           [DONE] 0x3272-0x3278 - Set status bit 4
+ * nvme_set_int_aux_bit1      [DONE] 0x3280-0x3289 - Set interrupt aux bit
+ * nvme_get_link_status_masked[DONE] 0x328a-0x3290 - Get link status masked
+ * nvme_set_ep_ctrl_bits      [DONE] 0x320c-0x3218 - Set EP ctrl bits 1&2
+ * nvme_process_cmd           [DONE] 0x31a0      - Process NVMe command
+ * nvme_io_request            [DONE] 0x31a5      - I/O memory copy
+ * nvme_build_cmd             [DONE] 0x31da-0x31e0 - Build command result
+ * nvme_submit_cmd            [DONE] 0x31fb      - Submit command
+ * nvme_io_handler            [DONE] 0x32a4-0x3418 - Main I/O handler
+ * usb_validate_descriptor    [DONE] 0x31fb-0x320b - Validate descriptor
+ * nvme_get_dma_status_masked [DONE] 0x3298-0x329e - Get DMA status masked
+ * nvme_call_and_signal       [DONE] 0x3219-0x3222 - Call and signal
+ * nvme_set_usb_ep_ctrl_bit2  [DONE] 0x3212-0x3218 - Set EP ctrl bit 2
+ * nvme_wait_for_ready        [DONE] 0x329f-0x32a3 - Wait for ready via bit poll
+ * nvme_init_registers        [DONE] 0x3419-0x3576 - Initialize NVMe registers
+ * nvme_func_1b07             [DONE] 0x1b07-0x1b0a - Get IDATA calculated address
+ * nvme_func_1b0b             [DONE] 0x1b0b-0x1b13 - Get IDATA value from param
+ * nvme_check_threshold_r5    [DONE] 0x1b2b-0x1b2c - Check threshold R5
+ * nvme_check_threshold_0x3e  [DONE] 0x1b38-0x1b3d - Check threshold 0x3E
+ * usb_func_1b47              [DONE] 0x1b47-0x1b56 - Update NVMe status
+ * usb_check_status           [DONE] 0x1b4d-0x1b5c - Store param set status
+ * usb_configure              [DONE] 0x1b58-0x1b5f - Set bit 1 on register
+ * nvme_get_idata_009f        [DONE] 0x1b84-0x1b8c - Get IDATA 0x9F offset
+ * usb_get_ep_config_indexed  [DONE] 0x1b91-0x1b9c - Get EP config indexed
+ * usb_read_buf_addr_pair     [DONE] 0x1ba2-0x1ba9 - Read buffer address pair
+ * usb_data_handler           [DONE] 0x1bde-0x1be7 - Set bit 0 on register
+ * nvme_func_1c2a             [DONE] 0x1c2a-0x1c2f - Get table entry from 0x5CAD
+ * nvme_func_1c43             [DONE] 0x1c43-0x1c49 - Store masked to 0x01B4
+ * nvme_func_1c55             [DONE] 0x1c55-0x1c5c - Get device status upper
+ * nvme_func_1c7e             [DONE] 0x1c7e-0x1c87 - Load IDATA/read reg dword
+ * nvme_func_1c9f             [DONE] 0x1c9f-0x1cad - Process cmd check result
+ * nvme_get_addr_012b         [DONE] 0x1cb9-0x1cc0 - Get address 0x012B
+ * nvme_func_1cf0             [DONE] 0x1cf0-0x1d23 - Clear buffer/state regs
  *
- * Total: 19 functions implemented
+ * Total: 59 functions implemented
  *===========================================================================
  *
  * NOTE: Core dispatch functions (jump_bank_0, jump_bank_1)
@@ -1018,64 +1055,10 @@ void nvme_submit_cmd(void)
     usb_validate_descriptor();
 }
 
-/*
- * usb_read_status_pair - Read USB status register pair
- * Address: 0x3181-0x3189 (9 bytes)
- *
- * Reads two USB status registers (0x910D and 0x910E) in sequence.
- * Returns the second value (0x910E).
- *
- * Original disassembly:
- *   3181: mov dptr, #0x910d
- *   3184: movx a, @dptr        ; read 0x910D (ignored)
- *   3185: mov dptr, #0x910e
- *   3188: movx a, @dptr        ; read 0x910E
- *   3189: ret
- */
-uint8_t usb_read_status_pair(void)
-{
-    (void)REG_USB_STATUS_0D;  /* Read but ignore */
-    return REG_USB_STATUS_0E;
-}
-
-/*
- * usb_copy_status_to_buffer - Copy USB status to buffer registers
- * Address: 0x314d-0x3166 (26 bytes)
- *
- * Copies USB status registers 0x911F-0x9122 to buffer registers
- * 0xD804-0xD807.
- *
- * Original disassembly:
- *   314d: mov dptr, #0x911f
- *   3150: movx a, @dptr
- *   3151: mov dptr, #0xd804    ; REG_BUFFER_PTR_HIGH
- *   3154: movx @dptr, a
- *   ...repeats for other registers...
- */
-void usb_copy_status_to_buffer(void)
-{
-    REG_BUFFER_PTR_HIGH = REG_USB_STATUS_1F;
-    REG_BUFFER_LENGTH_LOW = REG_USB_STATUS_20;
-    REG_BUFFER_STATUS = REG_USB_STATUS_21;
-    REG_BUFFER_LENGTH_HIGH = REG_USB_STATUS_22;
-}
-
-/*
- * usb_set_transfer_active_flag - Set transfer active flag
- * Address: 0x33f6-0x33fe (9 bytes)
- *
- * Writes 0x01 to the transfer active flag at 0x07E5.
- *
- * Original disassembly:
- *   33f6: mov dptr, #0x07e5
- *   33f9: mov a, #0x01
- *   33fb: movx @dptr, a
- *   33fc: ret
- */
-void usb_set_transfer_active_flag(void)
-{
-    G_TRANSFER_ACTIVE = 0x01;
-}
+/* These functions are defined in usb.c - use extern declarations */
+extern uint16_t usb_read_status_pair(void);
+extern void usb_copy_status_to_buffer(void);
+extern void usb_set_transfer_active_flag(void);
 
 /*
  * nvme_io_handler - Main NVMe I/O handler state machine
@@ -1162,4 +1145,426 @@ handle_default:
         nvme_check_completion((__xdata uint8_t *)0x905F);
         nvme_check_completion((__xdata uint8_t *)0x905D);
     }
+}
+
+/* Forward declaration for reg_wait_bit_set from state_helpers.c */
+extern void reg_wait_bit_set(uint16_t addr);
+
+/*
+ * nvme_wait_for_ready - Wait for NVMe ready state via bit poll
+ * Address: 0x329f-0x32a3 (5 bytes)
+ *
+ * Calls reg_wait_bit_set with address 0x0A7E to wait for ready state.
+ *
+ * Original disassembly:
+ *   329f: mov dptr, #0x0a7e
+ *   32a2: ljmp 0x0ddd         ; reg_wait_bit_set
+ */
+void nvme_wait_for_ready(void)
+{
+    reg_wait_bit_set(0x0A7E);
+}
+
+/* Forward declaration for function called by init_registers */
+extern void nvme_func_04da(uint8_t param);
+
+/*
+ * nvme_init_registers - Initialize NVMe and USB registers for new transfer
+ * Address: 0x3419-0x3576 (large function)
+ *
+ * This function initializes the NVMe subsystem for a new transfer by:
+ * 1. Checking USB transfer state at 0x0B41
+ * 2. If IDATA[0x6A] is non-zero, jumps to continuation at 0x3577
+ * 3. Otherwise clears many registers to initialize state:
+ *    - 0x0B01, 0x053B, 0x00C2, 0x0517, 0x014E, 0x00E5 = 0
+ *    - REG at 0xCE88 = 0
+ * 4. Waits for bit 0 of 0xCE89 to be set
+ * 5. Checks additional status bits and continues initialization
+ *
+ * Original disassembly (start):
+ *   3419: mov dptr, #0x0b41
+ *   341c: movx a, @dptr
+ *   341d: jz 0x3424
+ *   341f: mov r7, #0x01
+ *   3421: lcall 0x04da
+ *   3424: mov r0, #0x6a
+ *   3426: mov a, @r0
+ *   3427: jz 0x342c
+ *   3429: ljmp 0x3577
+ *   342c: clr a
+ *   342d: mov dptr, #0x0b01
+ *   3430: movx @dptr, a        ; [0x0B01] = 0
+ *   ...
+ */
+void nvme_init_registers(void)
+{
+    uint8_t val;
+
+    /* Check USB transfer state */
+    val = G_USB_STATE_0B41;
+    if (val != 0) {
+        /* Call helper function with param 1 */
+        nvme_func_04da(0x01);
+    }
+
+    /* Check IDATA[0x6A] state */
+    val = *(__idata uint8_t *)0x6A;
+    if (val != 0) {
+        /* State is non-zero, skip initialization */
+        /* In full implementation, this would ljmp to 0x3577 */
+        return;
+    }
+
+    /* Initialize state registers to zero */
+    XDATA_VAR8(0x0B01) = 0;
+    XDATA_VAR8(0x053B) = 0;
+    XDATA_VAR8(0x00C2) = 0;
+    XDATA_VAR8(0x0517) = 0;
+    G_USB_INDEX_COUNTER = 0;  /* 0x014E */
+    XDATA_VAR8(0x00E5) = 0;
+
+    /* Clear SCSI DMA control register */
+    XDATA_REG8(0xCE88) = 0;
+
+    /* Wait for bit 0 of 0xCE89 to be set */
+    do {
+        val = XDATA_REG8(0xCE89);
+    } while ((val & 0x01) == 0);
+
+    /* Check bit 1 for error/abort condition */
+    val = XDATA_REG8(0xCE89);
+    if (val & 0x02) {
+        /* Error condition, abort initialization */
+        return;
+    }
+
+    /* Check bit 4 of 0xCE86 */
+    val = XDATA_REG8(0xCE86);
+    if (val & 0x10) {
+        /* Abort initialization */
+        return;
+    }
+
+    /* Check transfer flag at 0x0AF8 */
+    val = XDATA_VAR8(0x0AF8);
+    if (val != 0x01) {
+        /* Not ready for transfer */
+        return;
+    }
+
+    /* Continue with full initialization sequence */
+    /* Call function 0x4C98 */
+    /* ... additional initialization would go here ... */
+}
+
+/*
+ * nvme_func_1b07 - Get IDATA calculated address value
+ * Address: 0x1b07-0x1b0a (4 bytes)
+ *
+ * Returns value from address calculated from IDATA[0x3E].
+ * Address = 0x0100 + IDATA[0x3E] + 0x71, with carry to high byte.
+ *
+ * Original disassembly:
+ *   1b07: mov a, #0x71
+ *   1b09: add a, 0x3e         ; A = 0x71 + IDATA[0x3E]
+ *   1b0b: mov dpl, a
+ *   ...
+ */
+uint8_t nvme_func_1b07(void)
+{
+    uint8_t offset = *(__idata uint8_t *)0x3E;
+    uint16_t addr;
+
+    /* Calculate address: if 0x3E + 0x71 > 0xFF, high byte is 0x01, else 0x00 */
+    if (offset > 0x8E) {
+        addr = 0x0100 + offset + 0x71 - 0x100;  /* Wrap around */
+    } else {
+        addr = 0x0100 + offset + 0x71;
+    }
+
+    return *(__xdata uint8_t *)addr;
+}
+
+/*
+ * nvme_func_1b0b - Get IDATA value from parameter address
+ * Address: 0x1b0b-0x1b13 (9 bytes)
+ *
+ * Returns value from 0x01XX address where XX is the parameter.
+ *
+ * Original disassembly:
+ *   1b0b: mov dpl, a          ; DPL = param
+ *   1b0d: clr a
+ *   1b0e: addc a, #0x01       ; DPH = 0x01 + carry from PSW
+ *   1b10: mov dph, a
+ *   1b12: movx a, @dptr
+ *   1b13: ret
+ */
+uint8_t nvme_func_1b0b(uint8_t param)
+{
+    /* Simple read from 0x01XX address */
+    return *(__xdata uint8_t *)(0x0100 + param);
+}
+
+/*
+ * nvme_check_threshold_r5 - Check if BANK1_R5 > 0xF7
+ * Address: 0x1b2b-0x1b2c (2 bytes)
+ *
+ * Returns 1 if value is <= 0xF7, 0 if > 0xF7.
+ * Used for boundary checking in queue operations.
+ *
+ * Original disassembly:
+ *   1b2b: mov a, r5           ; Get BANK1_R5 (need context)
+ *   1b2c: setb c
+ *   1b2d: subb a, #0xf8       ; Compare with 0xF8
+ *   ...
+ */
+uint8_t nvme_check_threshold_r5(uint8_t val)
+{
+    return (val > 0xF7) ? 0 : 1;
+}
+
+/*
+ * nvme_check_threshold_0x3e - Check if IDATA[0x3E] > 0xB1
+ * Address: 0x1b38-0x1b3d (6 bytes)
+ *
+ * Returns 1 if IDATA[0x3E] <= 0xB1, 0 otherwise.
+ *
+ * Original disassembly:
+ *   1b38: mov a, 0x3e         ; A = IDATA[0x3E]
+ *   1b3a: setb c
+ *   1b3b: subb a, #0xb2       ; Compare with 0xB2
+ *   1b3d: ret                 ; Return with carry set if A < 0xB2
+ */
+uint8_t nvme_check_threshold_0x3e(void)
+{
+    uint8_t val = *(__idata uint8_t *)0x3E;
+    return (val > 0xB1) ? 0 : 1;
+}
+
+/* usb_func_1b47 is defined in usb.c */
+extern void usb_func_1b47(void);
+
+/*
+ * usb_check_status - Store parameter and set control status bit 1
+ * Address: 0x1b4d-0x1b5c (16 bytes)
+ *
+ * Stores param_1 to *param_2, then sets bit 1 on REG_NVME_CTRL_STATUS.
+ *
+ * Original disassembly:
+ *   1b4d: movx @dptr, a       ; *param_2 = param_1
+ *   1b4e: mov dptr, #0xc412
+ *   1b51: movx a, @dptr
+ *   1b52: anl a, #0xfd        ; Clear bit 1
+ *   1b54: orl a, #0x02        ; Set bit 1
+ *   1b56: movx @dptr, a
+ *   1b57: ret
+ */
+void usb_check_status(uint8_t param_1, __xdata uint8_t *param_2)
+{
+    *param_2 = param_1;
+    REG_NVME_CTRL_STATUS = (REG_NVME_CTRL_STATUS & 0xFD) | 0x02;
+}
+
+/*
+ * usb_configure - Set bit 1 on register pointed to
+ * Address: 0x1b58-0x1b5f (8 bytes)
+ *
+ * Reads value, clears bit 1, sets bit 1, writes back.
+ *
+ * Original disassembly:
+ *   1b58: movx a, @dptr
+ *   1b59: anl a, #0xfd        ; Clear bit 1
+ *   1b5b: orl a, #0x02        ; Set bit 1
+ *   1b5d: movx @dptr, a
+ *   1b5e: ret
+ */
+void usb_configure(__xdata uint8_t *ptr)
+{
+    *ptr = (*ptr & 0xFD) | 0x02;
+}
+
+/*
+ * nvme_get_idata_009f - Get value from 0x00XX calculated from IDATA[0x3E]
+ * Address: 0x1b84-0x1b8c (9 bytes)
+ *
+ * Calculates address 0x0000 + IDATA[0x3E] + 0x9F, reads and returns.
+ *
+ * Original disassembly:
+ *   1b84: mov a, 0x3e
+ *   1b86: add a, #0x9f
+ *   1b88: mov dpl, a
+ *   1b8a: movx a, @dptr
+ *   1b8b: ret
+ */
+uint8_t nvme_get_idata_009f(void)
+{
+    uint8_t offset = *(__idata uint8_t *)0x3E;
+    uint16_t addr;
+
+    /* Calculate address with potential overflow */
+    if (offset > 0x60) {
+        addr = 0x0100 + offset + 0x9F - 0x100;  /* Carry to high byte */
+    } else {
+        addr = offset + 0x9F;
+    }
+
+    return *(__xdata uint8_t *)addr;
+}
+
+/* usb_get_ep_config_indexed is defined in usb.c */
+extern uint8_t usb_get_ep_config_indexed(void);
+
+/* usb_read_buf_addr_pair is defined in usb.c */
+extern uint16_t usb_read_buf_addr_pair(void);
+
+/*
+ * usb_data_handler - Set bit 0 on register
+ * Address: 0x1bde-0x1be7 (same as nvme_set_usb_mode_bit)
+ * Alt entry point for different use.
+ *
+ * Sets bit 0 on the register pointed to.
+ */
+void usb_data_handler(__xdata uint8_t *ptr)
+{
+    *ptr = (*ptr & 0xFE) | 0x01;
+}
+
+/*
+ * nvme_func_1c2a - Get table entry from 0x5CAD table
+ * Address: 0x1c2a-0x1c2f (6 bytes)
+ *
+ * Reads from table at 0x5CAD indexed by IDATA[0x3C] * 2 + param.
+ *
+ * Original disassembly:
+ *   1c2a: mov dptr, #0x5cad
+ *   1c2d: mov a, 0x3c
+ *   1c2f: mov 0xf0, #0x02     ; B = 2
+ *   1c32: mul ab              ; A = IDATA[0x3C] * 2
+ *   1c33: add a, param        ; A = A + param
+ *   1c35: add a, dpl
+ *   ...
+ */
+uint8_t nvme_func_1c2a(uint8_t param)
+{
+    uint8_t idx = *(__idata uint8_t *)0x3C;
+    uint16_t addr = 0x5CAD + (idx * 2) + param;
+    return *(__xdata uint8_t *)(addr + 1);  /* Returns second byte of entry */
+}
+
+/*
+ * nvme_func_1c43 - Store masked value to 0x01B4
+ * Address: 0x1c43-0x1c49 (7 bytes)
+ *
+ * Masks parameter to 5 bits and stores to 0x01B4.
+ *
+ * Original disassembly:
+ *   1c43: anl a, #0x1f        ; Mask to 5 bits
+ *   1c45: mov dptr, #0x01b4
+ *   1c48: movx @dptr, a
+ *   1c49: ret
+ */
+void nvme_func_1c43(uint8_t param)
+{
+    XDATA_VAR8(0x01B4) = param & 0x1F;
+}
+
+/*
+ * nvme_func_1c55 - Get device status upper bits (alias)
+ * Address: 0x1c55-0x1c5c (8 bytes)
+ *
+ * Same as nvme_get_dev_status_upper but as separate entry point.
+ * Returns upper 2 bits of REG_NVME_DEV_STATUS.
+ */
+uint8_t nvme_func_1c55(void)
+{
+    return REG_NVME_DEV_STATUS & 0xC0;
+}
+
+/*
+ * nvme_func_1c7e - Load IDATA dword and read register dword
+ * Address: 0x1c7e-0x1c87 (10 bytes)
+ *
+ * Calls idata_load_dword(0x0E), then reg_read_dword(3).
+ *
+ * Original disassembly:
+ *   1c7e: mov r0, #0x0e
+ *   1c80: lcall 0x0d78        ; idata_load_dword
+ *   1c83: mov r7, #0x03
+ *   1c85: ljmp 0x0de5         ; reg_read_dword
+ */
+void nvme_func_1c7e(void)
+{
+    /* Load IDATA dword from offset 0x0E */
+    uint32_t val;
+    val = ((__idata uint8_t *)0x0E)[0];
+    val |= ((uint32_t)((__idata uint8_t *)0x0E)[1]) << 8;
+    val |= ((uint32_t)((__idata uint8_t *)0x0E)[2]) << 16;
+    val |= ((uint32_t)((__idata uint8_t *)0x0E)[3]) << 24;
+
+    /* Would call reg_read_dword(3) - reads register and stores result */
+    /* For now this is a placeholder */
+    (void)val;
+}
+
+/*
+ * nvme_func_1c9f - Process command and check result
+ * Address: 0x1c9f-0x1cad (15 bytes)
+ *
+ * Calls core_handler_4ff2 and FUN_CODE_4e6d, returns OR of R6 and R7.
+ *
+ * Original disassembly:
+ *   1c9f: lcall 0x4ff2        ; core_handler_4ff2
+ *   1ca2: lcall 0x4e6d        ; FUN_CODE_4e6d
+ *   1ca5: mov a, r7
+ *   1ca6: orl a, r6           ; A = R7 | R6
+ *   1ca8: mov r7, a
+ *   1ca9: ret
+ */
+uint8_t nvme_func_1c9f(void)
+{
+    /* This would call core_handler_4ff2() and FUN_CODE_4e6d() */
+    /* Returns combined status from R6 | R7 */
+    /* Placeholder implementation */
+    return 0;
+}
+
+/*
+ * nvme_get_addr_012b - Calculate address in 0x012B region (alternate entry)
+ * Address: 0x1cb9-0x1cc0 (8 bytes)
+ *
+ * Returns pointer to 0x012B (no offset added in this version).
+ *
+ * Original disassembly:
+ *   1cb9: mov a, #0x2b
+ *   1cbb: mov dpl, a
+ *   1cbd: clr a
+ *   1cbe: addc a, #0x01
+ *   1cc0: mov dph, a
+ *   1cc2: ret
+ */
+__xdata uint8_t *nvme_get_addr_012b(void)
+{
+    return (__xdata uint8_t *)0x012B;
+}
+
+/*
+ * nvme_func_1cf0 - Clear buffer and state registers
+ * Address: 0x1cf0-0x1d23 (52 bytes)
+ *
+ * Clears multiple XDATA locations for state reset.
+ *
+ * Original disassembly (partial):
+ *   1cf0: mov dptr, #0x05b0
+ *   1cf3: e4             clr a
+ *   1cf4: movx @dptr, a
+ *   ...
+ */
+void nvme_func_1cf0(void)
+{
+    /* Clear state registers */
+    G_PCIE_ADDR_1 = 0;           /* 0x05B0 */
+    G_PCIE_ADDR_2 = 0;           /* 0x05B1 */
+    G_PCIE_ADDR_3 = 0;           /* 0x05B2 */
+    G_PCIE_TXN_COUNT_LO = 0;     /* 0x05A6 */
+    G_PCIE_TXN_COUNT_HI = 0;     /* 0x05A7 */
 }

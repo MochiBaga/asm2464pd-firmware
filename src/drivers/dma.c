@@ -500,7 +500,7 @@ uint8_t scsi_get_tag_count_status(void)
     uint8_t count;
 
     count = REG_SCSI_DMA_TAG_COUNT & 0x1F;
-    *(__idata uint8_t *)0x40 = count;
+    I_WORK_40 = count;
 
     /* Return 1 if count >= 16, 0 otherwise */
     return (count >= 0x10) ? 1 : 0;
@@ -579,7 +579,7 @@ uint8_t scsi_get_queue_status(void)
     uint8_t status;
 
     status = REG_SCSI_DMA_QUEUE_STAT & 0x0F;
-    *(__idata uint8_t *)0x40 = status;
+    I_WORK_40 = status;
 
     /* Return 1 if status >= 8, 0 otherwise */
     return (status >= 0x08) ? 1 : 0;
@@ -869,7 +869,7 @@ uint8_t dma_shift_rrc2_mask(uint8_t val)
  */
 __xdata uint8_t *dma_calc_addr_00c2(void)
 {
-    uint8_t offset = *(__idata uint8_t *)0x52;
+    uint8_t offset = I_WORK_52;
     return (__xdata uint8_t *)(0x00C2 + offset);
 }
 
@@ -919,7 +919,7 @@ void dma_store_to_0a7d(uint8_t val)
  */
 void dma_calc_scsi_index(void)
 {
-    uint8_t idx = *(__idata uint8_t *)0x40;
+    uint8_t idx = I_WORK_40;
     uint8_t offset = 3 - idx;
     __xdata uint8_t *reg = (__xdata uint8_t *)(0xCE40 + offset);
     *reg = 0xFF;
@@ -985,12 +985,12 @@ void dma_init_channel_with_config(uint8_t config)
  */
 uint8_t dma_write_to_scsi_ce96(void)
 {
-    uint8_t val41 = *(__idata uint8_t *)0x41;
-    uint8_t val47 = *(__idata uint8_t *)0x47;
+    uint8_t val41 = I_WORK_41;
+    uint8_t val47 = I_WORK_47;
     uint8_t reg_val;
 
-    XDATA_REG8(0xCE96) = val41;
-    reg_val = XDATA_REG8(0xCE97);
+    REG_SCSI_DMA_CMD_REG = val41;
+    reg_val = REG_SCSI_DMA_RESP_REG;
 
     /* Return comparison result (carry if reg_val < val47) */
     return (reg_val >= val47) ? 1 : 0;
@@ -1036,9 +1036,9 @@ __xdata uint8_t *dma_calc_ep_config_ptr(void)
  */
 void dma_write_to_scsi_ce6e(void)
 {
-    uint8_t val = *(__idata uint8_t *)0x41;
-    XDATA_REG8(0xCE6E) = val;
-    XDATA_REG8(0xCE6E) = val + 1;
+    uint8_t val = I_WORK_41;
+    REG_SCSI_DMA_STATUS = val;
+    REG_SCSI_DMA_STATUS = val + 1;
 }
 
 /*
@@ -1118,7 +1118,7 @@ __xdata uint8_t *dma_calc_addr_0456(uint8_t offset)
  */
 void dma_write_idata_to_dptr(__xdata uint8_t *ptr)
 {
-    uint8_t val = *(__idata uint8_t *)0x41;
+    uint8_t val = I_WORK_41;
     *ptr = val + 2;
     *ptr = val + 3;  /* Note: Same address, second write */
 }
@@ -1212,4 +1212,315 @@ void dma_store_and_dispatch(uint8_t val)
 
     /* Additional dispatch logic follows in original */
 }
+
+/*
+ * ============================================================================
+ * TRANSFER HELPER FUNCTIONS (0x1602-0x16CC)
+ * ============================================================================
+ * These small helper functions compute addresses for DMA transfer registers
+ * and perform status checks. They work with IDATA work area and SCSI DMA
+ * registers at 0xCE40-0xCE9F.
+ */
+
+/*
+ * transfer_calc_scsi_offset - Calculate SCSI register offset and write 0xFF
+ * Address: 0x1602-0x1619 (24 bytes)
+ *
+ * Takes IDATA 0x40 value, calculates: DPTR = 0xCE40 + (3 - value)
+ * Then writes 0xFF to that address.
+ *
+ * Original disassembly:
+ *   1602: clr c
+ *   1603: mov a, #0x03
+ *   1605: subb a, 0x40       ; A = 3 - [0x40]
+ *   1607: mov r7, a
+ *   1608: clr a
+ *   1609: subb a, #0x00      ; propagate borrow
+ *   160b: mov r6, a
+ *   160c: mov a, #0x40       ; base offset
+ *   160e: add a, r7
+ *   160f: mov DPL, a
+ *   1611: mov a, #0xce
+ *   1613: addc a, r6
+ *   1614: mov DPH, a
+ *   1616: mov a, #0xff
+ *   1618: movx @dptr, a
+ *   1619: ret
+ */
+void transfer_calc_scsi_offset(void)
+{
+    int8_t offset;
+    uint16_t addr;
+
+    offset = 3 - I_WORK_40;
+    addr = 0xCE40 + offset;
+    XDATA_VAR8(addr) = 0xFF;
+}
+
+/*
+ * transfer_init_dma_params - Initialize DMA transfer parameters
+ * Address: 0x161A-0x1639 (32 bytes)
+ *
+ * Saves A to R4, sets up R2:R3 with 0x0040, clears R7,
+ * calls 0x4A57 (buffer helper), then sets R1:R2:R3 = 0x00:0xA0:0x01,
+ * writes triple to 0x045E via reg_wait_bit_clear, then sets bit in 0xC8D8.
+ *
+ * Original disassembly:
+ *   161a: mov r4, a
+ *   161b: mov r3, #0x40
+ *   161d: mov r2, #0x00
+ *   161f: clr a
+ *   1620: mov r7, a
+ *   1621: lcall 0x4a57       ; buffer setup
+ *   1624: mov r3, #0x01
+ *   1626: mov r2, #0xa0
+ *   1628: mov r1, #0x00
+ *   162a: mov dptr, #0x045e
+ *   162d: lcall 0x0de6       ; reg_wait_bit_clear
+ *   1630: mov dptr, #0xc8d8
+ *   1633: movx a, @dptr
+ *   1634: anl a, #0xfe
+ *   1636: orl a, #0x01
+ *   1638: movx @dptr, a
+ *   1639: ret
+ */
+void transfer_init_dma_params(uint8_t param)
+{
+    (void)param;  /* Used by called functions via R4 */
+
+    /* This function involves calling buffer helpers - stub for now */
+    /* dma_buffer_helper_4a57() */
+
+    /* Write timeout parameters via reg_wait_bit_clear */
+    /* reg_wait_bit_clear(0x045E, 0x00, 0xA0, 0x01) */
+
+    /* Set bit 0 in REG_DMA_STATUS2 (0xC8D8) */
+    REG_DMA_STATUS2 = (REG_DMA_STATUS2 & 0xFE) | 0x01;
+}
+
+/*
+ * transfer_check_scsi_counter - Write IDATA 0x41 to CE96 and check CE97
+ * Address: 0x163A-0x1645 (12 bytes)
+ *
+ * Writes IDATA 0x41 to 0xCE96, reads 0xCE97, subtracts IDATA 0x47,
+ * returns result in A.
+ *
+ * Original disassembly:
+ *   163a: mov dptr, #0xce96
+ *   163d: mov a, 0x41
+ *   163f: movx @dptr, a
+ *   1640: inc dptr
+ *   1641: movx a, @dptr      ; read CE97
+ *   1642: clr c
+ *   1643: subb a, 0x47
+ *   1645: ret
+ */
+uint8_t transfer_check_scsi_counter(void)
+{
+    REG_SCSI_DMA_CMD_REG = I_WORK_41;
+    return REG_SCSI_DMA_RESP_REG - I_WORK_47;
+}
+
+/*
+ * transfer_calc_ep_offset - Calculate EP table offset based on 0x0465
+ * Address: 0x1646-0x1658 (19 bytes)
+ *
+ * Reads [0x0465], multiplies by 0x14, adds 0x4E, forms DPTR = 0x0500 + result,
+ * reads and returns value from that address.
+ *
+ * Original disassembly:
+ *   1646: mov dptr, #0x0465
+ *   1649: movx a, @dptr
+ *   164a: mov B, #0x14       ; 20 decimal - entry size
+ *   164d: mul ab
+ *   164e: add a, #0x4e       ; base offset
+ *   1650: mov DPL, a
+ *   1652: clr a
+ *   1653: addc a, #0x05      ; DPH = 0x05 + carry
+ *   1655: mov DPH, a
+ *   1657: movx a, @dptr
+ *   1658: ret
+ */
+uint8_t transfer_calc_ep_offset(void)
+{
+    uint8_t idx;
+    uint16_t addr;
+
+    idx = G_SYS_STATUS_SECONDARY;  /* 0x0465 */
+    addr = 0x054E + (idx * 0x14);
+    return XDATA_VAR8(addr);
+}
+
+/*
+ * transfer_set_dptr_0464_offset - Set DPTR based on [0x0464] + 0x4E
+ * Address: 0x1659-0x1667 (15 bytes) - Note: 0x1659 is DPTR write entry point
+ *
+ * This actually appears to be called with DPTR already set by caller.
+ * Writes A to @DPTR, then reads [0x0464], adds 0x4E, forms DPTR in 0x04XX.
+ * The movx @dptr at 1659 is part of previous function flow.
+ *
+ * Full function from 0x165A:
+ *   165a: mov dptr, #0x0464
+ *   165d: movx a, @dptr
+ *   165e: add a, #0x4e
+ *   1660: mov DPL, a
+ *   1662: clr a
+ *   1663: addc a, #0x04
+ *   1665: mov DPH, a
+ *   1667: ret
+ */
+void transfer_set_dptr_0464_offset(void)
+{
+    uint8_t val;
+    uint16_t addr;
+
+    val = G_SYS_STATUS_PRIMARY;  /* 0x0464 */
+    addr = 0x044E + val;
+    /* Caller expects DPTR set - this is for internal use */
+    (void)addr;
+}
+
+/*
+ * transfer_calc_work43_offset - Calculate address 0x007C + IDATA 0x43
+ * Address: 0x1668-0x1676 (15 bytes)
+ *
+ * Writes IDATA 0x41 to @DPTR (caller set), then calculates
+ * DPTR = 0x007C + IDATA 0x43.
+ *
+ * Original disassembly:
+ *   1668: mov a, 0x41
+ *   166a: movx @dptr, a      ; write to caller's DPTR
+ *   166b: mov a, #0x7c
+ *   166d: add a, 0x43
+ *   166f: mov DPL, a
+ *   1671: clr a
+ *   1672: addc a, #0x00
+ *   1674: mov DPH, a
+ *   1676: ret
+ */
+void transfer_calc_work43_offset(void)
+{
+    /* This is called with DPTR already set by caller */
+    /* The address 0x007C + I_WORK_43 is computed */
+    /* This is used for low-memory work area access */
+}
+
+/*
+ * transfer_calc_work53_offset - Calculate address 0x0477 + (IDATA 0x53 * 4)
+ * Address: 0x1677-0x1686 (16 bytes)
+ *
+ * Reads IDATA 0x53, doubles it twice (x4), adds 0x77,
+ * forms DPTR = 0x0400 + result.
+ *
+ * Original disassembly:
+ *   1677: mov a, 0x53
+ *   1679: add a, acc         ; A = A * 2
+ *   167b: add a, acc         ; A = A * 2 again (total x4)
+ *   167d: add a, #0x77
+ *   167f: mov DPL, a
+ *   1681: clr a
+ *   1682: addc a, #0x04
+ *   1684: mov DPH, a
+ *   1686: ret
+ */
+uint16_t transfer_calc_work53_offset(void)
+{
+    uint8_t val;
+    uint16_t addr;
+
+    val = *(__idata uint8_t *)0x53;
+    addr = 0x0477 + (val * 4);
+    return addr;
+}
+
+/*
+ * transfer_get_ep_queue_addr - Get endpoint queue address from [0x0464]
+ * Address: 0x1687-0x1695 (15 bytes)
+ *
+ * Reads [0x0464] into R7, adds 0x5A, forms DPTR = 0x0400 + result.
+ *
+ * Original disassembly:
+ *   1687: mov dptr, #0x0464
+ *   168a: movx a, @dptr
+ *   168b: mov r7, a
+ *   168c: add a, #0x5a
+ *   168e: mov DPL, a
+ *   1690: clr a
+ *   1691: addc a, #0x04
+ *   1693: mov DPH, a
+ *   1695: ret
+ */
+uint16_t transfer_get_ep_queue_addr(void)
+{
+    uint8_t idx;
+    uint16_t addr;
+
+    idx = G_SYS_STATUS_PRIMARY;  /* 0x0464 */
+    addr = 0x045A + idx;
+    return addr;
+}
+
+/*
+ * transfer_calc_work55_offset - Calculate address 0x04B7 + IDATA 0x55
+ * Address: 0x1696-0x16A1 (12 bytes)
+ *
+ * Adds 0xB7 to IDATA 0x55, forms DPTR = 0x0400 + result.
+ *
+ * Original disassembly:
+ *   1696: mov a, #0xb7
+ *   1698: add a, 0x55
+ *   169a: mov DPL, a
+ *   169c: clr a
+ *   169d: addc a, #0x04
+ *   169f: mov DPH, a
+ *   16a1: ret
+ */
+uint16_t transfer_calc_work55_offset(void)
+{
+    uint16_t addr;
+
+    addr = 0x04B7 + *(__idata uint8_t *)0x55;
+    return addr;
+}
+
+/*
+ * transfer_write_idata41_to_ce6e - Write IDATA 0x41 to CE6E twice
+ * Address: 0x16AE-0x16B6 (9 bytes)
+ *
+ * Writes IDATA 0x41 to 0xCE6E, increments A, writes again.
+ *
+ * Original disassembly:
+ *   16ae: mov a, 0x41
+ *   16b0: mov dptr, #0xce6e
+ *   16b3: movx @dptr, a
+ *   16b4: inc a
+ *   16b5: movx @dptr, a
+ *   16b6: ret
+ */
+void transfer_write_idata41_to_ce6e(void)
+{
+    uint8_t val = I_WORK_41;
+    REG_SCSI_DMA_STATUS = val;
+    REG_SCSI_DMA_STATUS = val + 1;  /* Note: writes to same address */
+}
+
+/*
+ * transfer_calc_r4_offset - Add R4 to accumulator for multi-byte add
+ * Address: 0x16C3-0x16CC (10 bytes)
+ *
+ * This is a helper for 16-bit address calculations.
+ * Adds R4 with carry to A, stores in R2, then clears A and adds carry.
+ *
+ * Original disassembly:
+ *   16c3: addc a, r4
+ *   16c4: mov r2, a
+ *   16c5: clr a
+ *   16c6: addc a, r5
+ *   16c7: mov r3, a
+ *   16c8: mov a, r2
+ *   16c9: add a, #0x4e
+ *   16cb: mov DPL, a
+ *   ... continues to 16d2
+ */
+/* This is an internal calculation helper, handled inline */
 

@@ -105,9 +105,46 @@
  *   - Completion handling
  *   - Link speed query
  *
- * TODO: Additional functions exist in the firmware that use PCIe registers
- * at addresses 0x35xx, 0x49xx, 0x51xx, 0x80xx, 0x83xx, 0x9fxx, 0xabxx.
- * These likely handle NVMe-specific operations and error recovery.
+ * ============================================================================
+ * DISPATCH TABLE (0x0570-0x0650)
+ * ============================================================================
+ *
+ * The PCIe handler dispatch table at 0x0570 maps event indices to handlers:
+ *
+ *   Index  Address  Target      Description
+ *   -----  -------  ------      -----------
+ *   0      0x0570   0xE911      Error handler (Bank 1)
+ *   1      0x0575   0xEDBD      Bank 1 handler (padding in original)
+ *   2      0x057A   0xE0D9      Bank 1 handler
+ *   3      0x057F   0xB8DB      Link handler
+ *   4      0x0584   0xEF24      Bank 1 handler (padding in original)
+ *   5      0x0589   0xD894      Bank 1 handler (ajmp 0x0300)
+ *   6      0x058E   0xE0C7      Bank 1 handler (ajmp 0x0300)
+ *   7      0x0593   0xC105      PCIe event handler (handler_c105)
+ *   8      0x0598   0xE06B      Bank 1 handler
+ *   9      0x059D   0xE545      Bank 1 handler
+ *   10     0x05A2   0xC523      Handler
+ *   11     0x05A7   0xD1CC      Handler
+ *   12     0x05AC   0xE74E      Bank 1 handler
+ *   13     0x05B1   0xD30B      Handler
+ *   14     0x05B6   0xE561      Bank 1 handler
+ *   15     0x05BB   0xD5A1      Handler
+ *   16     0x05C0   0xC593      Handler
+ *   17     0x05C5   0xE7FB      Bank 1 handler
+ *   18     0x05CA   0xE890      Bank 1 handler
+ *   19     0x05CF   0xC17F      Handler
+ *   20     0x05D4   0xB031      Handler
+ *   21     0x05D9   0xE175      Bank 1 handler
+ *   22     0x05DE   0xE282      Bank 1 handler
+ *   23     0x05E3   0xDB80      Handler
+ *   24     0x05E8   0x9D90      Handler (ajmp 0x0311)
+ *   25     0x05ED   0xD556      Handler (ajmp 0x0311)
+ *   ...    ...      ...         (continues)
+ *   32     0x0610   0xED02      Bank 1 PCIe handler (handler_ed02 - NOP/padding)
+ *   36     0x061A   0xA066      Error handler (error_handler_a066)
+ *
+ * Note: Entries marked "Bank 1" use DPX=1 for extended code addressing.
+ * Handler addresses 0xED02 and 0xEEF9 are padding (NOPs) in the original.
  *
  * ============================================================================
  */

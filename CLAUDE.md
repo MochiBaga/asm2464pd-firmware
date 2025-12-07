@@ -22,6 +22,8 @@ Our firmware needs to have all the functionality of the real firmware, with all 
 
 Do not write things like `XDATA8(0xnnnn)`, instead define that as a register in registers.h with a good name with prefix "REG_" and use that register. Registers are addresses >= 0x6000, XDATA lower then this is global variables and shouldn't be in registers.h, put them in globals.h with the prefix "G_"
 
+Do not use XDATA outside registers.h and globals.h! This is important.
+
 Prioritize functions that you have already reversed the caller of.
 
 Checking in and making sure it builds every once in a while is good. You can also see how far along you are by comparing the size of our compiled firmware bin to fw.bin

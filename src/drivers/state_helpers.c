@@ -550,6 +550,57 @@ void reg_wait_bit_clear(uint16_t addr, uint8_t mask, uint8_t flags, uint8_t time
 }
 
 /*
+ * nvme_func_04da - Dispatch to bank 1 function via 0xE3B7
+ * Address: 0x04da-0x04de (5 bytes)
+ *
+ * Sets DPTR to 0xE3B7 and jumps to bank switch handler at 0x0300.
+ * This is a dispatch stub for bank 1 error/event handling.
+ *
+ * Original disassembly:
+ *   04da: mov dptr, #0xe3b7
+ *   04dd: ajmp 0x0300         ; bank switch handler
+ */
+void nvme_func_04da(uint8_t param)
+{
+    (void)param;
+    /* Dispatch to bank 1 function at 0xE3B7 */
+    /* TODO: Implement bank 1 call when bank1.c is complete */
+}
+
+/*
+ * reg_wait_bit_set - Load 3 bytes from address to R3,R2,R1
+ * Address: 0x0ddd-0x0de5 (9 bytes)
+ *
+ * This is a triple-byte load function that reads 3 consecutive
+ * bytes from the address pointed to by DPTR into R3, R2, R1.
+ * Despite the name, it's a load function not a wait function.
+ *
+ * Original disassembly:
+ *   0ddd: movx a, @dptr       ; read byte 0
+ *   0dde: mov r3, a           ; R3 = byte 0
+ *   0ddf: inc dptr
+ *   0de0: movx a, @dptr       ; read byte 1
+ *   0de1: mov r2, a           ; R2 = byte 1
+ *   0de2: inc dptr
+ *   0de3: movx a, @dptr       ; read byte 2
+ *   0de4: mov r1, a           ; R1 = byte 2
+ *   0de5: ret
+ *
+ * Note: The return values are in R1-R3 which SDCC uses for
+ * function return values in --model-large mode.
+ */
+void reg_wait_bit_set(uint16_t addr)
+{
+    /* Load 3 bytes from address - return values go to R1-R3 */
+    volatile uint8_t b0 = *(__xdata uint8_t *)addr;
+    volatile uint8_t b1 = *(__xdata uint8_t *)(addr + 1);
+    volatile uint8_t b2 = *(__xdata uint8_t *)(addr + 2);
+    (void)b0;
+    (void)b1;
+    (void)b2;
+}
+
+/*
  * usb_func_1b14 - USB address helper function
  * Address: 0x1b14
  *
@@ -615,3 +666,5 @@ void xdata_load_dword_noarg(void)
      * Since we can't access DPTR directly in C, this is a stub.
      * The caller (core_handler_4ff2) doesn't use the return value. */
 }
+
+/* reg_wait_bit_set and nvme_func_04da are defined earlier in this file */

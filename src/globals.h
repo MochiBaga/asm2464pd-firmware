@@ -22,6 +22,18 @@
 #define XDATA_VAR8(addr)   (*(__xdata uint8_t *)(addr))
 
 //=============================================================================
+// IDATA Work Variables (0x40-0x7F)
+//=============================================================================
+/* These are IDATA (internal 8051 RAM) locations used as fast work variables */
+__idata __at(0x40) extern uint8_t I_WORK_40;   /* Work variable 0x40 */
+__idata __at(0x41) extern uint8_t I_WORK_41;   /* Work variable 0x41 */
+__idata __at(0x43) extern uint8_t I_WORK_43;   /* Work variable 0x43 */
+__idata __at(0x47) extern uint8_t I_WORK_47;   /* Work variable 0x47 */
+__idata __at(0x52) extern uint8_t I_WORK_52;   /* Work variable 0x52 */
+__idata __at(0x53) extern uint8_t I_WORK_53;   /* Work variable 0x53 */
+__idata __at(0x55) extern uint8_t I_WORK_55;   /* Work variable 0x55 */
+
+//=============================================================================
 // System Work Area (0x0000-0x01FF)
 //=============================================================================
 #define G_SYSTEM_CTRL           XDATA_VAR8(0x0000)  /* System control byte */
@@ -48,7 +60,9 @@
 //=============================================================================
 #define G_REG_WAIT_BIT          XDATA_VAR8(0x045E)  /* Register wait bit */
 #define G_SYS_STATUS_PRIMARY    XDATA_VAR8(0x0464)  /* Primary system status */
+#define G_EP_INDEX_ALT          G_SYS_STATUS_PRIMARY  /* Alias for endpoint index */
 #define G_SYS_STATUS_SECONDARY  XDATA_VAR8(0x0465)  /* Secondary system status */
+#define G_EP_INDEX              G_SYS_STATUS_SECONDARY  /* Alias for endpoint index */
 #define G_SYSTEM_CONFIG         XDATA_VAR8(0x0466)  /* System configuration */
 #define G_SYSTEM_STATE          XDATA_VAR8(0x0467)  /* System state */
 #define G_DATA_PORT             XDATA_VAR8(0x0468)  /* Data port */

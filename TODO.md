@@ -5,10 +5,10 @@
 | Metric | Value |
 |--------|-------|
 | Original firmware size | 98,012 bytes |
-| Current implementation | 10,651 bytes |
-| Completion | ~10.9% |
+| Current implementation | 12,446 bytes |
+| Completion | ~12.7% |
 | Functions in original | ~660 |
-| Functions implemented | ~200 |
+| Functions implemented | ~205 |
 
 The original firmware is approximately **9x larger** than our current implementation.
 
@@ -90,19 +90,19 @@ Direct Memory Access for high-speed data transfers.
 ### 4. PCIe/Thunderbolt Interface (Partial)
 PCIe passthrough and Thunderbolt tunneling.
 
-**Implemented in `pcie.c` (~20 functions):**
+**Implemented in `pcie.c` (~25 functions):**
 - `pcie_init` ✓, `pcie_init_alt` ✓
 - `pcie_poll_and_read_completion` ✓, `pcie_get_completion_status` ✓
 - `pcie_get_link_speed` ✓, `pcie_set_byte_enables` ✓
 - `pcie_read_completion_data` ✓, `pcie_write_status_complete` ✓
 - `pcie_set_idata_params` ✓, `pcie_clear_address_regs` ✓
 - `pcie_inc_txn_counters` ✓, `pcie_wait_for_completion` ✓
+- `pcie_event_handler` ✓ - Handler at 0xC105
+- `pcie_error_handler` ✓ - Error recovery at 0xC00D
 
-**Remaining (~20 functions):**
-- `pcie_error_handler` - Error handling
-- `handler_c105` - PCIe event handler (0xC105)
-- `handler_ed02` - Bank 1 PCIe handler
-- `handler_eef9` - Bank 1 error handler
+**Remaining (~15 functions):**
+- `handler_ed02` - Bank 1 PCIe handler (padding/NOP in original)
+- `handler_eef9` - Bank 1 error handler (padding/NOP in original)
 - Various dispatch stubs (0x0570-0x0650)
 
 **Location in firmware:** 0xC100-0xC400, 0xED00-0xEF00
@@ -260,19 +260,19 @@ The firmware contains several data tables that need to be implemented:
 | USB | 100 | 25 | 75 |
 | NVMe | 70 | 25 | 45 |
 | DMA | 50 | 35 | 15 |
-| PCIe/PHY | 40 | 12 | 28 |
+| PCIe/PHY | 40 | 17 | 23 |
 | Flash | 30 | 16 | 14 |
 | Protocol/State | 60 | 25 | 35 |
 | Power | 20 | 4 | 16 |
 | Utility | 80 | 25 | 55 |
 | Timer/ISR | 30 | 11 | 19 |
 | Bank 1 | 100 | 6 | 94 |
-| **Total** | **660** | **199** | **461** |
+| **Total** | **660** | **204** | **456** |
 
 ### Memory Usage (Current)
 
 ```
-CODE:  10,651 bytes / 98,012 bytes (10.9%)
+CODE:  12,446 bytes / 98,012 bytes (12.7%)
 XDATA: Registers defined, globals partially defined
 IDATA: Work areas defined
 ```

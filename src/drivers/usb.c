@@ -2316,7 +2316,7 @@ __xdata uint8_t *usb_func_1cb7(uint8_t offset)
  */
 void usb_func_1cc1(void)
 {
-    G_CONFIG_FLAG_0564 = 0x84;
+    G_EP_QUEUE_CTRL = 0x84;
 }
 
 /*
@@ -2380,9 +2380,9 @@ void usb_func_1cd4(void)
  */
 void usb_func_1cdc(void)
 {
-    uint8_t val = G_CONFIG_053A;
+    uint8_t val = G_NVME_PARAM_053A;
     val += 0x20;
-    G_CONFIG_053A = val;
+    G_NVME_PARAM_053A = val;
 }
 
 /*
@@ -2591,4 +2591,567 @@ void usb_func_1d39(uint8_t val)
     uint8_t cur = XDATA8(0x014E);
     cur = (cur + val) & 0x1F;
     XDATA8(0x014E) = cur;
+}
+
+/*===========================================================================
+ * USB Helper Functions (0x5200-0x5500 region)
+ *===========================================================================*/
+
+/*
+ * usb_check_signature - Check USB signature "SBC"
+ * Address: 0x5200-0x5215 (22 bytes)
+ *
+ * Reads from XDATA and checks for signature 0x53, 0x42, 0x43 ("SBC").
+ * Returns 1 if signature matches, 0 otherwise.
+ *
+ * Original disassembly:
+ *   5200: lcall 0xa3e0         ; read first byte from somewhere
+ *   5203: cjne a, #0x53, bad   ; 'S'
+ *   5206: inc dptr
+ *   5207: movx a, @dptr
+ *   5208: cjne a, #0x42, bad   ; 'B'
+ *   520b: inc dptr
+ *   520c: movx a, @dptr
+ *   520d: cjne a, #0x43, bad   ; 'C'
+ *   5210: mov r7, #0x01
+ *   5212: ret
+ *   5213: mov r7, #0x00
+ *   5215: ret
+ */
+uint8_t usb_check_signature(__xdata uint8_t *ptr)
+{
+    if (ptr[0] != 0x53) return 0;  /* 'S' */
+    if (ptr[1] != 0x42) return 0;  /* 'B' */
+    if (ptr[2] != 0x43) return 0;  /* 'C' */
+    return 1;
+}
+
+/*
+ * usb_func_523c - DMA transfer setup helper
+ * Address: 0x523c-0x525f (36 bytes)
+ *
+ * Sets up DMA transfer parameters:
+ * - [0x0203] = R7 (mode)
+ * - [0x020D] = R5 (size)
+ * - [0x020E] = R3 (flags)
+ * - [0x07E5] = 1 (active)
+ * - If USB status bit 0 clear: start transfer, call helper
+ *
+ * Original disassembly:
+ *   523c: mov dptr, #0x0203
+ *   523f: mov a, r7
+ *   5240: movx @dptr, a         ; mode
+ *   5241: mov dptr, #0x020d
+ *   5244: mov a, r5
+ *   5245: movx @dptr, a         ; size
+ *   5246: inc dptr
+ *   5247: mov a, r3
+ *   5248: movx @dptr, a         ; flags
+ *   5249: mov dptr, #0x07e5
+ *   524c: mov a, #0x01
+ *   524e: movx @dptr, a         ; active = 1
+ *   524f: mov dptr, #0x9000
+ *   5252: movx a, @dptr
+ *   5253: jb e0.0, done         ; if USB status bit 0 set, skip
+ *   5256: mov dptr, #0xd80c
+ *   5259: mov a, #0x01
+ *   525b: movx @dptr, a         ; start transfer mode 1
+ *   525c: lcall 0x1bcb          ; usb_func_1bcb
+ *   525f: ret
+ */
+void usb_func_523c(uint8_t mode, uint8_t size, uint8_t flags)
+{
+    uint8_t status;
+
+    G_DMA_MODE_SELECT = mode;
+    G_DMA_PARAM1 = size;
+    G_DMA_PARAM2 = flags;
+    G_TRANSFER_ACTIVE = 1;
+
+    status = REG_USB_STATUS;
+    if (!(status & 0x01)) {
+        REG_BUFFER_XFER_START = 0x01;
+        usb_func_1bcb();
+    }
+}
+
+/*
+ * usb_func_5260 - Check CE5C status and call helper
+ * Address: 0x5260-0x527c (29 bytes)
+ *
+ * If R7 is 0, checks CE5C bit 0. If set, calls 0x1709.
+ * Otherwise jumps to next section.
+ *
+ * Original disassembly:
+ *   5260: mov a, r7
+ *   5261: jnz skip               ; if R7 != 0, skip
+ *   5263: mov dptr, #0xce5c
+ *   5266: movx a, @dptr
+ *   5267: jnb e0.0, skip         ; if bit 0 clear, skip
+ *   526a: lcall 0x1709
+ *   526d: sjmp done
+ */
+void usb_func_5260(uint8_t param)
+{
+    uint8_t status;
+
+    if (param != 0) {
+        return;
+    }
+
+    status = XDATA8(0xCE5C);
+    if (status & 0x01) {
+        /* Call transfer helper at 0x1709 */
+        /* transfer_helper_1709();  TODO: link when implemented */
+    }
+}
+
+/* usb_ep_process is defined earlier in this file at line ~432 */
+
+/*
+ * usb_write_ep_config - Write endpoint configuration
+ * Address: 0x52e0-0x52f7 (24 bytes)
+ *
+ * Writes configuration to USB endpoint registers 0x9007-0x9008 and
+ * 0x9093-0x9094.
+ *
+ * Original disassembly:
+ *   52e0: mov dptr, #0x9007
+ *   52e3: mov a, r6
+ *   52e4: movx @dptr, a
+ *   52e5: inc dptr
+ *   52e6: mov a, r7
+ *   52e7: movx @dptr, a
+ *   52e8: mov dptr, #0x9093
+ *   52eb: mov a, #0x08
+ *   52ed: movx @dptr, a
+ *   52ee: inc dptr
+ *   52ef: mov a, #0x02
+ *   52f1: movx @dptr, a
+ *   52f2: ret
+ */
+void usb_write_ep_config(uint8_t hi, uint8_t lo)
+{
+    XDATA8(0x9007) = hi;
+    XDATA8(0x9008) = lo;
+    XDATA8(0x9093) = 0x08;
+    XDATA8(0x9094) = 0x02;
+}
+
+/*
+ * usb_set_status_9093 - Set USB status registers
+ * Address: 0x5300-0x530a (11 bytes)
+ *
+ * Writes 0x08 to 0x9093 and 0x02 to 0x9094.
+ */
+void usb_set_status_9093(void)
+{
+    XDATA8(0x9093) = 0x08;
+    XDATA8(0x9094) = 0x02;
+}
+
+/*
+ * usb_func_530b - Read E795 status bits
+ * Address: 0x530b-0x5320 (22 bytes)
+ *
+ * Reads status from 0xE795, extracts bits 0, 1, 5 into R7, R5, R3,
+ * calls helper 0x0534, then writes 1 to 0x07F6.
+ *
+ * Original disassembly:
+ *   530b: movx a, @dptr         ; read 0xE795
+ *   530c: anl a, #0x01          ; bit 0
+ *   530e: mov r7, a
+ *   530f: movx a, @dptr
+ *   5310: anl a, #0x02          ; bit 1
+ *   5312: mov r5, a
+ *   5313: movx a, @dptr
+ *   5314: anl a, #0x20          ; bit 5
+ *   5316: mov r3, a
+ *   5317: lcall 0x0534          ; dispatch
+ *   531a: mov dptr, #0x07f6
+ *   531d: mov a, #0x01
+ *   531f: movx @dptr, a
+ *   5320: ret
+ */
+void usb_func_530b(void)
+{
+    uint8_t status = XDATA8(0xE795);
+    uint8_t bit0 = status & 0x01;
+    uint8_t bit1 = status & 0x02;
+    uint8_t bit5 = status & 0x20;
+
+    /* Call dispatch helper with R7=bit0, R5=bit1, R3=bit5 */
+    (void)bit0;
+    (void)bit1;
+    (void)bit5;
+    /* dispatch_helper_0534();  TODO: link */
+
+    XDATA8(0x07F6) = 0x01;
+}
+
+/*
+ * usb_func_5321 - USB status check and write to 91D0
+ * Address: 0x5321-0x533c (28 bytes)
+ *
+ * Checks USB status bit 0, if set calls helper, checks result,
+ * writes 0x08 or 0x10 to 0x91D0.
+ *
+ * Original disassembly:
+ *   5321: mov dptr, #0x9000
+ *   5324: movx a, @dptr
+ *   5325: jnb e0.0, done        ; if bit 0 clear, skip
+ *   5328: lcall 0x328a          ; helper
+ *   532b: mov r6, a
+ *   532c: cjne r6, #0x01, done  ; if result != 1, skip
+ *   532f: mov a, r7
+ *   5330: mov dptr, #0x91d0
+ *   5333: jz write_10           ; if r7 == 0, write 0x10
+ *   5335: mov a, #0x08
+ *   5337: movx @dptr, a
+ *   5338: ret
+ *   5339: mov a, #0x10
+ *   533b: movx @dptr, a
+ *   533c: ret
+ */
+void usb_func_5321(uint8_t mode)
+{
+    uint8_t status;
+
+    status = REG_USB_STATUS;
+    if (!(status & 0x01)) {
+        return;
+    }
+
+    /* Call helper at 0x328a */
+    /* uint8_t result = helper_328a();
+     * if (result != 1) return;
+     */
+
+    /* Write to USB endpoint config */
+    if (mode != 0) {
+        XDATA8(0x91D0) = 0x08;
+    } else {
+        XDATA8(0x91D0) = 0x10;
+    }
+}
+
+/*
+ * usb_func_533d - Write R7 shifted to CE95, check CE65
+ * Address: 0x533d-0x5358 (28 bytes)
+ *
+ * Shifts R7 right by 1, writes to 0xCE95, reads 0xCE65, compares to R6,
+ * if equal writes R7 and R7+1 to 0xCE6E.
+ */
+uint8_t usb_func_533d(uint8_t val, uint8_t compare)
+{
+    uint8_t shifted = val >> 1;
+    uint8_t ce65_val;
+
+    XDATA8(0xCE95) = shifted;
+
+    ce65_val = XDATA8(0xCE65);
+    if (ce65_val != compare) {
+        return 0;
+    }
+
+    XDATA8(0xCE6E) = val;
+    XDATA8(0xCE6E) = val + 1;
+    return 1;
+}
+
+/*
+ * usb_func_5359 - Read system status and calculate index
+ * Address: 0x5359-0x5362 (10 bytes)
+ *
+ * Reads G_SYS_STATUS_PRIMARY, saves in R6, calls helper 0x16E9.
+ */
+uint8_t usb_func_5359(void)
+{
+    uint8_t status = G_SYS_STATUS_PRIMARY;
+    /* Call helper_16e9 to get DPTR, read value */
+    (void)status;
+    return 0;
+}
+
+/*
+ * usb_func_53a0 - USB endpoint queue handler
+ * Address: 0x53a0-0x53bf (32 bytes)
+ *
+ * Handles USB endpoint queue operations.
+ */
+void usb_func_53a0(void)
+{
+    /* Complex queue handler - stub */
+}
+
+/*
+ * usb_func_53c0 - Buffer parameter write (idata to buffer regs)
+ * Address: 0x53c0-0x53d3 (20 bytes)
+ *
+ * This function is implemented in buffer.c as buf_write_idata_params.
+ * It writes IDATA[0x6F-0x72] to buffer registers 0xD808-0xD80B.
+ */
+/* Note: buf_write_idata_params is in buffer.c */
+
+/*
+ * usb_func_53d4 - Initialize buffer parameters
+ * Address: 0x53d4-0x53e5 (18 bytes)
+ *
+ * Clears IDATA[0x6F-0x72] to set up default buffer parameters.
+ */
+void usb_func_53d4(void)
+{
+    __idata uint8_t *ptr = (__idata uint8_t *)0x6F;
+    ptr[0] = 0;
+    ptr[1] = 0;
+    ptr[2] = 0;
+    ptr[3] = 0;
+}
+
+/*
+ * usb_func_53e6 - Copy IDATA word to XDATA
+ * Address: 0x53e6-0x53f5 (16 bytes)
+ *
+ * Copies 16-bit value from IDATA[0x16:0x17] to XDATA[DPTR:DPTR+1].
+ */
+void usb_func_53e6(__xdata uint8_t *ptr)
+{
+    __idata uint8_t *idata = (__idata uint8_t *)0x16;
+    ptr[0] = idata[0];
+    ptr[1] = idata[1];
+}
+
+/*
+ * usb_func_5400 - USB status flag set
+ * Address: 0x5400-0x5410 (17 bytes)
+ *
+ * Sets various USB status flags for endpoint processing.
+ */
+void usb_func_5400(void)
+{
+    G_TRANSFER_ACTIVE = 1;
+    G_STATE_FLAG_06E6 = 1;
+}
+
+/*
+ * usb_func_5409 - Clear state and jump to dispatch
+ * Address: 0x5409-0x5417 (15 bytes)
+ *
+ * Clears USB transfer flag, state machine, error flag, then jumps to dispatch.
+ *
+ * Original disassembly:
+ *   5409: clr a
+ *   540a: mov dptr, #0x0b2e
+ *   540d: movx @dptr, a
+ *   540e: mov r0, #0x6a
+ *   5410: mov @r0, a
+ *   5411: mov dptr, #0x06e6
+ *   5414: movx @dptr, a
+ *   5415: ljmp 0x039a
+ */
+void usb_func_5409(void)
+{
+    __idata uint8_t *state_ptr = (__idata uint8_t *)0x6a;
+
+    G_USB_TRANSFER_FLAG = 0;
+    *state_ptr = 0;
+    G_STATE_FLAG_06E6 = 0;
+    /* ljmp 0x039a - returns to dispatch */
+}
+
+/*
+ * usb_func_5418 - Set bit 0 in DPTR register
+ * Address: 0x5418-0x541e (7 bytes)
+ *
+ * Reads register at DPTR, clears bit 0, sets bit 0, writes back.
+ * Called with DPTR already set by caller.
+ *
+ * Original disassembly:
+ *   5418: movx a, @dptr
+ *   5419: anl a, #0xfe       ; clear bit 0
+ *   541b: orl a, #0x01       ; set bit 0
+ *   541d: movx @dptr, a
+ *   541e: ret
+ */
+void usb_set_bit0(__xdata uint8_t *reg)
+{
+    uint8_t val = *reg;
+    val = (val & 0xFE) | 0x01;
+    *reg = val;
+}
+
+/*
+ * usb_func_541f - Read E716 status bits
+ * Address: 0x541f-0x5425 (7 bytes)
+ *
+ * Reads 0xE716 and returns bits 0-1.
+ *
+ * Original disassembly:
+ *   541f: mov dptr, #0xe716
+ *   5422: movx a, @dptr
+ *   5423: anl a, #0x03
+ *   5425: ret
+ */
+uint8_t usb_get_e716_status(void)
+{
+    return XDATA8(0xE716) & 0x03;
+}
+
+/*
+ * usb_func_5426 - Call helper with timeout
+ * Address: 0x5426-0x5433 (14 bytes)
+ *
+ * Calls helper 0x0426 with R7=0x14 (timeout count), then helper 0x173b
+ * with DPTR=0xB220, then jumps to 0x0453.
+ */
+void usb_func_5426(void)
+{
+    /* Call timeout helper at 0x0426 with count 0x14 */
+    /* Call helper at 0x173b with DPTR=0xB220 */
+    /* ljmp 0x0453 */
+}
+
+/*
+ * usb_ep_handler_5442 - USB endpoint check and clear
+ * Address: 0x5442-0x544b (10 bytes)
+ *
+ * Reads G_EP_CHECK_FLAG (0x000A), if zero calls usb_func_5409 to clear state.
+ *
+ * Original disassembly:
+ *   5442: mov dptr, #0x000a
+ *   5445: movx a, @dptr
+ *   5446: jnz 0x544b          ; if non-zero, return
+ *   5448: lcall 0x5409        ; clear state
+ *   544b: ret
+ */
+void usb_ep_handler_5442(void)
+{
+    if (G_EP_CHECK_FLAG == 0) {
+        usb_func_5409();
+    }
+}
+
+/*
+ * usb_func_544c - USB transfer with fixed params
+ * Address: 0x544c-0x5454 (9 bytes)
+ *
+ * Sets R3=0, R5=0x24, R7=0x05, then jumps to usb_func_523c.
+ *
+ * Original disassembly:
+ *   544c: clr a
+ *   544d: mov r3, a           ; flags = 0
+ *   544e: mov r5, #0x24       ; size = 0x24
+ *   5450: mov r7, #0x05       ; mode = 0x05
+ *   5452: ljmp 0x523c
+ */
+void usb_func_544c(void)
+{
+    usb_func_523c(0x05, 0x24, 0x00);
+}
+
+/*
+ * usb_func_5455 - Call dual helpers
+ * Address: 0x5455-0x545b (7 bytes)
+ *
+ * Calls helper 0x312a then helper 0x31ce.
+ */
+void usb_func_5455(void)
+{
+    /* lcall 0x312a - buffer config helper */
+    /* lcall 0x31ce - buffer status helper */
+}
+
+/*
+ * usb_func_545c - Clear AF8 state
+ * Address: 0x545c-0x5461 (6 bytes)
+ *
+ * Writes 0 to 0x0AF8.
+ *
+ * Original disassembly:
+ *   545c: clr a
+ *   545d: mov dptr, #0x0af8
+ *   5460: movx @dptr, a
+ *   5461: ret
+ */
+void usb_func_545c(void)
+{
+    XDATA8(0x0AF8) = 0;
+}
+
+/*
+ * usb_func_5462 - Call 1cf0 helper
+ * Address: 0x5462-0x5465 (4 bytes)
+ *
+ * Calls usb_func_1cf0 (OR idata bytes to ACC).
+ */
+void usb_func_5462(void)
+{
+    usb_func_1cf0();
+}
+
+/* usb_func_1aad is defined earlier in this file at line ~1669 */
+
+/*
+ * usb_func_1af9 - Get indexed config value
+ * Address: 0x1af9-0x1b04 (12 bytes)
+ *
+ * Computes address 0x0171 + IDATA[0x3E], reads value.
+ *
+ * Original disassembly:
+ *   1af9: mov a, #0x71
+ *   1afb: add a, 0x3e         ; A = 0x71 + IDATA[0x3E]
+ *   1afd: mov 0x82, a         ; DPL
+ *   1aff: clr a
+ *   1b00: addc a, #0x01       ; DPH = 0x01 + carry
+ *   1b02: mov 0x83, a
+ *   1b04: movx a, @dptr       ; read
+ *   ...
+ */
+uint8_t usb_get_indexed_config_0171(void)
+{
+    __idata uint8_t *iptr = (__idata uint8_t *)0x3E;
+    uint8_t offset = *iptr;
+    uint16_t addr = 0x0171 + offset;
+    return *(__xdata uint8_t *)addr;
+}
+
+/*
+ * usb_func_1b05 - Store to indexed address 0x0171+
+ * Address: 0x1b05-0x1b13 (15 bytes)
+ *
+ * Stores R7 to address 0x0171 + IDATA[0x43].
+ */
+void usb_store_indexed_config_0171(uint8_t val)
+{
+    __idata uint8_t *iptr = (__idata uint8_t *)0x43;
+    uint8_t offset = *iptr;
+    uint16_t addr = 0x0171 + offset;
+    *(__xdata uint8_t *)addr = val;
+}
+
+/* usb_func_1b60 and usb_func_1b7e are defined earlier in this file */
+
+/*
+ * usb_get_idata_009f - Read from address 0x009F + IDATA[0x3E]
+ * Address: 0x1b88-0x1b95 (14 bytes)
+ *
+ * Saves ACC to R7, computes address 0x009F + IDATA[0x3E], reads value.
+ *
+ * Original disassembly:
+ *   1b88: mov r7, a
+ *   1b89: mov a, #0x9f
+ *   1b8b: add a, 0x3e
+ *   1b8d: mov 0x82, a
+ *   1b8f: clr a
+ *   1b90: addc a, #0x00
+ *   1b92: mov 0x83, a
+ *   1b94: movx a, @dptr
+ *   1b95: ret
+ */
+uint8_t usb_get_xdata_009f(void)
+{
+    __idata uint8_t *iptr = (__idata uint8_t *)0x3E;
+    uint8_t offset = *iptr;
+    uint16_t addr = 0x009F + offset;
+    return *(__xdata uint8_t *)addr;
 }
