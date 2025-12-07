@@ -1560,7 +1560,7 @@ void ext1_isr(void) __interrupt(INT_EXT1) __using(1)
 
     /* Check system status bit 4 */
     status = REG_INT_SYSTEM;
-    if (status & 0x10) {
+    if (status & INT_SYSTEM_TIMER) {
         handler_0642();
     }
 }

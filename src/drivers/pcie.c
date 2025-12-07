@@ -544,13 +544,13 @@ uint8_t pcie_wait_for_completion(void)
     /* Now wait for completion or error */
     while (1) {
         status = REG_PCIE_STATUS;
-        if (status & 0x02) {
+        if (status & PCIE_STATUS_COMPLETE) {
             /* Transaction complete */
             return 0;
         }
-        if (status & 0x01) {
+        if (status & PCIE_STATUS_ERROR) {
             /* Error occurred */
-            REG_PCIE_STATUS = 0x01;  /* Clear error */
+            REG_PCIE_STATUS = PCIE_STATUS_ERROR;  /* Clear error */
             return 0xFE;  /* Error code */
         }
     }

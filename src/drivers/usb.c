@@ -692,7 +692,7 @@ void usb_set_transfer_flag(void)
  */
 uint8_t usb_get_nvme_data_ctrl(void)
 {
-    return REG_NVME_DATA_CTRL & 0xC0;
+    return REG_NVME_DATA_CTRL & NVME_DATA_CTRL_MASK;
 }
 
 /*
@@ -2615,7 +2615,7 @@ void usb_func_1d1d(void)
  */
 uint8_t usb_func_1d24(void)
 {
-    return REG_NVME_DATA_CTRL & 0xC0;
+    return REG_NVME_DATA_CTRL & NVME_DATA_CTRL_MASK;
 }
 
 /*
@@ -3899,7 +3899,7 @@ void usb_set_transfer_flag_0b2e(void)
  */
 uint8_t usb_get_c414_masked(void)
 {
-    return REG_NVME_DATA_CTRL & 0xC0;
+    return REG_NVME_DATA_CTRL & NVME_DATA_CTRL_MASK;
 }
 
 /*
@@ -4313,7 +4313,7 @@ void usb_set_transfer_flag_1(void)
  */
 uint8_t usb_get_nvme_data_ctrl_masked(void)
 {
-    return REG_NVME_DATA_CTRL & 0xC0;
+    return REG_NVME_DATA_CTRL & NVME_DATA_CTRL_MASK;
 }
 
 /*

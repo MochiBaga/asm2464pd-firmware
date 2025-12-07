@@ -438,7 +438,7 @@ void nvme_set_ep_queue_ctrl_84(void)
  */
 uint8_t nvme_get_dev_status_upper(void)
 {
-    return REG_NVME_DEV_STATUS & 0xC0;
+    return REG_NVME_DEV_STATUS & NVME_DEV_STATUS_MASK;
 }
 
 /*
@@ -455,7 +455,7 @@ uint8_t nvme_get_dev_status_upper(void)
  */
 uint8_t nvme_get_data_ctrl_upper(void)
 {
-    return REG_NVME_DATA_CTRL & 0xC0;
+    return REG_NVME_DATA_CTRL & NVME_DATA_CTRL_MASK;
 }
 
 /*
@@ -893,7 +893,7 @@ void nvme_set_int_aux_bit1(void)
  */
 uint8_t nvme_get_link_status_masked(void)
 {
-    return REG_USB_LINK_STATUS & 0x03;
+    return REG_USB_LINK_STATUS & USB_LINK_STATUS_MASK;
 }
 
 /*
@@ -1637,7 +1637,7 @@ void nvme_func_1c43(uint8_t param)
  */
 uint8_t nvme_func_1c55(void)
 {
-    return REG_NVME_DEV_STATUS & 0xC0;
+    return REG_NVME_DEV_STATUS & NVME_DEV_STATUS_MASK;
 }
 
 /*
@@ -1841,10 +1841,10 @@ void nvme_process_queue_entries(void)
             (void)trigger_val;  /* TODO: call nvme_helper_4b25(trigger_val) */
 
             /* Get queue index from status register */
-            *queue_idx = REG_NVME_QUEUE_STATUS & 0x3F;
+            *queue_idx = REG_NVME_QUEUE_STATUS & NVME_QUEUE_STATUS_IDX;
         } else {
             /* Not initialized - get index and call 0x3da1 */
-            *queue_idx = REG_NVME_QUEUE_STATUS & 0x3F;
+            *queue_idx = REG_NVME_QUEUE_STATUS & NVME_QUEUE_STATUS_IDX;
             /* TODO: call nvme_helper_3da1(*queue_idx) */
         }
 
@@ -1907,7 +1907,7 @@ void nvme_state_handler(void)
         cmd_type = G_IO_CMD_TYPE;
         if (cmd_type == 3) {
             /* Mode 3: Check USB status bit 0 */
-            if (REG_USB_STATUS & 0x01) {
+            if (REG_USB_STATUS & USB_STATUS_ACTIVE) {
                 /* USB active - call status handlers */
                 nvme_call_and_signal();
                 /* TODO: call 0x0206 */
@@ -1959,7 +1959,7 @@ handle_error:
 
 common_exit:
     /* Check USB status and handle */
-    if (REG_USB_STATUS & 0x01) {
+    if (REG_USB_STATUS & USB_STATUS_ACTIVE) {
         /* USB active */
         nvme_call_and_signal();
         /* TODO: call 0x0206 */
@@ -2046,9 +2046,9 @@ void nvme_queue_sync(void)
         }
 
         /* Check REG_CPU_LINK_CEF3 bit 3 */
-        if (REG_CPU_LINK_CEF3 & 0x08) {
+        if (REG_CPU_LINK_CEF3 & CPU_LINK_CEF3_ACTIVE) {
             /* Set CEF3 to 0x08 and call handler_2608 */
-            REG_CPU_LINK_CEF3 = 0x08;
+            REG_CPU_LINK_CEF3 = CPU_LINK_CEF3_ACTIVE;
             /* TODO: call handler_2608() */
             continue;  /* Loop back */
         }
@@ -2155,7 +2155,7 @@ void nvme_queue_process_pending(void)
     }
 
     /* Check link control register bit 3 */
-    if (!(REG_CPU_LINK_CEF3 & 0x08)) {
+    if (!(REG_CPU_LINK_CEF3 & CPU_LINK_CEF3_ACTIVE)) {
         /* Bit 3 not set - check buffer state at 0x05AC */
         ptr = (__xdata uint8_t *)0x05AC;
         if (*ptr == 0) {
@@ -2163,13 +2163,13 @@ void nvme_queue_process_pending(void)
         }
 
         /* Check REG_CPU_LINK_CEF2 bit 7 */
-        if (REG_CPU_LINK_CEF2 & 0x80) {
+        if (REG_CPU_LINK_CEF2 & CPU_LINK_CEF2_READY) {
             goto done;
         }
     }
 
     /* Set link control bit 3 and call handler */
-    REG_CPU_LINK_CEF3 = 0x08;
+    REG_CPU_LINK_CEF3 = CPU_LINK_CEF3_ACTIVE;
     /* TODO: call handler_2608() */
     return;
 

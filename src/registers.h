@@ -107,6 +107,7 @@
 
 // USB link/status registers (0x9100-0x912F)
 #define REG_USB_LINK_STATUS     XDATA_REG8(0x9100)
+#define   USB_LINK_STATUS_MASK    0x03  // Bits 0-1: Link status
 #define REG_USB_PERIPH_STATUS   XDATA_REG8(0x9101)
 #define REG_USB_STATUS_0D       XDATA_REG8(0x910D)
 #define REG_USB_STATUS_0E       XDATA_REG8(0x910E)
@@ -236,6 +237,7 @@
 #define REG_NVME_DATA_CTRL      XDATA_REG8(0xC414)
 #define   NVME_DATA_CTRL_MASK     0xC0  // Bits 6-7: Data control mode
 #define REG_NVME_DEV_STATUS     XDATA_REG8(0xC415)
+#define   NVME_DEV_STATUS_MASK    0xC0  // Bits 6-7: Device status
 #define REG_NVME_CMD            XDATA_REG8(0xC420)
 #define REG_NVME_CMD_OPCODE     XDATA_REG8(0xC421)
 #define REG_NVME_LBA_LOW        XDATA_REG8(0xC422)
@@ -274,6 +276,7 @@
 #define REG_NVME_QUEUE_C516     XDATA_REG8(0xC516)
 #define REG_NVME_QUEUE_TRIGGER  XDATA_REG8(0xC51A)
 #define REG_NVME_QUEUE_STATUS   XDATA_REG8(0xC51E)
+#define   NVME_QUEUE_STATUS_IDX   0x3F  // Bits 0-5: Queue index
 #define REG_NVME_LINK_STATUS    XDATA_REG8(0xC520)
 
 //=============================================================================
@@ -296,6 +299,7 @@
 #define REG_INT_USB_MASTER      XDATA_REG8(0xC802)
 #define REG_INT_AUX_C805        XDATA_REG8(0xC805)
 #define REG_INT_SYSTEM          XDATA_REG8(0xC806)
+#define   INT_SYSTEM_TIMER        0x10  // Bit 4: System timer event
 #define REG_INT_CTRL_C809       XDATA_REG8(0xC809)
 #define REG_INT_PCIE_NVME       XDATA_REG8(0xC80A)
 #define   INT_PCIE_NVME_EVENTS    0x0F  // Bits 0-3: PCIe event flags
@@ -432,7 +436,9 @@
 // CPU Link Control (0xCEF0-0xCEFF)
 //=============================================================================
 #define REG_CPU_LINK_CEF2       XDATA_REG8(0xCEF2)
+#define   CPU_LINK_CEF2_READY     0x80  // Bit 7: Link ready
 #define REG_CPU_LINK_CEF3       XDATA_REG8(0xCEF3)
+#define   CPU_LINK_CEF3_ACTIVE    0x08  // Bit 3: Link active
 
 // Note: USB Endpoint Buffer at 0xD800 - see structs.h
 
