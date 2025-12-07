@@ -622,8 +622,9 @@
 #define REG_CMD_STATUS_E402     XDATA_REG8(0xE402)  // Status flags (RO) - bit 1: busy, bit 2: error
 #define REG_CMD_CTRL_E403       XDATA_REG8(0xE403)  // Control (WO) - command state
 #define REG_CMD_CONFIG          XDATA_REG8(0xE40B)  // Config (RW)
-#define REG_CMD_CTRL_E40F       XDATA_REG8(0xE40F)  // Command control F (RW)
-#define REG_CMD_CTRL_E410       XDATA_REG8(0xE410)  // Command control 10 (RW)
+#define REG_DEBUG_STATUS_E314   XDATA_REG8(0xE314)  // Debug status (RW) - used by debug output handler
+#define REG_CMD_CTRL_E40F       XDATA_REG8(0xE40F)  // Command control F (RW) - debug status 0
+#define REG_CMD_CTRL_E410       XDATA_REG8(0xE410)  // Command control 10 (RW) - debug status 1
 #define REG_CMD_BUSY_STATUS     XDATA_REG8(0xE41C)  // Busy status (RO) - bit 0: cmd busy
 #define REG_CMD_TRIGGER         XDATA_REG8(0xE420)  // Command trigger (WO) - 0x80/0x40 to start
 #define REG_CMD_PARAM           XDATA_REG8(0xE422)  // Parameter (RW)
@@ -663,6 +664,11 @@
 #define CMD_RESP_ERROR          0x01
 #define CMD_RESP_READY          0x01
 #define CMD_TIMEOUT_FLAG        0x80
+
+//=============================================================================
+// Debug/Interrupt Registers (0xE600-0xE6FF)
+//=============================================================================
+#define REG_DEBUG_INT_E661      XDATA_REG8(0xE661)  // Debug interrupt status (RW) - bit 7: pending
 
 //=============================================================================
 // System Status Registers (0xE700-0xE7FF)
