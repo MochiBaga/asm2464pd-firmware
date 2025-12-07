@@ -479,9 +479,9 @@ void usb_power_init(void)
     val = REG_USB_PHY_CTRL_91C0;
     if ((val & 0x18) == 0x10) {
         /* PHY in expected state */
-        if (G_EVENT_FLAGS == 0x04) {
+        if (G_EVENT_FLAGS == EVENT_FLAG_POWER) {
             power_set_event_ctrl();
-            G_EVENT_FLAGS = 1;
+            G_EVENT_FLAGS = EVENT_FLAG_PENDING;
             return;
         }
     } else {

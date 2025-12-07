@@ -420,14 +420,14 @@ uint8_t dma_check_scsi_status(uint8_t mode)
     if (mode == 0) {
         /* Check bit 0 of SCSI completion status */
         status = REG_SCSI_DMA_COMPL;
-        if (status & 0x01) {
+        if (status & SCSI_DMA_COMPL_MODE0) {
             dma_set_scsi_param3();
             return 1;
         }
     } else if (mode == 0x10) {
         /* Check bit 1 of SCSI completion status */
         status = REG_SCSI_DMA_COMPL;
-        if (status & 0x02) {
+        if (status & SCSI_DMA_COMPL_MODE10) {
             dma_set_scsi_param1();
             return 1;
         }
@@ -669,16 +669,16 @@ void dma_start_transfer(uint8_t aux0, uint8_t aux1, uint8_t count_hi, uint8_t co
     REG_DMA_XFER_CNT_LO = (uint8_t)(count & 0xFF);
 
     /* Trigger DMA transfer */
-    REG_DMA_TRIGGER = 0x01;
+    REG_DMA_TRIGGER = DMA_TRIGGER_START;
 
     /* Poll for completion (wait while bit 0 is set) */
-    while (REG_DMA_TRIGGER & 0x01) {
+    while (REG_DMA_TRIGGER & DMA_TRIGGER_START) {
         /* Busy wait */
     }
 
     /* Clear active bit (bit 7) in channel control 2 */
     val = REG_DMA_CHAN_CTRL2;
-    val &= 0x7F;
+    val &= ~DMA_CHAN_CTRL2_ACTIVE;
     REG_DMA_CHAN_CTRL2 = val;
 }
 

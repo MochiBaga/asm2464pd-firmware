@@ -395,7 +395,7 @@ void flash_set_mode_bit4(void)
  */
 void flash_start_transaction(void)
 {
-    REG_FLASH_CSR = 0x01;
+    REG_FLASH_CSR = FLASH_CSR_BUSY;
     flash_poll_busy();
 }
 
@@ -641,7 +641,7 @@ void flash_read_status(void)
     REG_FLASH_DATA_LEN_HI = 0x01;
 
     /* Start and poll */
-    REG_FLASH_CSR = 0x01;
+    REG_FLASH_CSR = FLASH_CSR_BUSY;
     flash_poll_busy();
 }
 

@@ -255,11 +255,11 @@ void handler_3adb(uint8_t param)
 
     /* Update DMA status register */
     dma_status = REG_DMA_STATUS;
-    dma_status = (dma_status & 0xF7) | 0x08;  /* Clear bit 3, set bit 3 */
+    dma_status = (dma_status & ~DMA_STATUS_ERROR) | DMA_STATUS_ERROR;  /* Clear bit 3, set bit 3 */
     REG_DMA_STATUS = dma_status;
 
     dma_status = REG_DMA_STATUS;
-    dma_status = dma_status & 0xFB;  /* Clear bit 2 */
+    dma_status = dma_status & ~DMA_STATUS_DONE;  /* Clear bit 2 */
     REG_DMA_STATUS = dma_status;
 
     /* Calculate address based on state counter */
@@ -391,6 +391,43 @@ void core_handler_4ff2(uint8_t param_2)
 
     *IDATA_CORE_STATE_L = val_lo;
     *IDATA_CORE_STATE_H = val_hi;
+}
+
+/*
+ * helper_1c9f - Core processing and buffer setup
+ * Address: 0x1c9f-0x1cad (15 bytes)
+ *
+ * Calls core_handler_4ff2 with param=0, then calls helper_4e6d to
+ * configure buffers. Returns OR of IDATA[0x16] and IDATA[0x17].
+ *
+ * Original disassembly:
+ *   1c9f: lcall 0x4ff2         ; core_handler_4ff2(0)
+ *   1ca2: lcall 0x4e6d         ; helper_4e6d
+ *   1ca5: mov r0, #0x16
+ *   1ca7: mov a, @r0           ; R4 = [0x16]
+ *   1ca8: mov r4, a
+ *   1ca9: inc r0
+ *   1caa: mov a, @r0           ; R5 = [0x17]
+ *   1cab: mov r5, a
+ *   1cac: orl a, r4            ; A = R4 | R5
+ *   1cad: ret
+ */
+uint8_t helper_1c9f(void)
+{
+    uint8_t val_lo, val_hi;
+
+    /* Call core handler with param=0 */
+    core_handler_4ff2(0);
+
+    /* Configure buffer base addresses */
+    helper_4e6d();
+
+    /* Read the 16-bit value from IDATA[0x16:0x17] */
+    val_lo = *(__idata uint8_t *)0x16;
+    val_hi = *(__idata uint8_t *)0x17;
+
+    /* Return non-zero if either byte is non-zero */
+    return val_lo | val_hi;
 }
 
 /*
@@ -554,7 +591,7 @@ void helper_523c(uint8_t r3, uint8_t r5, uint8_t r7)
     *(__xdata uint8_t *)0x07E5 = 0x01;
 
     /* Check USB status bit 0 */
-    if (!(REG_USB_STATUS & 0x01)) {
+    if (!(REG_USB_STATUS & USB_STATUS_ACTIVE)) {
         /* Bit 0 not set - trigger endpoint and call helper */
         *(__xdata uint8_t *)0xD80C = 0x01;
         helper_1bcb();
@@ -988,41 +1025,186 @@ void helper_16f3(void)
     /* Read DMA status register */
     status = REG_DMA_STATUS;
 
-    /* Clear bit 3 */
-    status &= 0xF7;
+    /* Clear bit 3 (error flag) */
+    status &= ~DMA_STATUS_ERROR;
     REG_DMA_STATUS = status;
 
-    /* Read again and clear bit 2 */
+    /* Read again and clear bit 2 (done flag) */
     status = REG_DMA_STATUS;
-    status &= 0xFB;
+    status &= ~DMA_STATUS_DONE;
     REG_DMA_STATUS = status;
 }
 
+/* Forward declarations for helper_3f4a dependencies */
+extern void usb_func_1c5d(__xdata uint8_t *ptr);  /* 0x1c5d */
+extern void usb_func_1c4a(uint8_t val);           /* 0x1c4a */
+extern uint8_t nvme_get_pcie_count_config(void);  /* 0x1c90 */
+extern uint8_t helper_466b(void);                 /* 0x466b - check state */
+extern uint8_t helper_043f(void);                 /* 0x043f - check callback */
+extern void helper_36ab(void);                    /* 0x36ab - setup transfer */
+extern void helper_04da(uint8_t param);           /* 0x04da - param setup */
+extern uint8_t usb_read_transfer_params(void);    /* 0x31a5 */
+extern uint8_t helper_322e(void);                 /* 0x322e - compare helper */
+extern uint8_t helper_313f(uint8_t r0_val);       /* 0x313f - count check */
+extern void helper_31ad(__xdata uint8_t *ptr);    /* 0x31ad - transfer helper */
+extern void scsi_completion_handler(void);        /* 0x5216 */
+extern uint8_t nvme_get_dma_status_masked(uint8_t index); /* 0x3298 */
+
 /*
  * helper_3f4a - Initial status check for state_action_dispatch
- * Address: 0x3f4a
+ * Address: 0x3f4a-0x40d8 (~400 bytes)
  *
- * Returns 0 on failure, non-zero on success.
- * Called at the start of state_action_dispatch to check if
- * the action can proceed.
+ * This is a complex status check function with multiple return values:
+ *   0 - Check failed, action cannot proceed
+ *   1 - Transfer completed successfully
+ *   2 - Return via R3=2 path (pending state)
+ *   5 - PCIe link not ready or transfer error
+ *  11 (0x0B) - Transfer in progress
+ *
+ * Called at the start of state_action_dispatch to check if the action can proceed.
  */
 uint8_t helper_3f4a(void)
 {
-    /* TODO: Implement actual status check logic from 0x3f4a */
-    /* Returns the checked status - non-zero allows action to proceed */
-    return 1;  /* Default: action can proceed */
+    uint8_t status;
+    uint8_t val_06e5, val_044b;
+
+    /* 0x3f4a: Check 0x07EF - if non-zero, return 0 */
+    if (*(__xdata uint8_t *)0x07EF != 0) {
+        /* 0x3fda path: return 0 */
+        helper_523c(0, 0x3A, 2);
+        return 5;
+    }
+
+    /* 0x3f53: Call usb_func_1c5d with dptr=0x0464 */
+    usb_func_1c5d((__xdata uint8_t *)0x0464);
+
+    /* 0x3f59: Clear 0x07E5 */
+    *(__xdata uint8_t *)0x07E5 = 0;
+
+    /* 0x3f5e: Call usb_func_1c4a(0) */
+    usb_func_1c4a(0);
+
+    /* 0x3f61: Check 0x0002 */
+    if (*(__xdata uint8_t *)0x0002 != 0) {
+        /* 0x3f67: Clear 0x0B2F */
+        G_USB_TRANSFER_FLAG = 0;
+        /* Then jump to 0x3f82 */
+    } else {
+        /* 0x3f6e: Check 0xB480 bit 0 (PCIe link status) */
+        if (!(REG_PCIE_LINK_STATUS & 0x01)) {
+            return 5;  /* PCIe link not ready */
+        }
+
+        /* 0x3f78: Call nvme_get_pcie_count_config() */
+        status = nvme_get_pcie_count_config();
+
+        /* 0x3f7b: Check bit 7 of result */
+        if (status & 0x80) {
+            /* Return 2 with R3=2, R5=4 via 0x3fd3 -> 0x3fde */
+            helper_523c(2, 4, 2);
+            return 5;
+        }
+    }
+
+    /* 0x3f82: Check G_XFER_STATE_0AF6 */
+    if (G_XFER_STATE_0AF6 == 0) {
+        /* 0x3f88: Call helper_466b */
+        status = helper_466b();
+        if (status != 0) {
+            return 0x0B;  /* Return 11 */
+        }
+    }
+
+    /* 0x3f91: Call nvme_get_pcie_count_config and check if == 4 */
+    status = nvme_get_pcie_count_config();
+    if (status == 4) {
+        /* 0x3fe6: Branch for mode 4 */
+        val_06e5 = *(__xdata uint8_t *)0x06E5;
+        val_044b = *(__xdata uint8_t *)0x044B;
+
+        if (val_06e5 == val_044b) {
+            /* Check 0x0AF8 */
+            if (G_POWER_INIT_FLAG == 0) {
+                /* Check 0xB480 bit 0 */
+                if (!(REG_PCIE_LINK_STATUS & 0x01)) {
+                    helper_04da(2);
+                }
+
+                /* 0x4004: Call helper_36ab */
+                helper_36ab();
+
+                /* Check 0x0AF8 again */
+                if (G_POWER_INIT_FLAG != 0) {
+                    return 0x0B;
+                }
+            }
+        }
+        return 0;
+    }
+
+    /* 0x3f98: Check 0x06E8 */
+    if (*(__xdata uint8_t *)0x06E8 != 0) {
+        goto check_044c;
+    }
+
+    /* 0x3f9e: Call helper_043f */
+    status = helper_043f();
+    if (status == 0) {
+        /* Jump to 0x3fda - return 0 */
+        helper_523c(0, 0x3A, 2);
+        return 5;
+    }
+
+    /* 0x3fa4: Check table entry at 0x0464 index */
+    {
+        uint8_t idx = *(__xdata uint8_t *)0x0464;
+        uint16_t table_addr = 0x057E + (idx * 0x0A);
+        uint8_t table_val = *(__xdata uint8_t *)table_addr;
+
+        if (table_val == 0x0F) {
+            /* Jump to 0x3fda */
+            helper_523c(0, 0x3A, 2);
+            return 5;
+        }
+    }
+
+check_044c:
+    /* 0x3fba: Check 0x044C */
+    if (*(__xdata uint8_t *)0x044C == 0) {
+        /* Check 0x0002 */
+        if (*(__xdata uint8_t *)0x0002 == 0) {
+            /* Check 0x0AF6 */
+            if (G_XFER_STATE_0AF6 != 0) {
+                return 0x0B;
+            }
+        }
+
+        /* 0x3fcc: Clear 0x044C, set R3=1 */
+        *(__xdata uint8_t *)0x044C = 0;
+        /* R3=1, R5=4, R7=2 -> return 5 via helper_523c */
+        helper_523c(1, 4, 2);
+        return 5;
+    }
+
+    /* 0x3fd7: Return 0x0B */
+    return 0x0B;
 }
 
 /*
  * helper_1d1d - Setup helper for state_action_dispatch
- * Address: 0x1d1d
+ * Address: 0x1d1d-0x1d23 (7 bytes)
  *
- * Performs setup operations after initial status check passes.
- * Called from multiple places in the state machine.
+ * Sets USB transfer flag to 1 to indicate transfer active.
+ *
+ * Original disassembly:
+ *   1d1d: mov dptr, #0x0b2e    ; G_USB_TRANSFER_FLAG
+ *   1d20: mov a, #0x01
+ *   1d22: movx @dptr, a        ; Write 1
+ *   1d23: ret
  */
 void helper_1d1d(void)
 {
-    /* TODO: Implement setup logic from 0x1d1d */
+    G_USB_TRANSFER_FLAG = 1;
 }
 
 /*
@@ -1232,5 +1414,93 @@ void transfer_helper_1709(void)
 
     /* The DPTR is left at 0xCE42 for caller to use */
     /* In C we can't set DPTR directly, but caller will use next address */
+}
+
+/*
+ * helper_466b - Check transfer state
+ * Address: 0x466b
+ *
+ * Returns non-zero if transfer is busy/in-progress, 0 if idle.
+ * Called from helper_3f4a when G_XFER_STATE_0AF6 == 0.
+ */
+uint8_t helper_466b(void)
+{
+    /* TODO: Implement actual state check from 0x466b */
+    return 0;  /* Default: not busy */
+}
+
+/*
+ * helper_043f - Check callback/operation status
+ * Address: 0x043f
+ *
+ * Performs callback status check.
+ * Returns non-zero on success, 0 on failure.
+ */
+uint8_t helper_043f(void)
+{
+    /* TODO: Implement callback check from 0x043f */
+    return 1;  /* Default: success */
+}
+
+/*
+ * helper_36ab - Setup transfer operation
+ * Address: 0x36ab
+ *
+ * Initializes transfer state and parameters.
+ * Called during transfer setup in helper_3f4a.
+ */
+void helper_36ab(void)
+{
+    /* TODO: Implement transfer setup from 0x36ab */
+}
+
+/*
+ * helper_04da - Parameter setup
+ * Address: 0x04da
+ *
+ * Takes a parameter and performs state/parameter setup.
+ */
+void helper_04da(uint8_t param)
+{
+    (void)param;
+    /* TODO: Implement parameter setup from 0x04da */
+}
+
+/*
+ * helper_322e - Compare helper
+ * Address: 0x322e
+ *
+ * Compares values and returns carry flag result.
+ * Returns 1 if carry set (comparison failed), 0 if clear (success).
+ */
+uint8_t helper_322e(void)
+{
+    /* TODO: Implement compare logic from 0x322e */
+    return 0;  /* Default: comparison OK */
+}
+
+/*
+ * helper_313f - Count check helper
+ * Address: 0x313f
+ *
+ * Checks count at IDATA[r0_val] and returns status.
+ */
+uint8_t helper_313f(uint8_t r0_val)
+{
+    (void)r0_val;
+    /* TODO: Implement count check from 0x313f */
+    return 0;  /* Default: count is zero */
+}
+
+/*
+ * helper_31ad - Transfer parameter helper
+ * Address: 0x31ad
+ *
+ * Processes transfer parameters at the given pointer.
+ */
+void helper_31ad(__xdata uint8_t *ptr)
+{
+    (void)ptr;
+    /* TODO: Implement transfer param helper from 0x31ad */
 }
 

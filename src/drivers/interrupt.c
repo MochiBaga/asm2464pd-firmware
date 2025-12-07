@@ -155,7 +155,7 @@ uint8_t int_check_system_event(void)
  */
 uint8_t int_check_nvme_queue(void)
 {
-    return (REG_INT_PCIE_NVME & 0x40);
+    return (REG_INT_PCIE_NVME & INT_PCIE_NVME_STATUS);
 }
 
 /*
@@ -173,7 +173,7 @@ uint8_t int_check_nvme_queue(void)
  */
 uint8_t int_check_pcie_event(void)
 {
-    return (REG_INT_PCIE_NVME & 0x20);
+    return (REG_INT_PCIE_NVME & INT_PCIE_NVME_EVENT);
 }
 
 /*
@@ -191,7 +191,7 @@ uint8_t int_check_pcie_event(void)
  */
 uint8_t int_check_nvme_complete(void)
 {
-    return (REG_INT_PCIE_NVME & 0x10);
+    return (REG_INT_PCIE_NVME & INT_PCIE_NVME_TIMER);
 }
 
 /*

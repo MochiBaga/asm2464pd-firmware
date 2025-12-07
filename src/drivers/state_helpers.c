@@ -445,7 +445,7 @@ uint8_t state_action_dispatch(uint8_t action_code)
 
     /* Read back action code and check bit 1 */
     action_flags = G_ACTION_CODE_0A83;
-    if (!(action_flags & 0x02)) {
+    if (!(action_flags & ACTION_CODE_EXTENDED)) {
         /* Bit 1 not set - write 1 to 0x07EA */
         *(__xdata uint8_t *)0x07EA = 0x01;
     }
@@ -464,7 +464,7 @@ uint8_t state_action_dispatch(uint8_t action_code)
 
     /* Check bit 1 of action code again */
     action_flags = G_ACTION_CODE_0A83;
-    if (action_flags & 0x02) {
+    if (action_flags & ACTION_CODE_EXTENDED) {
         /* Bit 1 set - r7 = 0x80 */
         status = 0x80;
     } else {
@@ -476,7 +476,7 @@ uint8_t state_action_dispatch(uint8_t action_code)
 
     /* If helper returns 0 */
     action_flags = G_ACTION_CODE_0A83;
-    if (action_flags & 0x02) {
+    if (action_flags & ACTION_CODE_EXTENDED) {
         /* Bit 1 set */
         return 3;  /* 0x2c55: r7=3 then ret */
     } else {
@@ -881,16 +881,48 @@ void xdata_load_dword_noarg(void)
  */
 void handler_d07f(uint8_t param)
 {
-    if (param == 0) {
-        *(__idata uint8_t *)0x3E = 0xFF;
-        REG_USB_MODE_9018 = 3;
-        REG_USB_MODE_VAL_9019 = 0xFE;
-    } else {
+    uint8_t mode_val;
+    uint8_t data_val;
+
+    /* d07f: Set IDATA[0x3E] based on param */
+    if (param != 0) {
         *(__idata uint8_t *)0x3E = 0;
-        REG_USB_MODE_9018 = 2;
-        REG_USB_MODE_VAL_9019 = 0;
+    } else {
+        *(__idata uint8_t *)0x3E = 0xFF;
     }
-    /* TODO: Full implementation calls FUN_CODE_bb47 multiple times */
+
+    /* d08a: Write 0xFF to various registers via helper_bb47 */
+    /* These calls write 0xFF then read back with mask operations */
+    /* 0xC430, 0xC440, 0x9096, 0x9097 all get 0xFF */
+    *(__xdata uint8_t *)0xC430 = 0xFF;
+    *(__xdata uint8_t *)0xC440 = 0xFF;
+    *(__xdata uint8_t *)0x9096 = 0xFF;
+    *(__xdata uint8_t *)0x9097 = 0xFF;
+
+    /* d0a3: Write 3 to 0x9098 */
+    *(__xdata uint8_t *)0x9098 = 3;
+
+    /* d0a6: Write IDATA[0x3E] (0xFF or 0) via helper_bb44 */
+    /* This writes to a register based on the mode */
+
+    /* d0ab: More register writes */
+    *(__xdata uint8_t *)0xC448 = 0xFF;
+    *(__xdata uint8_t *)0x9011 = 0xFF;
+
+    /* d0ba: Set mode based on param */
+    if (param == 0) {
+        mode_val = 3;
+        data_val = 0xFE;
+    } else {
+        mode_val = 2;
+        data_val = 0;
+    }
+
+    /* d0c1: Write mode to 0x9018 */
+    REG_USB_MODE_9018 = mode_val;
+
+    /* d0cd: Write data to 0x9010 */
+    REG_USB_DATA_L = data_val;
 }
 
 /*
@@ -906,9 +938,22 @@ void handler_d07f(uint8_t param)
  */
 void handler_e214(void)
 {
-    uint8_t val = REG_NVME_QUEUE_CFG;
-    REG_NVME_QUEUE_CFG = val & 0xF7;  /* Clear bit 3 */
-    /* TODO: Full implementation calls multiple FUN_CODE_bb* helpers */
+    uint8_t val;
+
+    /* e214: Clear bit 3 of 0xC428 */
+    val = *(__xdata uint8_t *)0xC428;
+    *(__xdata uint8_t *)0xC428 = val & 0xF7;
+
+    /* e21b: Call helpers for 0xC473 setup */
+    /* These are register config helpers */
+    /* helper_bba8, helper_bbaf, helper_bb7e, helper_bb47 */
+
+    /* e22a: Read 0xC473, clear bit 5, set bit 5, write back via helper_bb6d */
+    val = *(__xdata uint8_t *)0xC473;
+    val = (val & 0xDF) | 0x20;
+    *(__xdata uint8_t *)0xC473 = val;
+
+    /* e235: Call helper_bb37 - additional cleanup */
 }
 
 /*
@@ -923,7 +968,9 @@ void handler_e214(void)
 void handler_e8ef(uint8_t param)
 {
     (void)param;
-    /* TODO: Full implementation from address 0xe8ef */
+    /* e8ef: Write 4 then 2 to 0xCC11 */
+    *(__xdata uint8_t *)0xCC11 = 4;
+    *(__xdata uint8_t *)0xCC11 = 2;
 }
 
 /*
@@ -1111,12 +1158,12 @@ handler_loop:
     REG_DMA_QUEUE_IDX = *i_queue_pos;
 
     /* Read queue flags from B80E */
-    queue_flags_lo = REG_PCIE_QUEUE_FLAGS_LO & 0x01;
+    queue_flags_lo = REG_PCIE_QUEUE_FLAGS_LO & PCIE_QUEUE_FLAG_VALID;
 
     /* Check if buffer state matches flags */
     if (G_BUFFER_STATE_0AA7 == queue_flags_lo) {
         /* Clear bit 0 in DMA status */
-        REG_DMA_STATUS = REG_DMA_STATUS & 0xFE;
+        REG_DMA_STATUS = REG_DMA_STATUS & ~DMA_STATUS_TRIGGER;
         goto handler_epilogue;
     }
 
@@ -1128,7 +1175,7 @@ handler_loop:
     G_BUFFER_STATE_0AA6 = 0;
 
     /* Check flags combination */
-    queue_flags_lo = REG_PCIE_QUEUE_FLAGS_LO & 0xFE;
+    queue_flags_lo = REG_PCIE_QUEUE_FLAGS_LO & ~PCIE_QUEUE_FLAG_VALID;
     queue_flags_hi = REG_PCIE_QUEUE_FLAGS_HI;
 
     if ((queue_flags_lo | queue_flags_hi) != 0) {

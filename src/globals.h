@@ -138,6 +138,11 @@ __idata __at(0x55) extern uint8_t I_WORK_55;   /* Work variable 0x55 */
 #define G_LOOP_STATE_0991       XDATA_VAR8(0x0991)  /* Loop state byte */
 #define G_EVENT_CHECK_09EF      XDATA_VAR8(0x09EF)  /* Event check byte */
 #define G_EVENT_FLAGS           XDATA_VAR8(0x09F9)  /* Event flags */
+#define   EVENT_FLAG_PENDING      0x01  // Bit 0: Event pending
+#define   EVENT_FLAG_PROCESS      0x02  // Bit 1: Process event
+#define   EVENT_FLAG_POWER        0x04  // Bit 2: Power event
+#define   EVENT_FLAG_ACTIVE       0x80  // Bit 7: Events active
+#define   EVENT_FLAGS_ANY         0x83  // Bits 0,1,7: Any event flag
 #define G_EVENT_CTRL_09FA       XDATA_VAR8(0x09FA)  /* Event control */
 
 //=============================================================================
@@ -145,9 +150,11 @@ __idata __at(0x55) extern uint8_t I_WORK_55;   /* Work variable 0x55 */
 //=============================================================================
 #define G_LOOP_STATE            XDATA_VAR8(0x0A59)  /* Main loop state flag */
 #define G_ACTION_CODE_0A83      XDATA_VAR8(0x0A83)  /* Action code storage for state_action_dispatch */
+#define   ACTION_CODE_EXTENDED    0x02  // Bit 1: Extended mode flag
 #define G_EP_DISPATCH_VAL1      XDATA_VAR8(0x0A7B)  /* Endpoint dispatch value 1 */
 #define G_EP_DISPATCH_VAL2      XDATA_VAR8(0x0A7C)  /* Endpoint dispatch value 2 */
 #define G_EP_DISPATCH_VAL3      XDATA_VAR8(0x0A7D)  /* Endpoint dispatch value 3 */
+#define G_EP_DISPATCH_VAL4      XDATA_VAR8(0x0A7E)  /* Endpoint dispatch value 4 */
 #define G_STATE_COUNTER_HI      XDATA_VAR8(0x0AA3)  /* State counter high */
 #define G_STATE_COUNTER_LO      XDATA_VAR8(0x0AA4)  /* State counter low */
 #define G_LOG_PROCESSED_INDEX   XDATA_VAR8(0x0AA1)  /* Current processed log index */
@@ -164,13 +171,19 @@ __idata __at(0x55) extern uint8_t I_WORK_55;   /* Work variable 0x55 */
 #define G_STATE_FLAG_0AE3       XDATA_VAR8(0x0AE3)  /* System state flag */
 #define G_STATE_CHECK_0AEE      XDATA_VAR8(0x0AEE)  /* State check byte */
 #define G_STATE_FLAG_0AF1       XDATA_VAR8(0x0AF1)  /* State flag */
+#define   STATE_FLAG_INIT         0x02  // Bit 1: Init state flag
+#define   STATE_FLAG_PHY_READY    0x20  // Bit 5: PHY link ready
 #define G_TRANSFER_FLAG_0AF2    XDATA_VAR8(0x0AF2)  /* Transfer flag 0x0AF2 */
 #define G_EP_DISPATCH_OFFSET    XDATA_VAR8(0x0AF5)  /* Endpoint dispatch offset */
 #define G_XFER_STATE_0AF6       XDATA_VAR8(0x0AF6)  /* Transfer state 0x0AF6 */
 #define G_XFER_CTRL_0AF7        XDATA_VAR8(0x0AF7)  /* Transfer control 0x0AF7 */
 #define G_POWER_INIT_FLAG       XDATA_VAR8(0x0AF8)  /* Power init flag (set to 0 in usb_power_init) */
+#define G_XFER_MODE_0AF9        XDATA_VAR8(0x0AF9)  /* Transfer mode/state: 1=mode1, 2=mode2 */
 #define G_TRANSFER_PARAMS_HI    XDATA_VAR8(0x0AFA)  /* Transfer params high byte */
 #define G_TRANSFER_PARAMS_LO    XDATA_VAR8(0x0AFB)  /* Transfer params low byte */
+#define G_XFER_COUNT_LO         XDATA_VAR8(0x0AFC)  /* Transfer counter low byte */
+#define G_XFER_COUNT_HI         XDATA_VAR8(0x0AFD)  /* Transfer counter high byte */
+#define G_XFER_RETRY_CNT        XDATA_VAR8(0x0AFE)  /* Transfer retry counter */
 #define G_USB_PARAM_0B00        XDATA_VAR8(0x0B00)  /* USB parameter storage */
 #define G_USB_INIT_0B01         XDATA_VAR8(0x0B01)  /* USB init state flag */
 #define G_USB_TRANSFER_FLAG     XDATA_VAR8(0x0B2E)  /* USB transfer flag */

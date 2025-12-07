@@ -76,6 +76,7 @@
 #define   USB_STATUS_CONNECTED    0x80  // Bit 7: USB ready/connected
 #define REG_USB_CONTROL         XDATA_REG8(0x9001)
 #define REG_USB_CONFIG          XDATA_REG8(0x9002)
+#define   USB_CONFIG_MASK        0x0F  // Bits 0-3: USB configuration
 #define REG_USB_EP0_STATUS      XDATA_REG8(0x9003)
 #define REG_USB_EP0_LEN_L       XDATA_REG8(0x9004)
 #define REG_USB_EP0_LEN_H       XDATA_REG8(0x9005)
@@ -102,6 +103,7 @@
 #define REG_USB_STATUS_909E     XDATA_REG8(0x909E)
 #define REG_USB_SIGNAL_90A1     XDATA_REG8(0x90A1)
 #define REG_USB_SPEED           XDATA_REG8(0x90E0)
+#define   USB_SPEED_MASK         0x03  // Bits 0-1: USB speed mode
 #define REG_USB_MODE            XDATA_REG8(0x90E2)
 #define REG_USB_EP_STATUS_90E3  XDATA_REG8(0x90E3)
 
@@ -170,7 +172,9 @@
 #define REG_PCIE_QUEUE_INDEX_LO XDATA_REG8(0xB80C)  // Queue index low
 #define REG_PCIE_QUEUE_INDEX_HI XDATA_REG8(0xB80D)  // Queue index high
 #define REG_PCIE_QUEUE_FLAGS_LO XDATA_REG8(0xB80E)  // Queue flags low
+#define   PCIE_QUEUE_FLAG_VALID    0x01  // Bit 0: Queue entry valid
 #define REG_PCIE_QUEUE_FLAGS_HI XDATA_REG8(0xB80F)  // Queue flags high
+#define   PCIE_QUEUE_ID_MASK       0x0E  // Bits 1-3: Queue ID (shifted)
 #define REG_PCIE_TLP_CTRL       XDATA_REG8(0xB213)
 #define REG_PCIE_TLP_LENGTH     XDATA_REG8(0xB216)
 #define REG_PCIE_BYTE_EN        XDATA_REG8(0xB217)
@@ -194,6 +198,8 @@
 #define   PCIE_STATUS_COMPLETE    0x02  // Bit 1: Completion status
 #define   PCIE_STATUS_BUSY        0x04  // Bit 2: Busy flag
 #define REG_PCIE_CTRL_B402      XDATA_REG8(0xB402)
+#define   PCIE_CTRL_B402_BIT0     0x01  // Bit 0: Control flag 0
+#define   PCIE_CTRL_B402_BIT1     0x02  // Bit 1: Control flag 1
 #define REG_PCIE_LANE_COUNT     XDATA_REG8(0xB424)
 #define REG_PCIE_LINK_STATUS_ALT XDATA_REG16(0xB4AE)
 #define REG_PCIE_LANE_MASK      XDATA_REG8(0xB4C8)
@@ -248,6 +254,7 @@
 #define REG_NVME_ERROR          XDATA_REG8(0xC427)
 #define REG_NVME_QUEUE_CFG      XDATA_REG8(0xC428)
 #define REG_NVME_CMD_PARAM      XDATA_REG8(0xC429)
+#define   NVME_CMD_PARAM_TYPE    0xE0  // Bits 5-7: Command parameter type
 #define REG_NVME_DOORBELL       XDATA_REG8(0xC42A)
 #define   NVME_DOORBELL_TRIGGER   0x01  // Bit 0: Doorbell trigger
 #define   NVME_DOORBELL_MODE      0x08  // Bit 3: Doorbell mode
@@ -303,6 +310,8 @@
 #define REG_INT_CTRL_C809       XDATA_REG8(0xC809)
 #define REG_INT_PCIE_NVME       XDATA_REG8(0xC80A)
 #define   INT_PCIE_NVME_EVENTS    0x0F  // Bits 0-3: PCIe event flags
+#define   INT_PCIE_NVME_TIMER     0x10  // Bit 4: Timer-related event
+#define   INT_PCIE_NVME_EVENT     0x20  // Bit 5: Generic event flag
 #define   INT_PCIE_NVME_STATUS    0x40  // Bit 6: PCIe/NVMe status
 
 //=============================================================================
@@ -358,6 +367,7 @@
 #define REG_DMA_STATUS2         XDATA_REG8(0xC8D8)
 #define   DMA_STATUS2_TRIGGER     0x01  // Bit 0: Status 2 trigger
 #define REG_DMA_STATUS3         XDATA_REG8(0xC8D9)
+#define   DMA_STATUS3_UPPER      0xF8  // Bits 3-7: Status upper bits
 
 //=============================================================================
 // CPU Mode/Control (0xCA00-0xCAFF)
@@ -369,7 +379,9 @@
 //=============================================================================
 #define REG_TIMER0_DIV          XDATA_REG8(0xCC10)
 #define REG_TIMER0_CSR          XDATA_REG8(0xCC11)
+#define   TIMER_CSR_ENABLE        0x01  // Bit 0: Timer enable
 #define   TIMER_CSR_EXPIRED       0x02  // Bit 1: Timer expired flag
+#define   TIMER_CSR_CLEAR         0x04  // Bit 2: Clear interrupt
 #define REG_TIMER0_THRESHOLD    XDATA_REG16(0xCC12)
 #define REG_TIMER1_DIV          XDATA_REG8(0xCC16)
 #define REG_TIMER1_CSR          XDATA_REG8(0xCC17)
@@ -488,11 +500,14 @@
 //=============================================================================
 #define REG_LINK_STATUS_E712    XDATA_REG8(0xE712)
 #define REG_LINK_STATUS_E716    XDATA_REG8(0xE716)
+#define   LINK_STATUS_E716_MASK  0x03  // Bits 0-1: Link status
 #define REG_SYS_CTRL_E760       XDATA_REG8(0xE760)
 #define REG_SYS_CTRL_E761       XDATA_REG8(0xE761)
 #define REG_SYS_CTRL_E763       XDATA_REG8(0xE763)
 #define REG_FLASH_READY_STATUS  XDATA_REG8(0xE795)
 #define REG_PHY_LINK_CTRL       XDATA_REG8(0xE7E3)
+#define   PHY_LINK_CTRL_BIT6      0x40  // Bit 6: PHY link control flag
+#define   PHY_LINK_CTRL_BIT7      0x80  // Bit 7: PHY link ready
 #define REG_LINK_MODE_CTRL      XDATA_REG8(0xE7FC)
 
 //=============================================================================

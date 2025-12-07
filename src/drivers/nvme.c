@@ -319,7 +319,7 @@ uint8_t nvme_check_scsi_ctrl(void)
  */
 uint8_t nvme_get_cmd_param_upper(void)
 {
-    return REG_NVME_CMD_PARAM & 0xE0;
+    return REG_NVME_CMD_PARAM & NVME_CMD_PARAM_TYPE;
 }
 
 /*
@@ -1080,7 +1080,7 @@ uint8_t nvme_get_idata_0d_r7(void)
  */
 uint8_t nvme_get_dma_status_masked(void)
 {
-    return REG_DMA_STATUS3 & 0xF8;
+    return REG_DMA_STATUS3 & DMA_STATUS3_UPPER;
 }
 
 /* Forward declaration for reg_wait_bit_clear from state_helpers.c */
@@ -1389,11 +1389,11 @@ void nvme_init_registers(void)
     /* Wait for bit 0 of 0xCE89 to be set */
     do {
         val = REG_XFER_READY;
-    } while ((val & 0x01) == 0);
+    } while ((val & XFER_READY_BIT) == 0);
 
     /* Check bit 1 for error/abort condition */
     val = REG_XFER_READY;
-    if (val & 0x02) {
+    if (val & XFER_READY_DONE) {
         /* Error condition, abort initialization */
         return;
     }

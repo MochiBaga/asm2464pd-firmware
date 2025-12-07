@@ -301,30 +301,30 @@ void timer0_isr(void) __interrupt(1) __using(0)
 
     /* Check system state flags at 0x09F9 (global variable) */
     status = G_EVENT_FLAGS;
-    if (status & 0x83) {
+    if (status & EVENT_FLAGS_ANY) {
         /* Check 0xC80A bit 5 - async PCIe event */
-        if (REG_INT_PCIE_NVME & 0x20) {
+        if (REG_INT_PCIE_NVME & INT_PCIE_NVME_EVENT) {
             timer_pcie_async_event();
         }
 
         /* Check 0xC80A bit 4 - PCIe link event */
-        if (REG_INT_PCIE_NVME & 0x10) {
+        if (REG_INT_PCIE_NVME & INT_PCIE_NVME_TIMER) {
             timer_pcie_link_event();
         }
 
         /* Check NVMe event at 0xEC06 bit 0 */
-        if (REG_NVME_EVENT_STATUS & 0x01) {
+        if (REG_NVME_EVENT_STATUS & NVME_EVENT_PENDING) {
             /* Acknowledge NVMe event */
             REG_NVME_EVENT_ACK = 0x01;
 
             /* Check PHY status at 0x0AF1 bit 5 */
-            if (G_STATE_FLAG_0AF1 & 0x20) {
+            if (G_STATE_FLAG_0AF1 & STATE_FLAG_PHY_READY) {
                 /* Clear bits 6 and 7 of PHY link control */
                 status = REG_PHY_LINK_CTRL;
-                status &= 0xBF;  /* Clear bit 6 */
+                status &= ~PHY_LINK_CTRL_BIT6;  /* Clear bit 6 */
                 REG_PHY_LINK_CTRL = status;
                 status = REG_PHY_LINK_CTRL;
-                status &= 0x7F;  /* Clear bit 7 */
+                status &= ~PHY_LINK_CTRL_BIT7;  /* Clear bit 7 */
                 REG_PHY_LINK_CTRL = status;
             }
 
@@ -333,14 +333,14 @@ void timer0_isr(void) __interrupt(1) __using(0)
 
         /* Check 0xC80A low nibble for PCIe/NVMe errors */
         status = REG_INT_PCIE_NVME;
-        if (status & 0x0F) {
+        if (status & INT_PCIE_NVME_EVENTS) {
             timer_pcie_error_handler();
         }
     }
 
     /* Check 0xC806 bit 4 - system event */
     status = REG_INT_SYSTEM;
-    if (status & 0x10) {
+    if (status & INT_SYSTEM_TIMER) {
         timer_system_event_stub();
     }
 }
@@ -362,8 +362,8 @@ void timer0_isr(void) __interrupt(1) __using(0)
  */
 void timer0_csr_ack(void)
 {
-    REG_TIMER0_CSR = 0x04;  /* Clear interrupt flag */
-    REG_TIMER0_CSR = 0x02;  /* Clear done flag */
+    REG_TIMER0_CSR = TIMER_CSR_CLEAR;  /* Clear interrupt flag */
+    REG_TIMER0_CSR = TIMER_CSR_EXPIRED;  /* Clear done flag */
 }
 
 /*

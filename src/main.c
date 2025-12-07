@@ -321,8 +321,8 @@ void main_loop(void)
 
         /* Check event flags */
         events = G_EVENT_FLAGS;
-        if (events & 0x83) {
-            if (events & 0x81) {
+        if (events & EVENT_FLAGS_ANY) {
+            if (events & (EVENT_FLAG_ACTIVE | EVENT_FLAG_PENDING)) {
                 handler_0494();
             }
             handler_0606();
@@ -952,17 +952,17 @@ void handler_0589(void)
 
     /* Read state flag and check bit 1 */
     val = G_STATE_FLAG_0AF1;
-    if (val & 0x02) {
+    if (val & STATE_FLAG_INIT) {
         /* If bit 1 set, call handler 0x057A with R7=0x03 */
         /* This would handle a specific condition */
     }
 
     /* Configure PCIe control register */
     val = REG_PCIE_CTRL_B402;
-    val = val & 0xFE;  /* Clear bit 0 */
+    val = val & ~PCIE_CTRL_B402_BIT0;  /* Clear bit 0 */
     REG_PCIE_CTRL_B402 = val;
     val = REG_PCIE_CTRL_B402;
-    val = val & 0xFD;  /* Clear bit 1 */
+    val = val & ~PCIE_CTRL_B402_BIT1;  /* Clear bit 1 */
     REG_PCIE_CTRL_B402 = val;
 }
 
@@ -1106,9 +1106,9 @@ void handler_039a(void)
     }
 
     /* Initiate buffer transfer - write sequence to timer CSR */
-    REG_TIMER1_CSR = 0x04;
-    REG_TIMER1_CSR = 0x02;
-    REG_TIMER1_CSR = 0x01;  /* dec a gives 0x01 */
+    REG_TIMER1_CSR = TIMER_CSR_CLEAR;
+    REG_TIMER1_CSR = TIMER_CSR_EXPIRED;
+    REG_TIMER1_CSR = TIMER_CSR_ENABLE;
 }
 
 /*
@@ -1144,10 +1144,10 @@ void handler_0520(void)
 
     /* Read timer 3 CSR and check bit 1 */
     val = REG_TIMER3_CSR;
-    if (val & 0x02) {
+    if (val & TIMER_CSR_EXPIRED) {
         /* Call helper 0xE3D8 */
         /* Write 0x02 to acknowledge */
-        REG_TIMER3_CSR = 0x02;
+        REG_TIMER3_CSR = TIMER_CSR_EXPIRED;
     }
 
     /* Read CPU status 81 and check bit 1 */
@@ -1528,20 +1528,20 @@ void ext1_isr(void) __interrupt(INT_EXT1) __using(1)
 
     /* Check PCIe/NVMe status bit 6 */
     status = REG_INT_PCIE_NVME;
-    if (status & 0x40) {
+    if (status & INT_PCIE_NVME_STATUS) {
         handler_052f();
     }
 
     /* Check event flags */
-    events = G_EVENT_FLAGS & 0x83;
+    events = G_EVENT_FLAGS & EVENT_FLAGS_ANY;
     if (events != 0) {
         status = REG_INT_PCIE_NVME;
 
-        if (status & 0x20) {
+        if (status & INT_PCIE_NVME_EVENT) {
             handler_061a();
         }
 
-        if (status & 0x10) {
+        if (status & INT_PCIE_NVME_TIMER) {
             handler_0593();
         }
 

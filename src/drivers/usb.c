@@ -609,10 +609,10 @@ void usb_buffer_handler(void)
         }
     }
 
-    /* Configure Timer 1 CSR with sequence: 0x04, 0x02, 0x01 */
-    REG_TIMER1_CSR = 0x04;
-    REG_TIMER1_CSR = 0x02;
-    REG_TIMER1_CSR = 0x01;
+    /* Configure Timer 1 CSR with sequence: clear, expired, enable */
+    REG_TIMER1_CSR = TIMER_CSR_CLEAR;
+    REG_TIMER1_CSR = TIMER_CSR_EXPIRED;
+    REG_TIMER1_CSR = TIMER_CSR_ENABLE;
 }
 
 /*===========================================================================
@@ -1152,7 +1152,7 @@ __xdata uint8_t *usb_calc_indexed_addr(void)
  */
 uint8_t usb_read_queue_status_masked(void)
 {
-    uint8_t val = REG_SCSI_DMA_QUEUE_STAT & 0x0F;
+    uint8_t val = REG_SCSI_DMA_QUEUE_STAT & SCSI_DMA_QUEUE_MASK;
     *(__idata uint8_t *)0x40 = val;
     return val;
 }
@@ -1696,7 +1696,7 @@ void usb_func_1a00(void)
     /* Poll CE89 bit 0 until set */
     do {
         val = REG_XFER_READY;
-    } while (!(val & 0x01));
+    } while (!(val & XFER_READY_BIT));
 
     /* Set IDATA[0x39] = 1 */
     *(__idata uint8_t *)0x39 = 1;
@@ -1709,7 +1709,7 @@ void usb_func_1a00(void)
     if (idata_39 == 1) {
         /* Check CE89 bit 1 */
         val = REG_XFER_READY;
-        if (!(val & 0x02)) {
+        if (!(val & XFER_READY_DONE)) {
             /* Check 0x0AF8 */
             if (G_POWER_INIT_FLAG != 0) {
                 /* Jump to 0x2DB7 - another handler */
@@ -2233,7 +2233,7 @@ void usb_func_1c4a(uint8_t val)
 uint8_t usb_func_1c55(uint8_t input)
 {
     (void)input;
-    return REG_NVME_DEV_STATUS & 0xC0;
+    return REG_NVME_DEV_STATUS & NVME_DEV_STATUS_MASK;
 }
 
 /*
@@ -2279,7 +2279,7 @@ void usb_func_1c6d(uint8_t hi, uint8_t lo)
  */
 uint8_t usb_func_1c77(void)
 {
-    return REG_NVME_CMD_PARAM & 0xE0;
+    return REG_NVME_CMD_PARAM & NVME_CMD_PARAM_TYPE;
 }
 
 /*
@@ -2790,7 +2790,7 @@ void usb_func_5260(uint8_t param)
     }
 
     status = REG_SCSI_DMA_COMPL;
-    if (status & 0x01) {
+    if (status & SCSI_DMA_COMPL_MODE0) {
         /* Call transfer helper at 0x1709 */
         transfer_helper_1709();
     }
@@ -3084,7 +3084,7 @@ void usb_set_bit0(__xdata uint8_t *reg)
  */
 uint8_t usb_get_e716_status(void)
 {
-    return REG_LINK_STATUS_E716 & 0x03;
+    return REG_LINK_STATUS_E716 & LINK_STATUS_E716_MASK;
 }
 
 /*
@@ -3295,7 +3295,7 @@ void usb_set_mode_bit(void)
  */
 uint8_t usb_get_config_90e0(void)
 {
-    return REG_USB_SPEED & 0x03;
+    return REG_USB_SPEED & USB_SPEED_MASK;
 }
 
 /*
@@ -3377,7 +3377,7 @@ void usb_func_1c46(void)
  */
 uint8_t usb_func_1c5b(void)
 {
-    return REG_USB_CONFIG & 0x0F;
+    return REG_USB_CONFIG & USB_CONFIG_MASK;
 }
 
 /*
@@ -3388,7 +3388,7 @@ uint8_t usb_func_1c5b(void)
  */
 uint8_t usb_func_1c71(void)
 {
-    return (REG_USB_STATUS & 0x10) ? 1 : 0;
+    return (REG_USB_STATUS & USB_STATUS_INDICATOR) ? 1 : 0;
 }
 
 /*
@@ -4335,4 +4335,145 @@ void usb_store_idata_16_17(uint8_t hi, uint8_t lo)
 {
     *(__idata uint8_t *)0x16 = hi;
     *(__idata uint8_t *)0x17 = lo;
+}
+
+/*
+ * usb_get_idata_16_17 - Read 16-bit value from IDATA 0x16:0x17
+ * Address: 0x1b77-0x1b7d (7 bytes)
+ *
+ * Reads R6 from IDATA[0x16] (high byte) and A from IDATA[0x17] (low byte).
+ *
+ * Original disassembly:
+ *   1b77: mov r0, #0x16
+ *   1b79: mov a, @r0        ; R6 = [0x16]
+ *   1b7a: mov r6, a
+ *   1b7b: inc r0
+ *   1b7c: mov a, @r0        ; A = [0x17]
+ *   1b7d: ret
+ */
+uint8_t usb_get_idata_16_17(void)
+{
+    /* Returns A (low byte) in R7, R6 gets high byte */
+    return *(__idata uint8_t *)0x17;
+}
+
+/*
+ * usb_write_idata_to_dptr - Write IDATA[0x16:0x17] to DPTR location
+ * Address: 0x1cc8-0x1cd3 (12 bytes)
+ *
+ * Writes the 16-bit value from IDATA[0x16:0x17] to address in DPTR.
+ * Low byte from [0x16] goes first, then high byte from [0x17].
+ *
+ * Original disassembly:
+ *   1cc8: mov r0, #0x16
+ *   1cca: mov a, @r0         ; A = [0x16]
+ *   1ccb: mov r7, a          ; R7 = [0x16]
+ *   1ccc: inc r0
+ *   1ccd: mov a, @r0         ; A = [0x17]
+ *   1cce: xch a, r7          ; swap A and R7
+ *   1ccf: movx @dptr, a      ; write [0x16] to dptr
+ *   1cd0: inc dptr
+ *   1cd1: mov a, r7
+ *   1cd2: movx @dptr, a      ; write [0x17] to dptr+1
+ *   1cd3: ret
+ */
+void usb_write_idata_to_dptr(__xdata uint8_t *ptr)
+{
+    ptr[0] = *(__idata uint8_t *)0x16;
+    ptr[1] = *(__idata uint8_t *)0x17;
+}
+
+/*
+ * usb_clear_c401_bit1 - Clear bit 1 of register 0xC401
+ * Address: 0x1cd4-0x1cdb (8 bytes)
+ *
+ * Reads 0xC401, clears bit 1 (AND 0xFD), writes back.
+ *
+ * Original disassembly:
+ *   1cd4: mov dptr, #0xc401
+ *   1cd7: movx a, @dptr
+ *   1cd8: anl a, #0xfd       ; clear bit 1
+ *   1cda: movx @dptr, a
+ *   1cdb: ret
+ */
+void usb_clear_c401_bit1(void)
+{
+    uint8_t val = *(__xdata uint8_t *)0xC401;
+    val &= 0xFD;
+    *(__xdata uint8_t *)0xC401 = val;
+}
+
+/*
+ * usb_set_ep_queue_param - Set endpoint queue parameter with value
+ * Address: 0x1aad-0x1ac8 (28 bytes approx)
+ *
+ * Stores R7 to G_EP_QUEUE_PARAM (0x0566), then calculates
+ * buffer offset based on G_USB_PARAM_0B00.
+ *
+ * Original disassembly:
+ *   1aad: mov dptr, #0x0566
+ *   1ab0: mov a, r7
+ *   1ab1: movx @dptr, a       ; G_EP_QUEUE_PARAM = R7
+ *   1ab2: mov dptr, #0x0b00
+ *   1ab5: movx a, @dptr       ; A = G_USB_PARAM_0B00
+ *   1ab6: mov 0xf0, #0x40     ; B = 0x40
+ *   1ab9: mul ab              ; A*B
+ *   1aba: mov r7, a           ; R7 = low result
+ *   1abb: mov dptr, #0x021b
+ *   ...
+ */
+void usb_set_ep_queue_param(uint8_t val)
+{
+    uint16_t offset;
+    uint8_t base_lo;
+
+    G_EP_QUEUE_PARAM = val;
+
+    /* Calculate buffer offset: G_USB_PARAM_0B00 * 0x40 + G_BUF_BASE_LO */
+    offset = (uint16_t)G_USB_PARAM_0B00 * 0x40;
+    base_lo = G_BUF_BASE_LO;
+    offset += base_lo;
+
+    /* Store calculated offset for buffer operations */
+    G_BUF_OFFSET_LO = offset & 0xFF;
+    G_BUF_OFFSET_HI = (offset >> 8) & 0xFF;
+}
+
+/*
+ * usb_setup_c415_register - Configure C415 register with state helper
+ * Address: 0x1b47-0x1b5f (25 bytes)
+ *
+ * Reads G_STATE_HELPER_42 (0x0475), masks upper bits from C415,
+ * combines and writes back. Then modifies C412.
+ *
+ * Original disassembly:
+ *   1b47: mov dptr, #0x0475
+ *   1b4a: movx a, @dptr       ; A = G_STATE_HELPER_42
+ *   1b4b: mov r6, a
+ *   1b4c: mov dptr, #0xc415
+ *   1b4f: movx a, @dptr
+ *   1b50: anl a, #0xc0        ; mask upper 2 bits
+ *   1b52: mov r5, a
+ *   1b53: mov a, r6
+ *   1b54: orl a, r5           ; combine
+ *   1b55: movx @dptr, a       ; write to C415
+ *   1b56: mov dptr, #0xc412
+ *   1b59: movx a, @dptr
+ *   1b5a: anl a, #0xfd        ; clear bit 1
+ *   1b5c: orl a, #0x02        ; set bit 1
+ *   1b5e: movx @dptr, a
+ *   1b5f: ret
+ */
+void usb_setup_c415_register(void)
+{
+    uint8_t state_val, reg_val;
+
+    state_val = G_STATE_HELPER_42;
+    reg_val = *(__xdata uint8_t *)0xC415;
+    reg_val = (reg_val & 0xC0) | state_val;
+    *(__xdata uint8_t *)0xC415 = reg_val;
+
+    reg_val = *(__xdata uint8_t *)0xC412;
+    reg_val = (reg_val & 0xFD) | 0x02;
+    *(__xdata uint8_t *)0xC412 = reg_val;
 }
