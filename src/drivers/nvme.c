@@ -3160,7 +3160,7 @@ void nvme_admin_abe9(uint8_t param1, uint8_t param2, uint8_t param3)
 #define REG_FLASH_DATA_LEN_ALT      XDATA_REG8(0xC885)  /* Alternate flash len (not 0xC8A3) */
 #define REG_FLASH_DATA_LEN_HI_ALT   XDATA_REG8(0xC886)  /* Alternate flash len hi (not 0xC8A4) */
 #define REG_TIMER3_CSR_ALT          XDATA_REG8(0xCCB9)  /* Alternate timer3 CSR (not 0xCC23) */
-/* REG_CPU_STATUS_CC81 and REG_CPU_STATUS_CC91 are now in registers.h */
+/* REG_CPU_INT_CTRL (CC81) and REG_CPU_DMA_INT (CC91) are now in registers.h */
 #define G_WORK_CCCF9            XDATA_VAR8(0xCCF9)
 #define G_WORK_CCD9             XDATA_VAR8(0xCCD9)
 
@@ -3267,26 +3267,26 @@ void nvme_pcie_handler_b8b9(void)
         REG_TIMER3_CSR = 2;
     }
 
-    /* Check CC81 */
-    val = REG_CPU_STATUS_CC81;
+    /* Check CPU interrupt ACK bit */
+    val = REG_CPU_INT_CTRL;
     if ((val >> 1) & 1) {
         uint8_t cmd = G_FLASH_OP_COUNTER;
         if (cmd == 0x0E || cmd == 0x0D) {
-            REG_CPU_STATUS_CC81 = 2;
+            REG_CPU_INT_CTRL = CPU_INT_CTRL_ACK;
             if (G_FLASH_CMD_TYPE != 0) {
                 handler_e529(0x3B);
             }
             handler_d676();
         } else {
             handler_e90b();
-            REG_CPU_STATUS_CC81 = 2;
+            REG_CPU_INT_CTRL = CPU_INT_CTRL_ACK;
         }
     }
 
-    /* Check CC91 */
-    val = REG_CPU_STATUS_CC91;
+    /* Check CPU DMA interrupt */
+    val = REG_CPU_DMA_INT;
     if ((val >> 1) & 1) {
-        REG_CPU_STATUS_CC91 = 2;
+        REG_CPU_DMA_INT = CPU_INT_CTRL_ACK;
         /* flash_func_0bc8(0xF8, 0x53, 0xFF) */
     }
 

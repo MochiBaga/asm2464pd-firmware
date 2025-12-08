@@ -511,21 +511,36 @@
 #define REG_CPU_CTRL_CC3D       XDATA_REG8(0xCC3D)
 #define REG_CPU_CTRL_CC3E       XDATA_REG8(0xCC3E)
 #define REG_CPU_CTRL_CC3F       XDATA_REG8(0xCC3F)
-#define REG_CPU_STATUS_CC81     XDATA_REG8(0xCC81)
-#define REG_DMA_CMD_CC88        XDATA_REG8(0xCC88)
-#define REG_DMA_CMD_CC89        XDATA_REG8(0xCC89)
-#define REG_DMA_CMD_CC8A        XDATA_REG8(0xCC8A)
-#define REG_DMA_CMD_CC8B        XDATA_REG8(0xCC8B)
-#define REG_CPU_STATUS_CC91     XDATA_REG8(0xCC91)
-#define REG_DMA_CMD_CC99        XDATA_REG8(0xCC99)  /* DMA command config */
-#define REG_DMA_CMD_CC9A        XDATA_REG8(0xCC9A)  /* DMA command param lo */
-#define REG_DMA_CMD_CC9B        XDATA_REG8(0xCC9B)  /* DMA command param hi */
-#define REG_CPU_STATUS_CC98     XDATA_REG8(0xCC98)
-#define REG_CPU_DMA_CCD8        XDATA_REG8(0xCCD8)
-#define REG_CPU_STATUS_CCD9     XDATA_REG8(0xCCD9)  /* CPU DMA status */
-#define REG_CPU_DMA_CCDA        XDATA_REG8(0xCCDA)
-#define REG_CPU_DMA_CCDB        XDATA_REG8(0xCCDB)
-#define REG_CPU_STATUS_CCF9     XDATA_REG8(0xCCF9)  /* CPU extended status */
+// CPU interrupt control register
+#define REG_CPU_INT_CTRL        XDATA_REG8(0xCC81)
+#define   CPU_INT_CTRL_ACK       0x02  // Bit 1: Acknowledge interrupt
+#define   CPU_INT_CTRL_TRIGGER   0x04  // Bit 2: Trigger interrupt
+
+// Transfer DMA controller - for internal memory block transfers
+#define REG_XFER_DMA_CTRL       XDATA_REG8(0xCC88)  /* Transfer DMA control */
+#define REG_XFER_DMA_CMD        XDATA_REG8(0xCC89)  /* Transfer DMA command/status */
+#define   XFER_DMA_CMD_START     0x01  // Bit 0: Start transfer
+#define   XFER_DMA_CMD_DONE      0x02  // Bit 1: Transfer complete
+#define   XFER_DMA_CMD_MODE      0x30  // Bits 4-5: Transfer mode (0x31 = mode 1)
+#define REG_XFER_DMA_ADDR_LO    XDATA_REG8(0xCC8A)  /* Transfer DMA address low */
+#define REG_XFER_DMA_ADDR_HI    XDATA_REG8(0xCC8B)  /* Transfer DMA address high */
+
+#define REG_CPU_DMA_INT         XDATA_REG8(0xCC91)  /* CPU DMA interrupt status */
+#define   CPU_DMA_INT_ACK        0x02  // Bit 1: Acknowledge DMA interrupt
+#define REG_CPU_DMA_READY       XDATA_REG8(0xCC98)  /* CPU DMA ready status */
+#define REG_XFER_DMA_CFG        XDATA_REG8(0xCC99)  /* Transfer DMA config */
+#define   XFER_DMA_CFG_ACK       0x02  // Bit 1: Acknowledge config
+#define   XFER_DMA_CFG_ENABLE    0x04  // Bit 2: Config enable
+#define REG_XFER_DMA_DATA_LO    XDATA_REG8(0xCC9A)  /* Transfer DMA data low */
+#define REG_XFER_DMA_DATA_HI    XDATA_REG8(0xCC9B)  /* Transfer DMA data high */
+// Secondary transfer DMA controller
+#define REG_XFER2_DMA_CTRL      XDATA_REG8(0xCCD8)  /* Transfer 2 DMA control */
+#define REG_XFER2_DMA_STATUS    XDATA_REG8(0xCCD9)  /* Transfer 2 DMA status */
+#define   XFER2_DMA_STATUS_ACK   0x02  // Bit 1: Acknowledge status
+#define REG_XFER2_DMA_ADDR_LO   XDATA_REG8(0xCCDA)  /* Transfer 2 DMA address low */
+#define REG_XFER2_DMA_ADDR_HI   XDATA_REG8(0xCCDB)  /* Transfer 2 DMA address high */
+#define REG_CPU_EXT_STATUS      XDATA_REG8(0xCCF9)  /* CPU extended status */
+#define   CPU_EXT_STATUS_ACK     0x02  // Bit 1: Acknowledge extended status
 
 //=============================================================================
 // SCSI DMA Control (0xCE00-0xCE3F)

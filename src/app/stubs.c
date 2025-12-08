@@ -504,8 +504,8 @@ static void helper_9627(uint8_t val)
 static void helper_955e(uint8_t val)
 {
     /* DPTR=CC89, writes val, inc to CC8A, writes val again */
-    REG_DMA_CMD_CC89 = val;
-    REG_DMA_CMD_CC8A = val;
+    REG_XFER_DMA_CMD = val;
+    REG_XFER_DMA_ADDR_LO = val;
 }
 
 /* Forward declaration */
@@ -554,15 +554,15 @@ void handler_d676(void)
     REG_PHY_LINK_TRIGGER = 0x0F;
 
     /* CC88: clear bits 0-2, set bit 2 */
-    val = REG_DMA_CMD_CC88;
+    val = REG_XFER_DMA_CTRL;
     val = (val & 0xF8) | 0x04;
-    REG_DMA_CMD_CC88 = val;
+    REG_XFER_DMA_CTRL = val;
 
-    /* Write 0x31 to CC89 */
-    REG_DMA_CMD_CC89 = 0x31;
+    /* Write 0x31 to CC89 - start DMA mode 1 */
+    REG_XFER_DMA_CMD = XFER_DMA_CMD_START | XFER_DMA_CMD_MODE;
 
-    /* Poll CC89 until bit 1 is set */
-    while (!(REG_DMA_CMD_CC89 & 0x02)) {
+    /* Poll CC89 until transfer complete */
+    while (!(REG_XFER_DMA_CMD & XFER_DMA_CMD_DONE)) {
         /* Spin */
     }
 
@@ -804,17 +804,17 @@ void handler_e529(uint8_t param)
  * Address: 0xe90b-0xe911 (7 bytes)
  *
  * Disassembly:
- *   e90b: mov dptr, #0xcc81  ; REG_CPU_STATUS_CC81
+ *   e90b: mov dptr, #0xcc81  ; REG_CPU_INT_CTRL
  *   e90e: mov a, #0x04       ; Value = 4
  *   e910: movx @dptr, a      ; Write
  *   e911: ljmp 0xbe8b        ; Tail call to FUN_CODE_be8b
  *
- * Writes 0x04 to CC81 register then tail-calls FUN_CODE_be8b.
+ * Triggers CPU interrupt then tail-calls FUN_CODE_be8b.
  */
 extern void FUN_CODE_be8b(void);
 void handler_e90b(void)
 {
-    REG_CPU_STATUS_CC81 = 0x04;
+    REG_CPU_INT_CTRL = CPU_INT_CTRL_TRIGGER;
     FUN_CODE_be8b();
 }
 
@@ -1453,16 +1453,16 @@ static void helper_9536(void) {
     REG_CMD_CONFIG = val;
 
     /* CC88: clear bits 0-2, set bit 1 */
-    val = REG_DMA_CMD_CC88;
+    val = REG_XFER_DMA_CTRL;
     val = (val & 0xF8) | 0x02;
-    REG_DMA_CMD_CC88 = val;
+    REG_XFER_DMA_CTRL = val;
 
-    /* Clear CC8A, write 0xC7 to CC8B */
-    REG_DMA_CMD_CC8A = 0;
-    REG_DMA_CMD_CC8B = 0xC7;
+    /* Set transfer address to 0x00C7 */
+    REG_XFER_DMA_ADDR_LO = 0;
+    REG_XFER_DMA_ADDR_HI = 0xC7;
 
-    /* Write 0x01 to CC89 */
-    REG_DMA_CMD_CC89 = 0x01;
+    /* Start DMA transfer */
+    REG_XFER_DMA_CMD = XFER_DMA_CMD_START;
 }
 
 /*
@@ -1548,8 +1548,8 @@ void FUN_CODE_be8b(void)
     /* Setup E40F/E40B/DMA registers */
     helper_9536();
 
-    /* Wait for bit 1 of CC89 to be set */
-    while (!(REG_DMA_CMD_CC89 & 0x02)) {
+    /* Wait for transfer complete */
+    while (!(REG_XFER_DMA_CMD & XFER_DMA_CMD_DONE)) {
         /* Spin */
     }
 

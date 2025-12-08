@@ -575,15 +575,15 @@ void system_interrupt_handler(void)
         REG_TIMER3_CSR = TIMER_CSR_EXPIRED;
     }
 
-    /* Read CPU status 81 and check bit 1 */
-    val = REG_CPU_STATUS_CC81;
-    if (val & 0x02) {
+    /* Read CPU interrupt control and check ACK bit */
+    val = REG_CPU_INT_CTRL;
+    if (val & CPU_INT_CTRL_ACK) {
         /* Read state from G_FLASH_OP_COUNTER */
         state = G_FLASH_OP_COUNTER;
 
         if (state == 0x0E || state == 0x0D) {
-            /* Write 0x02 to CPU status 81 */
-            REG_CPU_STATUS_CC81 = 0x02;
+            /* Acknowledge interrupt */
+            REG_CPU_INT_CTRL = CPU_INT_CTRL_ACK;
 
             /* Check G_FLASH_CMD_TYPE for further dispatch */
             val = G_FLASH_CMD_TYPE;
@@ -593,14 +593,14 @@ void system_interrupt_handler(void)
             /* Call helper 0xD676 */
         } else {
             /* Call 0xE90B for other states */
-            REG_CPU_STATUS_CC81 = 0x02;
+            REG_CPU_INT_CTRL = CPU_INT_CTRL_ACK;
         }
     }
 
-    /* Read CPU status 91 and check bit 1 */
-    val = REG_CPU_STATUS_CC91;
+    /* Read CPU DMA interrupt and check bit 1 */
+    val = REG_CPU_DMA_INT;
     if (val & 0x02) {
-        REG_CPU_STATUS_CC91 = 0x02;  /* Acknowledge */
+        REG_CPU_DMA_INT = 0x02;  /* Acknowledge */
     }
 }
 

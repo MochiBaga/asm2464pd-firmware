@@ -2164,30 +2164,30 @@ uint8_t pcie_tlp_handler_b402(void)
         REG_TIMER3_CSR = 0x02;
     }
 
-    /* Check CC81 bit 1 */
-    if (REG_CPU_STATUS_CC81 & 0x02) {
-        REG_CPU_STATUS_CC81 = 0x02;
+    /* Check CPU interrupt ACK bit */
+    if (REG_CPU_INT_CTRL & CPU_INT_CTRL_ACK) {
+        REG_CPU_INT_CTRL = CPU_INT_CTRL_ACK;
     }
 
-    /* Check CC91 bit 1 */
-    if (REG_CPU_STATUS_CC91 & 0x02) {
-        REG_CPU_STATUS_CC91 = 0x02;
+    /* Check CPU DMA interrupt bit */
+    if (REG_CPU_DMA_INT & 0x02) {
+        REG_CPU_DMA_INT = 0x02;
         G_CMD_PENDING_07BB = 1;
     }
 
-    /* Check CC99 bit 1 */
-    if (REG_DMA_CMD_CC99 & 0x02) {
-        REG_DMA_CMD_CC99 = 0x02;
+    /* Check transfer DMA config bit */
+    if (REG_XFER_DMA_CFG & 0x02) {
+        REG_XFER_DMA_CFG = 0x02;
     }
 
-    /* Check CCD9 bit 1 */
-    if (REG_CPU_STATUS_CCD9 & 0x02) {
-        REG_CPU_STATUS_CCD9 = 0x02;
+    /* Check transfer2 DMA status bit */
+    if (REG_XFER2_DMA_STATUS & 0x02) {
+        REG_XFER2_DMA_STATUS = 0x02;
     }
 
-    /* Check CCF9 bit 1 */
-    if (REG_CPU_STATUS_CCF9 & 0x02) {
-        REG_CPU_STATUS_CCF9 = 0x02;
+    /* Check CPU extended status bit */
+    if (REG_CPU_EXT_STATUS & 0x02) {
+        REG_CPU_EXT_STATUS = 0x02;
     }
 
     /* b571-b594: Check 9090 bit 7 and 0x0AD3/0x0AD1 */

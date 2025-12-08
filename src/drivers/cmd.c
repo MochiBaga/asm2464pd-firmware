@@ -528,7 +528,7 @@ void cmd_setup_with_params(uint8_t issue_val, uint8_t tag_val)
  */
 void cmd_write_cc89_01(void)
 {
-    REG_DMA_CMD_CC89 = 0x01;
+    REG_XFER_DMA_CMD = XFER_DMA_CMD_START;
 }
 
 /*
@@ -598,8 +598,8 @@ void cmd_config_e40b(void)
 {
     uint8_t val;
 
-    /* Write 0x02 to CC89 */
-    REG_DMA_CMD_CC89 = 0x02;
+    /* Clear transfer done flag */
+    REG_XFER_DMA_CMD = XFER_DMA_CMD_DONE;
 
     /* Set bit 1 in E40B */
     val = REG_CMD_CONFIG;
@@ -673,10 +673,10 @@ void cmd_call_e120_setup(void)
  */
 void cmd_clear_cc9a_setup(void)
 {
-    REG_DMA_CMD_CC9A = 0x00;
-    REG_DMA_CMD_CC9B = 0x50;
-    REG_DMA_CMD_CC99 = 0x04;
-    REG_DMA_CMD_CC99 = 0x02;
+    REG_XFER_DMA_DATA_LO = 0x00;
+    REG_XFER_DMA_DATA_HI = 0x50;
+    REG_XFER_DMA_CFG = 0x04;
+    REG_XFER_DMA_CFG = 0x02;
 }
 
 /*
@@ -826,10 +826,10 @@ void cmd_set_c801_bit4(void)
  */
 void cmd_clear_cc88_cc8a(void)
 {
-    uint8_t val = REG_DMA_CMD_CC88;
+    uint8_t val = REG_XFER_DMA_CTRL;
     val &= 0xF8;
-    REG_DMA_CMD_CC88 = val;
-    REG_DMA_CMD_CC8A = 0;
+    REG_XFER_DMA_CTRL = val;
+    REG_XFER_DMA_ADDR_LO = 0;
 }
 
 /*
@@ -907,7 +907,7 @@ uint8_t cmd_clear_bits(__xdata uint8_t *reg)
 }
 
 /*
- * cmd_write_cc89_02 - Write 0x02 to CC89
+ * cmd_write_cc89_02 - Clear DMA transfer done flag
  * Address: 0x964f-0x9655 (7 bytes)
  *
  * Original disassembly:
@@ -918,7 +918,7 @@ uint8_t cmd_clear_bits(__xdata uint8_t *reg)
  */
 void cmd_write_cc89_02(void)
 {
-    REG_DMA_CMD_CC89 = 0x02;
+    REG_XFER_DMA_CMD = XFER_DMA_CMD_DONE;
 }
 
 /*

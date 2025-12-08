@@ -1498,24 +1498,24 @@ void error_state_config(void)
     /* Clear error counter */
     G_MISC_FLAG_06EC = 0x00;
 
-    /* Configure CPU DMA control - clear bit 4 */
-    val = REG_CPU_DMA_CCD8;
+    /* Configure transfer2 DMA control - clear bit 4 */
+    val = REG_XFER2_DMA_CTRL;
     val = val & 0xEF;
-    REG_CPU_DMA_CCD8 = val;
+    REG_XFER2_DMA_CTRL = val;
 
     /* Configure interrupt control - clear bit 4, set bit 4 */
     val = REG_INT_ENABLE;
     val = (val & 0xEF) | 0x10;
     REG_INT_ENABLE = val;
 
-    /* Configure CPU DMA control - clear bits 0-2, set bits 0-2 to 4 */
-    val = REG_CPU_DMA_CCD8;
+    /* Configure transfer2 DMA control - clear bits 0-2, set bits 0-2 to 4 */
+    val = REG_XFER2_DMA_CTRL;
     val = (val & 0xF8) | 0x04;
-    REG_CPU_DMA_CCD8 = val;
+    REG_XFER2_DMA_CTRL = val;
 
-    /* Write 0x00 to CPU DMA control A, 0xC8 to CPU DMA control B */
-    REG_CPU_DMA_CCDA = 0x00;
-    REG_CPU_DMA_CCDB = 0xC8;
+    /* Set transfer2 DMA address to 0x00C8 */
+    REG_XFER2_DMA_ADDR_LO = 0x00;
+    REG_XFER2_DMA_ADDR_HI = 0xC8;
 }
 
 /*

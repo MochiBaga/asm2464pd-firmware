@@ -939,10 +939,10 @@ void flash_command_handler(void)
         /* Call helper 0x538D with R3=0xFF, R2=0x22, R1=0x25 */
     }
 
-    /* Configure CPU status register - set bits 0-2 to 6 */
-    val = REG_CPU_STATUS_CC98;
+    /* Configure CPU DMA ready register - set bits 0-2 to 6 */
+    val = REG_CPU_DMA_READY;
     val = (val & 0xF8) | 0x06;
-    REG_CPU_STATUS_CC98 = val;
+    REG_CPU_DMA_READY = val;
 
     /* Write state 0x04 to event control */
     G_EVENT_CTRL_09FA = 0x04;
