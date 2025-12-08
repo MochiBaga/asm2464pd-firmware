@@ -81,6 +81,7 @@
 #define REG_USB_EP0_LEN_L       XDATA_REG8(0x9004)
 #define REG_USB_EP0_LEN_H       XDATA_REG8(0x9005)
 #define REG_USB_EP0_CONFIG      XDATA_REG8(0x9006)
+#define REG_USB_STATUS2         REG_USB_EP0_CONFIG  /* Alias for set_usb_status_bit0 */
 #define   USB_EP0_CONFIG_ENABLE   0x01  // Bit 0: EP0 config enable
 #define REG_USB_SCSI_BUF_LEN    XDATA_REG16(0x9007)
 #define REG_USB_SCSI_BUF_LEN_L  XDATA_REG8(0x9007)
@@ -176,6 +177,7 @@
 #define REG_POWER_DOMAIN        XDATA_REG8(0x92E0)
 #define   POWER_DOMAIN_BIT1       0x02  // Bit 1: Power domain control
 #define REG_POWER_EVENT_92E1    XDATA_REG8(0x92E1)  // Power event register
+#define REG_POWER_STATUS_92F7   XDATA_REG8(0x92F7)  // Power status (high nibble = state)
 
 // Buffer config registers (0x9300-0x93FF)
 #define REG_BUF_CFG_9300        XDATA_REG8(0x9300)
@@ -194,6 +196,7 @@
 #define REG_PCIE_TLP_CTRL       XDATA_REG8(0xB213)
 #define REG_PCIE_TLP_LENGTH     XDATA_REG8(0xB216)
 #define REG_PCIE_BYTE_EN        XDATA_REG8(0xB217)
+#define REG_PCIE_B217           REG_PCIE_BYTE_EN    /* Alias */
 #define REG_PCIE_ADDR_0         XDATA_REG8(0xB218)
 #define REG_PCIE_ADDR_1         XDATA_REG8(0xB219)
 #define REG_PCIE_ADDR_2         XDATA_REG8(0xB21A)
@@ -316,6 +319,7 @@
 #define REG_NVME_CTRL           XDATA_REG8(0xC400)
 #define REG_NVME_STATUS         XDATA_REG8(0xC401)
 #define REG_NVME_CTRL_STATUS    XDATA_REG8(0xC412)
+#define REG_NVME_CTRL_C412      REG_NVME_CTRL_STATUS  /* Alias for state_helpers */
 #define   NVME_CTRL_STATUS_READY  0x02  // Bit 1: NVMe controller ready
 #define REG_NVME_CONFIG         XDATA_REG8(0xC413)
 #define REG_NVME_DATA_CTRL      XDATA_REG8(0xC414)
@@ -384,6 +388,7 @@
 #define   NVME_QUEUE_PENDING_IDX  0x3F              /* Bits 0-5: Queue index */
 #define REG_NVME_QUEUE_TRIGGER  XDATA_REG8(0xC51A)
 #define REG_NVME_QUEUE_STATUS   XDATA_REG8(0xC51E)
+#define REG_NVME_SLOT_INDEX_C51E REG_NVME_QUEUE_STATUS  // Alias for scsi_queue_setup
 #define   NVME_QUEUE_STATUS_IDX   0x3F  // Bits 0-5: Queue index
 #define REG_NVME_LINK_STATUS    XDATA_REG8(0xC520)
 
@@ -392,8 +397,10 @@
 //=============================================================================
 #define REG_PHY_EXT_2D          XDATA_REG8(0xC62D)
 #define   PHY_EXT_LANE_MASK       0x07  // Bits 0-2: Lane configuration
+#define REG_PHY_CFG_C655        XDATA_REG8(0xC655)  /* PHY config (bit 3 set by helper_bbc0) */
 #define REG_PHY_EXT_56          XDATA_REG8(0xC656)
 #define   PHY_EXT_SIGNAL_CFG      0x20  // Bit 5: Signal config
+#define REG_PHY_CFG_C65A        XDATA_REG8(0xC65A)  /* PHY config (bit 3 set by helper_bbc0) */
 #define REG_PHY_EXT_5B          XDATA_REG8(0xC65B)
 #define   PHY_EXT_ENABLE          0x08  // Bit 3: PHY extended enable
 #define   PHY_EXT_MODE            0x20  // Bit 5: PHY mode
@@ -403,7 +410,10 @@
 //=============================================================================
 // Interrupt Controller (0xC800-0xC80F)
 //=============================================================================
+#define REG_INT_STATUS_C800     XDATA_REG8(0xC800)  /* Interrupt status register */
+#define REG_USB_INT_STATUS_C800 REG_INT_STATUS_C800 /* Alias for scsi_dma_init */
 #define REG_INT_ENABLE          XDATA_REG8(0xC801)  /* Interrupt enable register */
+#define REG_INT_CTRL_C801       REG_INT_ENABLE      /* Alias for scsi_dma_init */
 #define   INT_ENABLE_GLOBAL       0x01  // Bit 0: Global interrupt enable
 #define   INT_ENABLE_USB          0x02  // Bit 1: USB interrupt enable
 #define   INT_ENABLE_PCIE         0x04  // Bit 2: PCIe interrupt enable
@@ -485,6 +495,8 @@
 // CPU Mode/Control (0xCA00-0xCAFF)
 //=============================================================================
 #define REG_CPU_MODE_NEXT       XDATA_REG8(0xCA06)
+#define REG_CPU_CTRL_CA60       XDATA_REG8(0xCA60)  /* CPU control CA60 */
+#define REG_USB_CTRL_CA60       REG_CPU_CTRL_CA60   /* Alias for scsi_dma_init */
 
 //=============================================================================
 // Timer Registers (0xCC10-0xCC24)
@@ -518,12 +530,14 @@
 #define REG_CPU_EXEC_STATUS_2   XDATA_REG8(0xCC33)  /* CPU execution status 2 */
 #define   CPU_EXEC_STATUS_2_INT   0x04  // Bit 2: Interrupt pending
 #define REG_CPU_EXEC_STATUS_3   XDATA_REG8(0xCC35)  /* CPU execution status 3 */
+#define REG_DMA_QUEUE_CTRL_CC35 REG_CPU_EXEC_STATUS_3 /* Alias for scsi_dma_init */
 // Timer enable/disable control registers
 #define REG_TIMER_ENABLE_A      XDATA_REG8(0xCC38)  /* Timer enable control A */
 #define   TIMER_ENABLE_A_BIT      0x02              /* Bit 1: Timer enable */
 #define REG_TIMER_ENABLE_B      XDATA_REG8(0xCC3A)  /* Timer enable control B */
 #define   TIMER_ENABLE_B_BIT      0x02              /* Bit 1: Timer enable */
 #define REG_TIMER_CTRL_CC3B     XDATA_REG8(0xCC3B)  /* Timer control */
+#define REG_CPU_CTRL_CC3B       REG_TIMER_CTRL_CC3B /* Alias for scsi_dma_init */
 #define   TIMER_CTRL_ENABLE       0x01              /* Bit 0: Timer active */
 #define   TIMER_CTRL_START        0x02              /* Bit 1: Timer start */
 #define REG_CPU_CTRL_CC3D       XDATA_REG8(0xCC3D)
@@ -564,9 +578,12 @@
 // SCSI DMA Control (0xCE00-0xCE3F)
 //=============================================================================
 #define REG_SCSI_DMA_CTRL       XDATA_REG8(0xCE00)  // SCSI DMA control register
+#define REG_NVME_DMA_START_CE00 REG_SCSI_DMA_CTRL   // Alias for scsi_queue_setup
 #define REG_SCSI_DMA_PARAM      XDATA_REG8(0xCE01)  // SCSI DMA parameter register
+#define REG_NVME_DMA_CMD_CE01   REG_SCSI_DMA_PARAM  // Alias for scsi_queue_setup
 #define REG_SCSI_DMA_CFG_CE36   XDATA_REG8(0xCE36)  // SCSI DMA config 0xCE36
 #define REG_SCSI_DMA_TAG_CE3A   XDATA_REG8(0xCE3A)  // SCSI DMA tag storage
+#define REG_NVME_DMA_LEN_CE3A   REG_SCSI_DMA_TAG_CE3A  // Alias for scsi_queue_setup
 
 //=============================================================================
 // SCSI/Mass Storage DMA (0xCE40-0xCE97)
@@ -616,10 +633,14 @@
 #define REG_XFER_STATUS_CE86    XDATA_REG8(0xCE86)
 #define REG_XFER_CTRL_CE88      XDATA_REG8(0xCE88)
 #define REG_SCSI_DMA_CTRL_CE88  REG_XFER_CTRL_CE88   // Alias for usb_ep_loop
+#define REG_NVME_DMA_STATUS_CE88 REG_XFER_CTRL_CE88  // Alias for scsi_queue_setup
 #define REG_XFER_READY          XDATA_REG8(0xCE89)
 #define REG_SCSI_DMA_STATUS_CE89 REG_XFER_READY       // Alias for usb_ep_loop
+#define REG_NVME_DMA_STATUS_CE89 REG_XFER_READY       // Alias for scsi_queue_setup
 #define   XFER_READY_BIT          0x01  // Bit 0: Transfer ready
 #define   XFER_READY_DONE         0x02  // Bit 1: Transfer done
+#define REG_XFER_CTRL_CE8A      XDATA_REG8(0xCE8A)   /* Transfer control CE8A */
+#define REG_NVME_DMA_CTRL_CE8A  REG_XFER_CTRL_CE8A   /* Alias for scsi_queue_setup */
 #define REG_XFER_MODE_CE95      XDATA_REG8(0xCE95)
 #define REG_SCSI_DMA_CMD_REG    XDATA_REG8(0xCE96)
 #define REG_SCSI_DMA_RESP_REG   XDATA_REG8(0xCE97)

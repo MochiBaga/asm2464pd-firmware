@@ -134,8 +134,15 @@
  * cfg_store_ep_config       [DONE] 0x99d8-0x99df - Store EP config to idata
  * cfg_inc_reg_value         [DONE] 0x99d1-0x99d4 - Increment value at DPTR
  * cfg_get_b296_bit2         [DONE] 0x99eb-0x99f5 - Get bit 2 from 0xB296
+ * cfg_set_ep_flag_1         [DONE] 0x99c7-0x99cd - Set EP flag to 1
+ * cfg_inc_ep_flag           [DONE] 0x99ce-0x99d4 - Increment EP flag
+ * cfg_clear_ep_regs         [DONE] 0x9741-0x9749 - Clear EP config 0A5E-0A60
+ * cfg_store_ep_with_carry   [DONE] 0x9a00-0x9a08 - Store val+2 with carry
+ * cfg_set_b480_bit0         [DONE] 0x99e1-0x99ea - Set bit 0 of B480
+ * cfg_write_dptr_34_04      [DONE] 0x9a18-0x9a1f - Write 0x34, 0x04 to DPTR
+ * cfg_write_b217            [DONE] 0x9a30-0x9a34 - Write to B217 register
  *
- * Total: 48 functions implemented
+ * Total: 55 functions implemented
  *===========================================================================
  */
 
@@ -1430,4 +1437,139 @@ void cfg_inc_reg_value(__xdata uint8_t *reg)
 uint8_t cfg_get_b296_bit2(void)
 {
     return (REG_PCIE_STATUS >> 2) & 0x01;
+}
+
+/*
+ * cfg_set_ep_flag_1 - Set EP config flag to 1
+ * Address: 0x99c7-0x99cd (7 bytes)
+ *
+ * Sets G_EP_CFG_FLAG_0A5B = 1.
+ *
+ * Original disassembly:
+ *   99c7: mov dptr, #0x0a5b   ; DPTR = 0x0A5B
+ *   99ca: mov a, #0x01        ; A = 1
+ *   99cc: movx @dptr, a       ; G_EP_CFG_FLAG_0A5B = 1
+ *   99cd: ret
+ */
+void cfg_set_ep_flag_1(void)
+{
+    G_EP_CFG_FLAG_0A5B = 1;
+}
+
+/*
+ * cfg_inc_ep_flag - Increment EP config flag
+ * Address: 0x99ce-0x99d4 (7 bytes)
+ *
+ * Increments G_EP_CFG_FLAG_0A5B.
+ *
+ * Original disassembly:
+ *   99ce: mov dptr, #0x0a5b   ; DPTR = 0x0A5B
+ *   99d1: movx a, @dptr       ; Read G_EP_CFG_FLAG_0A5B
+ *   99d2: inc a               ; Increment
+ *   99d3: movx @dptr, a       ; Write back
+ *   99d4: ret
+ */
+void cfg_inc_ep_flag(void)
+{
+    G_EP_CFG_FLAG_0A5B++;
+}
+
+/*
+ * cfg_clear_ep_regs - Clear EP config registers 0x0A5E-0x0A60
+ * Address: 0x9741-0x9749 (9 bytes)
+ *
+ * Clears three consecutive EP config bytes starting at 0x0A5E.
+ * This is the first part of the 0x9741 function (before call to 0x99c6).
+ *
+ * Original disassembly:
+ *   9741: clr a               ; A = 0
+ *   9742: mov dptr, #0x0a5e   ; DPTR = 0x0A5E
+ *   9745: movx @dptr, a       ; G_EP_CFG_0A5E = 0
+ *   9746: inc dptr            ; DPTR = 0x0A5F
+ *   9747: movx @dptr, a       ; G_EP_CFG_0A5F = 0
+ *   9748: inc dptr            ; DPTR = 0x0A60
+ *   9749: movx @dptr, a       ; G_EP_CFG_0A60 = 0
+ */
+void cfg_clear_ep_regs(void)
+{
+    G_EP_CFG_0A5E = 0;
+    G_EP_CFG_0A5F = 0;
+    G_EP_CFG_0A60 = 0;
+}
+
+/*
+ * cfg_store_ep_with_carry - Store value+2 with carry to EP config idata
+ * Address: 0x9a00-0x9a08 (9 bytes)
+ *
+ * Called after cfg_init_ep_mode (which sets R0=0x65).
+ * Stores (param+2) to I_WORK_64 and carry bit to I_WORK_63.
+ *
+ * Original disassembly:
+ *   9a00: add a, #0x02    ; A = A + 2 (sets carry)
+ *   9a02: dec r0          ; R0-- (0x64)
+ *   9a03: mov @r0, a      ; Store to idata[0x64]
+ *   9a04: clr a           ; A = 0
+ *   9a05: rlc a           ; A = carry bit
+ *   9a06: dec r0          ; R0-- (0x63)
+ *   9a07: mov @r0, a      ; Store to idata[0x63]
+ *   9a08: ret
+ */
+void cfg_store_ep_with_carry(uint8_t val)
+{
+    uint16_t result = (uint16_t)val + 2;
+    I_WORK_64 = (uint8_t)result;         /* Low byte (val+2) */
+    I_WORK_63 = (result > 255) ? 1 : 0;  /* Carry bit */
+}
+
+/*
+ * cfg_set_b480_bit0 - Set bit 0 of register B480
+ * Address: 0x99e1-0x99ea (10 bytes)
+ *
+ * This is called from 0x99e0 area.
+ *
+ * Original disassembly:
+ *   99e1: mov dptr, #0xb480
+ *   99e4: movx a, @dptr
+ *   99e5: anl a, #0xfe     ; Clear bit 0
+ *   99e7: orl a, #0x01     ; Set bit 0
+ *   99e9: movx @dptr, a
+ *   99ea: ret
+ */
+void cfg_set_b480_bit0(void)
+{
+    REG_TUNNEL_LINK_CTRL = (REG_TUNNEL_LINK_CTRL & 0xFE) | 0x01;
+}
+
+/*
+ * cfg_write_dptr_34_04 - Write constants 0x34 and 0x04 to consecutive DPTR locations
+ * Address: 0x9a18-0x9a1f (8 bytes)
+ *
+ * DPTR is set by caller. Writes 0x34 to @DPTR, then 0x04 to @DPTR+1.
+ *
+ * Original disassembly:
+ *   9a18: mov a, #0x34
+ *   9a1a: movx @dptr, a
+ *   9a1b: inc dptr
+ *   9a1c: mov a, #0x04
+ *   9a1e: movx @dptr, a
+ *   9a1f: ret
+ */
+void cfg_write_dptr_34_04(__xdata uint8_t *ptr)
+{
+    ptr[0] = 0x34;
+    ptr[1] = 0x04;
+}
+
+/*
+ * cfg_write_b217 - Write accumulator value to register 0xB217
+ * Address: 0x9a30-0x9a34 (5 bytes)
+ *
+ * Original disassembly:
+ *   9a30: mov dptr, #0xb217
+ *   9a33: movx @dptr, a
+ *   9a34: (continues...)
+ */
+void cfg_write_b217(uint8_t val)
+{
+    REG_PCIE_BYTE_EN = val;
 }

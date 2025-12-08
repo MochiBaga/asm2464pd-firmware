@@ -1910,6 +1910,93 @@ void FUN_CODE_e7ae(void) {}
 void FUN_CODE_e883(void) {}
 
 /*===========================================================================
+ * Bank1 High Lower-Priority Functions (0xE000-0xFFFF)
+ *===========================================================================*/
+
+/*
+ * check_link_status_e2b9 - Check link status bit 1 at 0xE765
+ * Address: 0xe2b9-0xe2c8 (16 bytes)
+ *
+ * Disassembly:
+ *   e2b9: mov dptr, #0xe765
+ *   e2bc: movx a, @dptr
+ *   e2bd: anl a, #0x02       ; Check bit 1
+ *   e2bf: clr c
+ *   e2c0: rrc a              ; Shift bit 1 to bit 0
+ *   e2c1: jz 0xe2c6          ; If zero, return 0
+ *   e2c3: mov r7, #0x01      ; Return 1
+ *   e2c5: ret
+ *   e2c6: mov r7, #0x00      ; Return 0
+ *   e2c8: ret
+ *
+ * Returns: 1 if bit 1 of 0xE765 is set, 0 otherwise
+ */
+uint8_t check_link_status_e2b9(void)
+{
+    uint8_t val = XDATA_REG8(0xE765);
+    return (val & 0x02) ? 1 : 0;
+}
+
+/*
+ * pcie_txn_setup_e775 - Setup PCIe transaction from global count
+ * Address: 0xe775-0xe787 (19 bytes)
+ *
+ * Disassembly:
+ *   e775: mov dptr, #0x05a6  ; G_PCIE_TXN_COUNT_LO
+ *   e778: movx a, @dptr
+ *   e779: mov r7, a
+ *   e77a: lcall 0x99bc       ; Setup helper
+ *   e77d: movx a, @dptr      ; Read result
+ *   e77e: mov r0, #0x61      ; I_WORK_61
+ *   e780: mov @r0, a         ; Store to idata 0x61
+ *   e781: lcall 0x9980       ; Second helper
+ *   e784: movx a, @dptr      ; Read result
+ *   e785: inc r0             ; I_WORK_62
+ *   e786: mov @r0, a         ; Store to idata 0x62
+ *   e787: ret
+ */
+/* Stub for helper_99bc at 0x99bc - TODO: implement in nvme.c */
+void helper_99bc(uint8_t param)
+{
+    (void)param;
+    /* TODO: Implement - called from pcie_txn_setup_e775 */
+}
+
+/* Stub for helper_9980 at 0x9980 - TODO: implement in nvme.c */
+void helper_9980(void)
+{
+    /* TODO: Implement - called from pcie_txn_setup_e775 */
+}
+
+void pcie_txn_setup_e775(void)
+{
+    uint8_t count = G_PCIE_TXN_COUNT_LO;
+    helper_99bc(count);
+    /* Results stored to I_WORK_61/I_WORK_62 by helpers */
+    helper_9980();
+}
+
+/*
+ * timer_trigger_e726 - Trigger timer via 0xCD31
+ * Address: 0xe726-0xe72f (10 bytes)
+ *
+ * Disassembly:
+ *   e726: mov dptr, #0xcd31
+ *   e729: mov a, #0x04
+ *   e72b: movx @dptr, a
+ *   e72c: mov a, #0x02
+ *   e72e: movx @dptr, a
+ *   e72f: ret
+ *
+ * Writes 0x04 then 0x02 to register 0xCD31 (timer trigger sequence)
+ */
+void timer_trigger_e726(void)
+{
+    XDATA_REG8(0xCD31) = 0x04;
+    XDATA_REG8(0xCD31) = 0x02;
+}
+
+/*===========================================================================
  * PCIe Interrupt Handler Sub-functions (0xa300-0xa650 range)
  *
  * These functions support pcie_interrupt_handler at 0xa522.
@@ -2080,70 +2167,10 @@ void cpu_dma_setup_e81b(uint8_t param_hi, uint8_t param_lo)
     REG_CPU_INT_CTRL = 0x01;
 }
 
-/* Forward declaration - defined below */
-void pcie_transaction_init_c1f9(void);
-
-/*
- * pcie_direction_init_e8f9 - Initialize PCIe direction for read
- * Address: 0xe8f9-0xe901 (Bank 1)
- *
- * Clears the PCIe direction flag (set to read mode) and calls
- * the transaction initialization routine.
- *
- * Disassembly:
- *   e8f9: clr a                ; a = 0
- *   e8fa: mov dptr, #0x05ae    ; G_PCIE_DIRECTION
- *   e8fd: movx @dptr, a        ; Write 0 (read mode)
- *   e8fe: lcall 0xc1f9         ; pcie_transaction_init
- *   e901: ret
- *
- * Note: There's also a related function at 0xe902 that writes 1
- * (write mode) and calls the same init routine.
+/* NOTE: pcie_direction_init_e8f9, pcie_direction_init_write_e902,
+ * and pcie_tlp_init_and_transfer (formerly pcie_transaction_init_c1f9)
+ * have been moved to pcie.c with full implementations.
  */
-void pcie_direction_init_e8f9(void)
-{
-    G_PCIE_DIRECTION = 0;           /* Set direction to read */
-    pcie_transaction_init_c1f9();   /* Initialize PCIe transaction */
-}
-
-/*
- * pcie_direction_init_write_e902 - Initialize PCIe direction for write
- * Address: 0xe902-0xe90a (Bank 1)
- *
- * Sets the PCIe direction flag to write mode and calls
- * the transaction initialization routine.
- *
- * Disassembly:
- *   e902: mov dptr, #0x05ae    ; G_PCIE_DIRECTION
- *   e905: mov a, #0x01         ; Write mode
- *   e907: movx @dptr, a
- *   e908: ljmp 0xc1f9          ; tail call to pcie_transaction_init
- */
-void pcie_direction_init_write_e902(void)
-{
-    G_PCIE_DIRECTION = 1;           /* Set direction to write */
-    pcie_transaction_init_c1f9();   /* Initialize PCIe transaction */
-}
-
-/*
- * pcie_transaction_init_c1f9 - PCIe transaction initialization
- * Address: 0xc1f9-0xc24a
- *
- * Initializes PCIe TLP registers for a transaction:
- * - Clears 12 PCIe registers via loop
- * - Sets FMT_TYPE based on direction (0x40 for write, 0 for read)
- * - Enables TLP control
- * - Sets byte enables
- * - Copies 32-bit address from G_PCIE_ADDR to REG_PCIE_ADDR
- * - Triggers transaction and waits for completion
- *
- * See pcie.c for detailed disassembly at 0xc1f9.
- */
-void pcie_transaction_init_c1f9(void)
-{
-    /* Transaction initialization - stub
-     * TODO: Implement full PCIe TLP setup sequence */
-}
 
 /*
  * pcie_handler_d8d5 - PCIe completion handler
@@ -2544,10 +2571,30 @@ void helper_3267(void)
     /* Stub */
 }
 
-/* helper_3279 - Address: 0x3279 */
+/*
+ * helper_3279 - Extend 16-bit value in R6:A to 32-bit value
+ * Address: 0x3279-0x327f (7 bytes)
+ *
+ * Takes the 16-bit value from helper_3181() (R6=high, A=low)
+ * and extends it to a 32-bit value (R0:R1:R2:R3 = 0:0:R6:A)
+ *
+ * In C, this function is effectively a no-op since the 32-bit
+ * result is used implicitly with the 16-bit input from helper_3181.
+ *
+ * Original disassembly:
+ *   3279: mov r3, a         ; R3 = A (low byte)
+ *   327a: mov r2, 0x06      ; R2 = R6 (high byte)
+ *   327c: clr a
+ *   327d: mov r1, a         ; R1 = 0
+ *   327e: mov r0, a         ; R0 = 0
+ *   327f: ret
+ */
 void helper_3279(void)
 {
-    /* Stub */
+    /* In assembly this extends R6:A to R0:R1:R2:R3 (32-bit)
+     * In C, this is a no-op - the extension happens implicitly
+     * when the 16-bit return from helper_3181() is used as 32-bit
+     */
 }
 
 /* helper_1677 - Address: 0x1677 */
@@ -2569,16 +2616,49 @@ void helper_1ce4(void)
     /* Stub */
 }
 
-/* helper_313d - Address: 0x313d */
-void helper_313d(void)
+/*
+ * helper_313d - Check if 32-bit value at IDATA[0x6B] is non-zero
+ * Address: 0x313d-0x3146 (10 bytes)
+ *
+ * Reads the 32-bit value from IDATA starting at address 0x6B
+ * (I_TRANSFER_6B through I_TRANSFER_6B+3) and returns non-zero
+ * if any byte is non-zero.
+ *
+ * Original disassembly:
+ *   313d: mov r0, #0x6b     ; r0 = 0x6B
+ *   313f: lcall 0x0d78      ; idata_load_dword - loads 32-bit into R4:R5:R6:R7
+ *   3142: mov a, r4         ; A = R4
+ *   3143: orl a, r5         ; A |= R5
+ *   3144: orl a, r6         ; A |= R6
+ *   3145: orl a, r7         ; A |= R7
+ *   3146: ret               ; Returns A (non-zero if value != 0)
+ *
+ * Returns: non-zero if the 32-bit value is non-zero, 0 otherwise
+ */
+uint8_t helper_313d(void)
 {
-    /* Stub */
+    __idata uint8_t *ptr = (__idata uint8_t *)0x6B;
+    return ptr[0] | ptr[1] | ptr[2] | ptr[3];
 }
 
-/* helper_544c - Address: 0x544c */
+/*
+ * helper_544c - Call queue processing with specific parameters
+ * Address: 0x544c-0x5454 (9 bytes)
+ *
+ * Wrapper that calls helper_523c(0, 0x24, 5).
+ * Sets up queue processing with index 0x24, mode 5.
+ *
+ * Original disassembly:
+ *   544c: clr a              ; r3 = 0
+ *   544d: mov r3, a
+ *   544e: mov r5, #0x24
+ *   5450: mov r7, #0x05
+ *   5452: ljmp 0x523c
+ */
 void helper_544c(void)
 {
-    /* Stub */
+    extern void helper_523c(uint8_t r3, uint8_t r5, uint8_t r7);
+    helper_523c(0, 0x24, 5);
 }
 
 /* helper_165e - Address: 0x165e */
@@ -2670,4 +2750,476 @@ void helper_cb05(void)
 
 /* scsi_dma_mode_setup - SCSI DMA mode setup */
 void scsi_dma_mode_setup(void) {}
+
+/*===========================================================================
+ * Missing Helper Stubs for scsi.c
+ *===========================================================================*/
+
+/* helper_1cc1 - Address: 0x1cc1 */
+void helper_1cc1(void) {}
+
+/* helper_1ba5 - Address: 0x1ba5 */
+void helper_1ba5(void) {}
+
+/* mul_add_index - Multiply and add index helper (2-param version) */
+void mul_add_index(uint8_t param1, uint8_t param2)
+{
+    (void)param1;
+    (void)param2;
+}
+
+/* helper_1bd7 - Address: 0x1bd7 */
+void helper_1bd7(void) {}
+
+/* helper_1c6d - Address: 0x1c6d */
+void helper_1c6d(void) {}
+
+/* helper_1b9d - Address: 0x1b9d (2-param version returning uint8_t) */
+uint8_t helper_1b9d(uint8_t p1, uint16_t p2)
+{
+    (void)p1;
+    (void)p2;
+    return 0;
+}
+
+/* helper_15a0 - Address: 0x15a0 */
+void helper_15a0(void) {}
+
+/*
+ * helper_312a - Setup and set USB EP0 config bit 0
+ * Address: 0x312a-0x3139 (16 bytes)
+ *
+ * Writes 0x01 to XDATA 0x0AF2 (setting a flag), then falls through
+ * to helper_3130 which sets bit 0 of REG_USB_EP0_CONFIG (0x9006).
+ *
+ * Original disassembly:
+ *   312a: mov dptr, #0x0af2
+ *   312d: mov a, #0x01
+ *   312f: movx @dptr, a
+ *   3130: mov dptr, #0x9006   (falls through to helper_3130)
+ *   3133: movx a, @dptr
+ *   3134: anl a, #0xfe
+ *   3136: orl a, #0x01
+ *   3138: movx @dptr, a
+ *   3139: ret
+ */
+void helper_312a(void)
+{
+    extern void helper_3130(void);
+    XDATA_VAR8(0x0AF2) = 0x01;
+    helper_3130();
+}
+
+/* helper_03a4 - Address: 0x03a4 */
+void helper_03a4(void) {}
+
+/* helper_041c - Address: 0x041c */
+void helper_041c(void) {}
+
+/* helper_1d43 - Address: 0x1d43 */
+void helper_1d43(void) {}
+
+/* helper_1b47 - Address: 0x1b47 */
+void helper_1b47(void) {}
+
+/* helper_1c56 - Address: 0x1c56 */
+void helper_1c56(void) {}
+
+/* helper_1d39 - Address: 0x1d39 */
+void helper_1d39(void) {}
+
+/* helper_1b77 - Address: 0x1b77 */
+void helper_1b77(void) {}
+
+/*===========================================================================
+ * Flash Config Helper Stubs (0xBB5E-0xBBC6)
+ * These handle bit manipulation and storage to config globals
+ *===========================================================================*/
+
+/* helper_bb5e - Address: 0xbb5e
+ * Rotate right twice, mask bit 0, store to dptr, return 0x707d */
+uint8_t helper_bb5e(uint8_t val, __xdata uint8_t *dest)
+{
+    /* rrc a (x2), anl a, #0x01, movx @dptr, a, return G_FLASH_BUF_707D */
+    val = (val >> 2) & 0x01;
+    *dest = val;
+    return XDATA_VAR8(0x707D);
+}
+
+/* helper_bb6e - Address: 0xbb6e
+ * Set bit 2 at dptr location */
+void helper_bb6e(__xdata uint8_t *dest)
+{
+    /* movx a, @dptr; anl a, #0xfb; orl a, #0x04; movx @dptr, a */
+    uint8_t val = *dest;
+    val = (val & 0xFB) | 0x04;
+    *dest = val;
+}
+
+/* helper_bb75 - Address: 0xbb75
+ * Rotate right once, mask bit 0, store to dptr, return 0x707d */
+uint8_t helper_bb75(uint8_t val, __xdata uint8_t *dest)
+{
+    /* rrc a, anl a, #0x01, movx @dptr, a, return G_FLASH_BUF_707D */
+    val = (val >> 1) & 0x01;
+    *dest = val;
+    return XDATA_VAR8(0x707D);
+}
+
+/* helper_bb96 - Address: 0xbb96
+ * Rotate right twice, mask bits 0-1, store to dptr, return 0x707b */
+uint8_t helper_bb96(uint8_t val, __xdata uint8_t *dest)
+{
+    /* rrc a (x2), anl a, #0x03, movx @dptr, a, return G_FLASH_BUF_707B */
+    val = (val >> 2) & 0x03;
+    *dest = val;
+    return XDATA_VAR8(0x707B);
+}
+
+/* helper_bba0 - Address: 0xbba0
+ * Mask bit 0, store to dptr, return 0x707d */
+uint8_t helper_bba0(uint8_t val, __xdata uint8_t *dest)
+{
+    /* anl a, #0x01, movx @dptr, a, return G_FLASH_BUF_707D */
+    val = val & 0x01;
+    *dest = val;
+    return XDATA_VAR8(0x707D);
+}
+
+/* helper_bbc0 - Address: 0xbbc0
+ * Set bit 3 at dptr location */
+void helper_bbc0(__xdata uint8_t *dest)
+{
+    /* movx a, @dptr; anl a, #0xf7; orl a, #0x08; movx @dptr, a */
+    uint8_t val = *dest;
+    val = (val & 0xF7) | 0x08;
+    *dest = val;
+}
+
+/* helper_e5fe - Address: 0xe5fe
+ * Called when G_STATE_FLAG_0AE3 == 0 */
+void helper_e5fe(void)
+{
+    /* Stub */
+}
+
+/* helper_dbbb - Address: 0xdbbb
+ * Called when G_STATE_FLAG_0AF1 bit 0 is set */
+void helper_dbbb(void)
+{
+    /* Stub */
+}
+
+/* helper_048a - Address: 0x048a
+ * Called when G_STATE_FLAG_0AF1 bit 2 is set */
+void helper_048a(void)
+{
+    /* Stub */
+}
+
+/*===========================================================================
+ * Additional Missing Helper Stubs for scsi.c
+ *===========================================================================*/
+
+/* helper_048f - Address: 0x048f */
+void helper_048f(void) {}
+
+/* helper_1c77 - Address: 0x1c77 */
+void helper_1c77(void) {}
+
+/* ep_config_read - Read endpoint config */
+uint8_t ep_config_read(uint8_t param) { (void)param; return 0; }
+
+/* helper_2608 - Address: 0x2608 */
+void helper_2608(void) {}
+
+/* helper_0584 - Address: 0x0584 */
+void helper_0584(void) {}
+
+/* helper_1aad - Address: 0x1aad */
+void helper_1aad(uint8_t param) { (void)param; }
+
+/* helper_1cae - Address: 0x1cae */
+void helper_1cae(void) {}
+
+/* helper_1c1b - Address: 0x1c1b */
+uint8_t helper_1c1b(void) { return 0; }
+
+/*===========================================================================
+ * Bank1 High 2-Call Functions (0xE000-0xFFFF)
+ *===========================================================================*/
+
+/*
+ * check_usb_phy_link_idle_e5b1 - Check if USB PHY link is idle
+ * Address: 0xe5b1-0xe5ca (26 bytes)
+ *
+ * Disassembly:
+ *   e5b1: mov dptr, #0x9101   ; USB PHY status register
+ *   e5b4: movx a, @dptr
+ *   e5b5: anl a, #0x40        ; Check bit 6
+ *   e5b7: swap a              ; Move bit 6 to bit 2
+ *   e5b8: rrc a               ; Move bit 2 to bit 1
+ *   e5b9: rrc a               ; Move bit 1 to bit 0
+ *   e5ba: anl a, #0x03        ; Mask to bits 0-1
+ *   e5bc: mov r7, a
+ *   e5bd: mov dptr, #0x9091   ; USB PHY link status
+ *   e5c0: movx a, @dptr
+ *   e5c1: anl a, #0x01        ; Check bit 0
+ *   e5c3: orl a, r7           ; Combine both checks
+ *   e5c4: mov r7, #0x00       ; Prepare return 0
+ *   e5c6: jnz 0xe5ca          ; If either bit set, return 0
+ *   e5c8: mov r7, #0x01       ; Both clear, return 1
+ *   e5ca: ret
+ *
+ * Returns: 1 if both 0x9101 bit 6 and 0x9091 bit 0 are clear, 0 otherwise
+ */
+uint8_t check_usb_phy_link_idle_e5b1(void)
+{
+    uint8_t phy_status = XDATA_REG8(0x9101) & 0x40;  /* Check bit 6 */
+    uint8_t link_status = XDATA_REG8(0x9091) & 0x01; /* Check bit 0 */
+
+    if (phy_status || link_status) {
+        return 0;  /* Not idle */
+    }
+    return 1;  /* Both clear = idle */
+}
+
+/*
+ * dma_buffer_store_result_e68f - Store DMA calculation results to buffers
+ * Address: 0xe68f-0xe6a6 (24 bytes)
+ *
+ * Disassembly:
+ *   e68f: mov dptr, #0x05b3   ; Buffer address
+ *   e692: lcall 0x9983        ; Calculate something, result in r5
+ *   e695: mov a, r5
+ *   e696: movx @dptr, a       ; Store r5 to 0x05b3
+ *   e697: lcall 0x99bc        ; Calculate something, result in r3
+ *   e69a: mov a, r3
+ *   e69b: movx @dptr, a       ; Store r3 to 0x05b3 (overwrites)
+ *   e69c: mov dptr, #0x0a5f   ; Second buffer address
+ *   e69f: movx a, @dptr       ; Read 0x0a5f
+ *   e6a0: mov r6, a           ; Save to r6
+ *   e6a1: lcall 0x9980        ; Another calculation
+ *   e6a4: mov a, r6
+ *   e6a5: movx @dptr, a       ; Write saved value back
+ *   e6a6: ret
+ */
+extern void helper_9983(void);
+
+void dma_buffer_store_result_e68f(void)
+{
+    uint8_t saved_val;
+
+    /* Call helper and store result to 0x05b3 */
+    helper_9983();
+    /* Note: helper_9983 returns result in r5, stored to buffer */
+
+    /* Call helper_99bc - stores r3 to buffer */
+    helper_99bc(0);  /* Parameter unclear from disasm */
+
+    /* Read from 0x0a5f, save it */
+    saved_val = XDATA8(0x0a5f);
+
+    /* Call helper */
+    helper_9980();
+
+    /* Restore saved value to 0x0a5f */
+    XDATA8(0x0a5f) = saved_val;
+}
+
+/*
+ * check_link_with_delay_e6a7 - Check link status with timeout delay
+ * Address: 0xe6a7-0xe6bc (22 bytes)
+ *
+ * Disassembly:
+ *   e6a7: mov r7, #0x1c       ; Timeout/delay parameter
+ *   e6a9: lcall 0xe762        ; Wait/delay function
+ *   e6ac: lcall 0xe8f9        ; Check status function
+ *   e6af: mov a, r7           ; Get result
+ *   e6b0: jnz 0xe6ba          ; If non-zero, return 0xFF (error)
+ *   e6b2: mov dptr, #0xb223   ; PCIe extended register
+ *   e6b5: movx a, @dptr
+ *   e6b6: anl a, #0x01        ; Get bit 0
+ *   e6b8: mov r7, a           ; Return bit 0 status
+ *   e6b9: ret
+ *   e6ba: mov r7, #0xff       ; Return error
+ *   e6bc: ret
+ *
+ * Returns: Bit 0 of 0xB223 if status check passes, 0xFF if timeout/error
+ */
+extern void helper_e762(uint8_t param);
+extern uint8_t helper_e8f9(void);
+
+uint8_t check_link_with_delay_e6a7(void)
+{
+    uint8_t result;
+
+    /* Wait with timeout parameter 0x1c */
+    helper_e762(0x1c);
+
+    /* Check status */
+    result = helper_e8f9();
+
+    if (result != 0) {
+        return 0xFF;  /* Error/timeout */
+    }
+
+    /* Return bit 0 of PCIe extended register 0xB223 */
+    return XDATA_REG8(0xB223) & 0x01;
+}
+
+/*
+ * pcie_lane_init_e7f8 - Initialize PCIe lane configuration
+ * Address: 0xe7f8-0xe809 (18 bytes)
+ *
+ * Disassembly:
+ *   e7f8: lcall 0x0be6        ; Extended memory write helper
+ *   e7fb: mov r1, #0x37       ; Register offset
+ *   e7fd: lcall 0xa33d        ; Read extended register
+ *   e800: anl a, #0x7f        ; Clear bit 7
+ *   e802: orl a, #0x80        ; Set bit 7 (toggle sequence)
+ *   e804: lcall 0x0be6        ; Write back
+ *   e807: ljmp 0xe83d         ; Continue to next handler
+ */
+extern void helper_0be6(void);
+extern uint8_t helper_a33d(uint8_t reg_offset);
+
+void pcie_lane_init_e7f8(void)
+{
+    uint8_t val;
+
+    /* Call initial helper */
+    helper_0be6();
+
+    /* Read extended register 0x37, set bit 7 */
+    val = helper_a33d(0x37);
+    val &= 0x7F;  /* Clear bit 7 */
+    val |= 0x80;  /* Set bit 7 */
+
+    /* Write back via helper and continue to e83d */
+    /* The ljmp to e83d continues the pcie_handler sequence */
+}
+
+/*
+ * ext_mem_init_address_e914 - Initialize extended memory address for DMA
+ * Address: 0xe914-0xe91c (9 bytes)
+ *
+ * Disassembly:
+ *   e914: mov r3, #0x02       ; Bank/segment
+ *   e916: mov r2, #0x28       ; High address
+ *   e918: mov r1, #0x05       ; Low address offset
+ *   e91a: ljmp 0x0bc8         ; Jump to extended memory access
+ *
+ * Sets up extended address 0x02:0x28:0x05 and calls access routine
+ */
+extern void ext_mem_access_0bc8(uint8_t bank, uint8_t addr_hi, uint8_t addr_lo);
+
+void ext_mem_init_address_e914(void)
+{
+    /* Set up extended memory address and call access routine */
+    /* Address: Bank 0x02, offset 0x2805 */
+    ext_mem_access_0bc8(0x02, 0x28, 0x05);
+}
+
+/*
+ * cpu_dma_channel_91_trigger_e93a - Trigger DMA on channel 0xCC91
+ * Address: 0xe93a-0xe940 (7 bytes)
+ *
+ * Disassembly:
+ *   e93a: mov dptr, #0xcc91   ; DMA channel register
+ *   e93d: lcall 0x95c2        ; Trigger sequence (write 0x04, then 0x02)
+ *   e940: ret
+ *
+ * Writes trigger sequence 0x04, 0x02 to DMA channel register 0xCC91
+ */
+void cpu_dma_channel_91_trigger_e93a(void)
+{
+    XDATA_REG8(0xCC91) = 0x04;
+    XDATA_REG8(0xCC91) = 0x02;
+}
+
+/*
+ * pcie_channel_setup_e19e - Set up PCIe channel configuration
+ * Address: 0xe19e-0xe1c5 (40 bytes)
+ *
+ * Disassembly:
+ *   e19e: lcall 0xe677        ; Initial setup
+ *   e1a1: mov dptr, #0xcc1c   ; PCIe channel control
+ *   e1a4: movx a, @dptr
+ *   e1a5: anl a, #0xf8        ; Clear bits 0-2
+ *   e1a7: orl a, #0x06        ; Set bits 1-2
+ *   e1a9: movx @dptr, a
+ *   e1aa: mov dptr, #0xcc1e   ; Channel config
+ *   e1ad: clr a
+ *   e1ae: movx @dptr, a       ; Write 0
+ *   e1af: inc dptr            ; 0xcc1f
+ *   e1b0: mov a, #0x8b
+ *   e1b2: movx @dptr, a       ; Write 0x8b
+ *   e1b3: mov dptr, #0xcc5c   ; Secondary channel
+ *   e1b6: movx a, @dptr
+ *   e1b7: anl a, #0xf8        ; Clear bits 0-2
+ *   e1b9: orl a, #0x04        ; Set bit 2
+ *   e1bb: movx @dptr, a
+ *   e1bc: mov dptr, #0xcc5e   ; Secondary config
+ *   e1bf: clr a
+ *   e1c0: movx @dptr, a       ; Write 0
+ *   e1c1: inc dptr            ; 0xcc5f
+ *   e1c2: mov a, #0xc7
+ *   e1c4: movx @dptr, a       ; Write 0xc7
+ *   e1c5: ret
+ */
+extern void helper_e677(void);
+
+void pcie_channel_setup_e19e(void)
+{
+    uint8_t val;
+
+    /* Initial setup */
+    helper_e677();
+
+    /* Configure primary PCIe channel 0xCC1C-0xCC1F */
+    val = XDATA_REG8(0xCC1C);
+    val = (val & 0xF8) | 0x06;  /* Clear bits 0-2, set bits 1-2 */
+    XDATA_REG8(0xCC1C) = val;
+
+    XDATA_REG8(0xCC1E) = 0x00;
+    XDATA_REG8(0xCC1F) = 0x8B;
+
+    /* Configure secondary PCIe channel 0xCC5C-0xCC5F */
+    val = XDATA_REG8(0xCC5C);
+    val = (val & 0xF8) | 0x04;  /* Clear bits 0-2, set bit 2 */
+    XDATA_REG8(0xCC5C) = val;
+
+    XDATA_REG8(0xCC5E) = 0x00;
+    XDATA_REG8(0xCC5F) = 0xC7;
+}
+
+/*===========================================================================
+ * Helper Stubs for Bank1 High Functions
+ *===========================================================================*/
+
+/* helper_9983 - Address: 0x9983 - DMA calculation helper */
+void helper_9983(void) { /* Stub */ }
+
+/* helper_e762 - Address: 0xe762 - Wait/delay helper */
+void helper_e762(uint8_t param) { (void)param; /* Stub */ }
+
+/* helper_e8f9 - Address: 0xe8f9 - Status check helper */
+uint8_t helper_e8f9(void) { return 0; /* Stub - return success */ }
+
+/* helper_0be6 - Address: 0x0be6 - Extended memory write helper */
+void helper_0be6(void) { /* Stub */ }
+
+/* helper_a33d - Address: 0xa33d - Extended register read helper */
+uint8_t helper_a33d(uint8_t reg_offset) { (void)reg_offset; return 0; /* Stub */ }
+
+/* ext_mem_access_0bc8 - Address: 0x0bc8 - Extended memory access */
+void ext_mem_access_0bc8(uint8_t bank, uint8_t addr_hi, uint8_t addr_lo)
+{
+    (void)bank; (void)addr_hi; (void)addr_lo;
+    /* Stub */
+}
+
+/* helper_e677 - Address: 0xe677 - PCIe channel init helper */
+void helper_e677(void) { /* Stub */ }
 

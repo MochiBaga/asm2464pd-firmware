@@ -68,6 +68,232 @@ extern void pcie_handler_unused_eef9(void);    /* drivers/pcie.c - Bank1:0xEEF9 
 extern void init_sys_flags_07f0(void);         /* 0x4be6 - inline config handler */
 
 /*===========================================================================
+ * Boot State Verification - startup_0016
+ *===========================================================================*/
+
+/*
+ * Helper: Load both signature sets for comparison
+ * Address: 0x1b7e-0x1b87 (10 bytes)
+ *
+ * Loads IDATA[0x09-0x0c] into one set and IDATA[0x6b-0x6e] into another
+ * for 32-bit comparison.
+ */
+static void load_both_signatures(uint32_t *sig1, uint32_t *sig2)
+{
+    /* Load IDATA[0x09-0x0c] (boot signature) */
+    *sig1 = I_BOOT_SIG_0 | ((uint32_t)I_BOOT_SIG_1 << 8) |
+            ((uint32_t)I_BOOT_SIG_2 << 16) | ((uint32_t)I_BOOT_SIG_3 << 24);
+    /* Load IDATA[0x6b-0x6e] (transfer/backup signature) */
+    *sig2 = I_TRANSFER_6B | ((uint32_t)I_TRANSFER_6C << 8) |
+            ((uint32_t)I_TRANSFER_6D << 16) | ((uint32_t)I_TRANSFER_6E << 24);
+}
+
+/*
+ * Helper: Compare two 32-bit signatures
+ * Address: 0x0d22-0x0d32 (17 bytes)
+ *
+ * Compares (r0:r1:r2:r3) - (r4:r5:r6:r7) with initial borrow.
+ * Returns carry if comparison indicates condition met.
+ *
+ * Original: setb c means compare >= (sig2 >= sig1)
+ *           clr c means compare > (sig2 > sig1)
+ */
+static uint8_t compare_signatures_ge(uint32_t sig1, uint32_t sig2)
+{
+    /* setb c before call: check sig2 >= sig1 */
+    return sig2 >= sig1;
+}
+
+static uint8_t compare_signatures_gt(uint32_t sig1, uint32_t sig2)
+{
+    /* clr c before call: check sig2 > sig1 */
+    return sig2 > sig1;
+}
+
+/*
+ * startup_0016 - Boot state verification and initialization
+ * Address: 0x0016-0x0103 (238 bytes)
+ *
+ * This is a boot state machine that checks IDATA signatures to determine
+ * whether this is a warm boot (signatures match) or cold boot (need to
+ * reinitialize). It also handles different boot modes based on XDATA[0x0AF3].
+ *
+ * Boot states written to XDATA[0x0001]:
+ *   0: Normal boot, signatures zero
+ *   1: Cold boot, secondary signature non-zero
+ *   2: Boot mode == 5
+ *   3: Signature mismatch (setb c path)
+ *   4: Boot mode == 2 or 4
+ *   5: Boot mode == 5 (alt path)
+ *   6: Signature mismatch (clr c path)
+ *   7: Signature mismatch (second compare)
+ *
+ * Original disassembly start:
+ *   0016: clr a
+ *   0017: mov dptr, #0x0001
+ *   001a: movx @dptr, a        ; clear boot state
+ *   001b: mov r0, #0x6b
+ *   001d: lcall 0x0d78         ; load IDATA[0x6b-0x6e]
+ *   ...
+ */
+void startup_0016(void)
+{
+    uint32_t sig_boot, sig_transfer;
+    uint8_t boot_mode;
+    uint8_t state_6a;
+
+    /* Clear boot state */
+    G_IO_CMD_TYPE = 0;
+
+    /* Load transfer signature from IDATA[0x6b-0x6e] */
+    sig_transfer = I_TRANSFER_6B | ((uint32_t)I_TRANSFER_6C << 8) |
+                   ((uint32_t)I_TRANSFER_6D << 16) | ((uint32_t)I_TRANSFER_6E << 24);
+
+    /* Check if transfer signature is zero */
+    if (sig_transfer == 0) {
+        /* Load boot signature from IDATA[0x09-0x0c] */
+        sig_boot = I_BOOT_SIG_0 | ((uint32_t)I_BOOT_SIG_1 << 8) |
+                   ((uint32_t)I_BOOT_SIG_2 << 16) | ((uint32_t)I_BOOT_SIG_3 << 24);
+
+        if (sig_boot == 0) {
+            /* Both signatures zero - normal boot */
+            goto boot_dispatch;
+        }
+        /* Boot signature non-zero but transfer zero - set state 1 */
+        G_IO_CMD_TYPE = 1;
+        goto boot_dispatch;
+    }
+
+    /* Transfer signature non-zero - check boot mode */
+    boot_mode = G_XFER_STATE_0AF3;
+
+    if (boot_mode == 0x80) {
+        /* Boot mode 0x80 - check I_STATE_6A */
+        state_6a = I_STATE_6A;
+
+        switch (state_6a) {
+        case 1:
+        case 3:
+        case 8:
+            /* Compare signatures */
+            goto compare_signatures_mode80;
+
+        case 2:
+        case 4:
+            /* Set state 4 */
+            G_IO_CMD_TYPE = 4;
+            goto boot_dispatch;
+
+        case 5:
+            /* Set state 2 */
+            G_IO_CMD_TYPE = 2;
+            goto boot_dispatch;
+
+        default:
+            goto boot_dispatch;
+        }
+    } else {
+        /* Boot mode != 0x80 - different handling */
+        state_6a = I_STATE_6A;
+
+        switch (state_6a) {
+        case 1:
+        case 3:
+        case 8:
+            /* Jump to 0x00FE path - set state 6 if comparison fails */
+            goto compare_signatures_alt;
+
+        case 2:
+        case 4:
+            /* Compare signatures (at 0x00CA) */
+            goto compare_signatures_mode_other;
+
+        case 5:
+            /* Set state 5 */
+            G_IO_CMD_TYPE = 5;
+            goto boot_dispatch;
+
+        default:
+            goto boot_dispatch;
+        }
+    }
+
+compare_signatures_mode80:
+    /* Compare IDATA[0x6b-0x6e] with IDATA[0x09-0x0c] byte by byte */
+    if (I_TRANSFER_6B == I_BOOT_SIG_0 &&
+        I_TRANSFER_6C == I_BOOT_SIG_1 &&
+        I_TRANSFER_6D == I_BOOT_SIG_2 &&
+        I_TRANSFER_6E == I_BOOT_SIG_3) {
+        /* Signatures match - normal boot */
+        goto boot_dispatch;
+    }
+
+    /* Signatures mismatch - load both and compare with borrow */
+    load_both_signatures(&sig_boot, &sig_transfer);
+
+    /* First comparison: setb c (check sig_transfer >= sig_boot) */
+    if (!compare_signatures_ge(sig_boot, sig_transfer)) {
+        /* Condition not met - set state 3 */
+        G_IO_CMD_TYPE = 3;
+        goto boot_dispatch;
+    }
+
+    /* Second comparison: clr c (check sig_transfer > sig_boot) */
+    load_both_signatures(&sig_boot, &sig_transfer);
+    if (!compare_signatures_gt(sig_boot, sig_transfer)) {
+        /* Condition not met - goto state 4 path */
+        goto boot_dispatch;
+    }
+
+    /* Fall through to state 4 */
+    G_IO_CMD_TYPE = 4;
+    goto boot_dispatch;
+
+compare_signatures_alt:
+    /* At 0x00FE: Set state 6 and dispatch */
+    G_IO_CMD_TYPE = 6;
+    goto boot_dispatch;
+
+compare_signatures_mode_other:
+    /* Compare IDATA[0x6b-0x6e] with IDATA[0x09-0x0c] byte by byte */
+    if (I_TRANSFER_6B == I_BOOT_SIG_0 &&
+        I_TRANSFER_6C == I_BOOT_SIG_1 &&
+        I_TRANSFER_6D == I_BOOT_SIG_2 &&
+        I_TRANSFER_6E == I_BOOT_SIG_3) {
+        /* Signatures match */
+        goto boot_dispatch;
+    }
+
+    /* Mismatch - load both and compare */
+    load_both_signatures(&sig_boot, &sig_transfer);
+
+    /* First comparison: setb c */
+    if (!compare_signatures_ge(sig_boot, sig_transfer)) {
+        /* Set state 7 */
+        G_IO_CMD_TYPE = 7;
+        goto boot_dispatch;
+    }
+
+    /* Second comparison: clr c */
+    load_both_signatures(&sig_boot, &sig_transfer);
+    if (!compare_signatures_gt(sig_boot, sig_transfer)) {
+        goto boot_dispatch;
+    }
+
+    /* Set state 6 */
+    G_IO_CMD_TYPE = 6;
+    /* Fall through to dispatch */
+
+boot_dispatch:
+    /* At 0x0104: Read boot state and call table dispatch
+     * The table dispatch at 0x0DEF uses boot state to index into
+     * a jump table for further initialization.
+     * For now, this is a stub - the actual dispatch is complex.
+     */
+    ;
+}
+
+/*===========================================================================
  * Initialization Data Table Processor
  *===========================================================================*/
 

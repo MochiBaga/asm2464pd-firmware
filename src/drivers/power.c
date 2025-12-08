@@ -82,6 +82,7 @@
 extern void usb_mode_config_d07f(uint8_t param);     /* state_helpers.c */
 extern void nvme_queue_config_e214(void);            /* nvme.c */
 extern void delay_short_e89d(void);                  /* utils.c */
+extern void pcie_clear_address_regs(void);           /* pcie.c - 0x9a9c */
 
 /*
  * power_set_suspended - Set power status suspended bit (bit 6)
@@ -472,6 +473,78 @@ uint8_t power_state_machine_d02a(uint8_t max_iterations)
 }
 
 /*
+ * power_check_state_dde2 - Check power state after initialization
+ * Address: 0xdde2-0xde15 (52 bytes)
+ *
+ * Performs power state initialization and validates the result.
+ * Calls pcie_clear_address_regs and power_state_machine_d02a,
+ * then checks specific values in the power state table.
+ *
+ * Returns:
+ *   0xFF: Error - power_state_machine_d02a failed
+ *   0x01: Active - bits 0-6 of table[0x0D] are non-zero
+ *   0x02: Complete - table[0x08]==1, table[0x0A]==2, table[0x09]==8
+ *   0x00: Default - none of the above conditions met
+ *
+ * Original disassembly:
+ *   dde2: lcall 0x9a9c       ; pcie_clear_address_regs()
+ *   dde5: mov r7, #0x04
+ *   dde7: lcall 0xd02a       ; power_state_machine_d02a(4)
+ *   ddea: mov a, r7
+ *   ddeb: jnz 0xde13         ; If != 0, return 0xFF
+ *   dded: mov dptr, #0x800d
+ *   ddf0: movx a, @dptr
+ *   ddf1: anl a, #0x7f       ; Clear bit 7
+ *   ddf3: jnz 0xde10         ; If non-zero, return 0x01
+ *   ddf5: mov dptr, #0x8008
+ *   ddf8: movx a, @dptr
+ *   ddf9: cjne a, #0x01, 0xde0d
+ *   ddfc: mov dptr, #0x800a
+ *   ddff: movx a, @dptr
+ *   de00: cjne a, #0x02, 0xde0d
+ *   de03: mov dptr, #0x8009
+ *   de06: movx a, @dptr
+ *   de07: cjne a, #0x08, 0xde0d  ; All match: return 0x02
+ *   de0a: mov r7, #0x02
+ *   de0c: ret
+ *   de0d: mov r7, #0x00      ; Default: return 0x00
+ *   de0f: ret
+ *   de10: mov r7, #0x01      ; Active: return 0x01
+ *   de12: ret
+ *   de13: mov r7, #0xff      ; Error: return 0xFF
+ *   de15: ret
+ */
+uint8_t power_check_state_dde2(void)
+{
+    uint8_t result;
+
+    /* Clear PCIe address registers */
+    pcie_clear_address_regs();
+
+    /* Run power state machine with 4 iterations */
+    result = power_state_machine_d02a(4);
+
+    /* If state machine failed, return error */
+    if (result != 0) {
+        return 0xFF;
+    }
+
+    /* Check table[0x0D] bits 0-6 */
+    if ((XDATA_REG8(0x800D) & 0x7F) != 0) {
+        return 0x01;  /* Active state */
+    }
+
+    /* Check for specific pattern: [0x08]==1, [0x0A]==2, [0x09]==8 */
+    if (XDATA_REG8(0x8008) == 0x01 &&
+        XDATA_REG8(0x800A) == 0x02 &&
+        XDATA_REG8(0x8009) == 0x08) {
+        return 0x02;  /* Complete state */
+    }
+
+    return 0x00;  /* Default */
+}
+
+/*
  * power_set_suspended_and_event_cad6 - Set suspend bit and power event
  * Address: 0xcad6-0xcae5 (16 bytes)
  *
@@ -738,4 +811,99 @@ void usb_power_init(void)
         power_set_event_ctrl();
         REG_USB_PHY_CTRL_91C0 = 2;
     }
+}
+
+/*
+ * power_get_state_nibble_cb0f - Get power state nibble
+ * Address: 0xcb0f-0xcb18 (10 bytes)
+ *
+ * Reads the high nibble of power status register 0x92F7 and returns
+ * it as the low nibble (shifted right by 4).
+ *
+ * Original disassembly:
+ *   cb0f: mov dptr, #0x92f7   ; Power status extended register
+ *   cb12: movx a, @dptr       ; Read value
+ *   cb13: anl a, #0xf0        ; Keep high nibble
+ *   cb15: swap a              ; Swap nibbles
+ *   cb16: anl a, #0x0f        ; Keep low nibble (was high)
+ *   cb18: ret
+ *
+ * Returns: High nibble of 0x92F7 as value 0-15
+ */
+uint8_t power_get_state_nibble_cb0f(void)
+{
+    uint8_t val;
+
+    val = REG_POWER_STATUS_92F7;
+    val = (val & 0xF0) >> 4;  /* Get high nibble */
+    return val;
+}
+
+/*
+ * power_set_link_status_cb19 - Set link status bits 0-1
+ * Address: 0xcb19-0xcb22 (10 bytes)
+ *
+ * Sets bits 0-1 of the link status register 0xE716 to 0b11.
+ *
+ * Original disassembly:
+ *   cb19: mov dptr, #0xe716   ; Link status register
+ *   cb1c: movx a, @dptr       ; Read current
+ *   cb1d: anl a, #0xfc        ; Clear bits 0-1
+ *   cb1f: orl a, #0x03        ; Set bits 0-1
+ *   cb21: movx @dptr, a       ; Write back
+ *   cb22: ret
+ */
+void power_set_link_status_cb19(void)
+{
+    uint8_t val;
+
+    val = REG_LINK_STATUS_E716;
+    val = (val & 0xFC) | 0x03;
+    REG_LINK_STATUS_E716 = val;
+}
+
+/*
+ * power_set_status_bit6_cb23 - Set power status bit 6 (suspended)
+ * Address: 0xcb23-0xcb2c (10 bytes)
+ *
+ * Sets bit 6 of power status register 0x92C2.
+ * This is similar to power_set_suspended_and_event_cad6 but doesn't
+ * write to the event register.
+ *
+ * Original disassembly:
+ *   cb23: mov dptr, #0x92c2   ; Power status register
+ *   cb26: movx a, @dptr       ; Read current
+ *   cb27: anl a, #0xbf        ; Clear bit 6
+ *   cb29: orl a, #0x40        ; Set bit 6
+ *   cb2b: movx @dptr, a       ; Write back
+ *   cb2c: ret
+ */
+void power_set_status_bit6_cb23(void)
+{
+    uint8_t val;
+
+    val = REG_POWER_STATUS;
+    val = (val & 0xBF) | 0x40;
+    REG_POWER_STATUS = val;
+}
+
+/*
+ * power_clear_interface_flags_cb2d - Clear interface ready flags
+ * Address: 0xcb2d-0xcb36 (10 bytes)
+ *
+ * Clears the interface ready flag (0x0B2F) and system flag (0x07EB).
+ * Called during power state transitions to reset interface state.
+ *
+ * Original disassembly:
+ *   cb2d: clr a               ; A = 0
+ *   cb2e: mov dptr, #0x0b2f   ; Interface ready flag
+ *   cb31: movx @dptr, a       ; Clear it
+ *   cb32: mov dptr, #0x07eb   ; System flags
+ *   cb35: movx @dptr, a       ; Clear it
+ *   cb36: ret
+ */
+void power_clear_interface_flags_cb2d(void)
+{
+    G_INTERFACE_READY_0B2F = 0;
+    G_SYS_FLAGS_07EB = 0;
 }

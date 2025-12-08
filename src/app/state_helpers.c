@@ -1835,3 +1835,604 @@ __xdata uint8_t *scsi_get_ctrl_ptr_1b3b(void)
     }
     return (__xdata uint8_t *)addr;
 }
+
+/*
+ * state_inc_and_calc_120b - Increment work register and calculate transfer
+ * Address: 0x120b-0x120c (2 bytes)
+ *
+ * Disassembly:
+ *   120b: inc 0x3f              ; I_WORK_3F++
+ *   120d: ...                   ; falls through to state_transfer_calc_120d
+ *
+ * This is an entry point that increments I_WORK_3F before falling through
+ * to state_transfer_calc_120d.
+ */
+void state_inc_and_calc_120b(void)
+{
+    I_WORK_3F++;
+    state_transfer_calc_120d();
+}
+
+/*
+ * get_usb_index_ptr_15a0 - Get pointer to USB index array element
+ * Address: 0x15a0-0x15ab (12 bytes)
+ *
+ * Disassembly:
+ *   15a0: mov a, #0x4e        ; A = 0x4E
+ *   15a2: add a, 0x43         ; A = 0x4E + I_WORK_43
+ *   15a4: mov 0x82, a         ; DPL = A
+ *   15a6: clr a
+ *   15a7: addc a, #0x01       ; DPH = 0x01 + carry
+ *   15a9: mov 0x83, a
+ *   15ab: ret
+ *
+ * Computes DPTR = 0x014E + I_WORK_43
+ * This accesses the G_USB_INDEX_COUNTER array at 0x014E indexed by I_WORK_43.
+ *
+ * Returns: Pointer to USB index array element
+ */
+__xdata uint8_t *get_usb_index_ptr_15a0(void)
+{
+    uint8_t low = 0x4E + I_WORK_43;
+    uint16_t addr = 0x0100 + low;  /* Base is 0x0100 */
+    if (low < 0x4E) {
+        addr += 0x0100;  /* Handle overflow carry */
+    }
+    return (__xdata uint8_t *)addr;
+}
+
+/*
+ * set_usb_status_bit0_1be1 - Set bit 0 of USB status register
+ * Address: 0x1be1-0x1bea (10 bytes)
+ *
+ * Disassembly:
+ *   1be1: mov dptr, #0x9006
+ *   1be4: movx a, @dptr
+ *   1be5: orl a, #0x01
+ *   1be7: movx @dptr, a
+ *   1be8: ret
+ *
+ * Reads register 0x9006, sets bit 0, writes back.
+ */
+void set_usb_status_bit0_1be1(void)
+{
+    REG_USB_STATUS2 |= 0x01;
+}
+
+/*
+ * read_idata_pair_1b77 - Read 2 bytes from idata
+ * Address: 0x1b77-0x1b82 (12 bytes)
+ *
+ * Disassembly:
+ *   1b77: mov r0, #0x16
+ *   1b79: mov a, @r0
+ *   1b7a: mov r5, a
+ *   1b7b: inc r0
+ *   1b7c: mov a, @r0
+ *   1b7d: mov r6, a
+ *   1b7e: ret
+ *
+ * Reads bytes at idata 0x16 and 0x17 into r5 and r6.
+ * Returns low byte in R5, high byte in R6 (as 16-bit value).
+ */
+uint16_t read_idata_pair_1b77(void)
+{
+    return ((uint16_t)I_WORK_17 << 8) | I_WORK_16;
+}
+
+/*
+ * set_dptr_04xx_1660 - Set DPTR to address in 0x04xx range
+ * Address: 0x1660-0x1669 (10 bytes)
+ *
+ * Disassembly:
+ *   1660: add a, #0x60        ; A = A + 0x60
+ *   1662: mov 0x82, a         ; DPL = A
+ *   1664: clr a
+ *   1665: addc a, #0x04       ; DPH = 0x04 + carry
+ *   1667: mov 0x83, a
+ *   1669: ret
+ *
+ * Computes DPTR = 0x0460 + offset (passed in A), with carry to high byte.
+ * Returns: Pointer to address
+ */
+__xdata uint8_t *set_dptr_04xx_1660(uint8_t offset)
+{
+    uint8_t low = offset + 0x60;
+    uint16_t addr = 0x0400 + low;
+    if (low < offset) {
+        addr += 0x0100;  /* Handle overflow carry */
+    }
+    return (__xdata uint8_t *)addr;
+}
+
+/*
+ * set_c412_bit1_1b59 - Set bit 1 of NVME control register
+ * Address: 0x1b59-0x1b63 (11 bytes)
+ *
+ * Disassembly:
+ *   1b59: mov dptr, #0xc412
+ *   1b5c: movx a, @dptr
+ *   1b5d: orl a, #0x02
+ *   1b5f: movx @dptr, a
+ *   1b60: ret
+ *
+ * Reads register 0xC412, sets bit 1, writes back.
+ */
+void set_c412_bit1_1b59(void)
+{
+    REG_NVME_CTRL_STATUS |= 0x02;
+}
+
+/*
+ * write_and_set_c412_bit1_1b55 - Write value then set bit 1 of control register
+ * Address: 0x1b55-0x1b58 (4 bytes) + falls through to 1b59
+ *
+ * Disassembly:
+ *   1b55: mov dptr, #0xc412
+ *   1b58: movx @dptr, a       ; Write A to 0xC412
+ *   1b59: ...                 ; Falls through to set_c412_bit1_1b59
+ *
+ * Writes A to 0xC412 then sets bit 1 (via fall through).
+ */
+void write_and_set_c412_bit1_1b55(uint8_t value)
+{
+    REG_NVME_CTRL_STATUS = value;
+    set_c412_bit1_1b59();
+}
+
+/*
+ * write_ff_to_ce40_offset_1607 - Write 0xFF to address 0xCE40 + offset
+ * Address: 0x1607-0x1619 (19 bytes)
+ *
+ * Disassembly:
+ *   1607: mov r7, a           ; Save offset in R7
+ *   1608: clr a
+ *   1609: subb a, #0x00       ; R6 = borrow (0 or -1)
+ *   160b: mov r6, a
+ *   160c: mov a, #0x40        ; Low byte base
+ *   160e: add a, r7           ; Add offset
+ *   160f: mov 0x82, a         ; DPL
+ *   1611: mov a, #0xce        ; High byte base
+ *   1613: addc a, r6          ; Add carry/borrow
+ *   1614: mov 0x83, a         ; DPH
+ *   1616: mov a, #0xff
+ *   1618: movx @dptr, a       ; Write 0xFF
+ *   1619: ret
+ *
+ * Writes 0xFF to address 0xCE40 + offset, handles negative offset.
+ */
+void write_ff_to_ce40_offset_1607(uint8_t offset)
+{
+    __xdata uint8_t *ptr = (__xdata uint8_t *)(0xCE40 + offset);
+    *ptr = 0xFF;
+}
+
+/*
+ * get_ptr_044e_offset_165e - Get pointer to 0x044E + offset
+ * Address: 0x165e-0x1667 (10 bytes)
+ *
+ * Disassembly:
+ *   165e: add a, #0x4e        ; A = A + 0x4E
+ *   1660: mov 0x82, a         ; DPL = A
+ *   1662: clr a
+ *   1663: addc a, #0x04       ; DPH = 0x04 + carry
+ *   1665: mov 0x83, a
+ *   1667: ret
+ *
+ * Computes DPTR = 0x044E + offset (passed in A).
+ * Entry point 0x165e is called when caller adds #0x4E to offset.
+ */
+__xdata uint8_t *get_ptr_044e_offset_165e(uint8_t offset)
+{
+    uint8_t low = offset + 0x4E;
+    uint16_t addr = 0x0400 + low;
+    if (low < 0x4E) {
+        addr += 0x0100;  /* Handle overflow carry */
+    }
+    return (__xdata uint8_t *)addr;
+}
+
+/*
+ * get_ptr_045a_offset_168c - Get pointer to 0x045A + offset
+ * Address: 0x168c-0x1695 (10 bytes)
+ *
+ * Disassembly:
+ *   168c: add a, #0x5a        ; A = A + 0x5A
+ *   168e: mov 0x82, a         ; DPL = A
+ *   1690: clr a
+ *   1691: addc a, #0x04       ; DPH = 0x04 + carry
+ *   1693: mov 0x83, a
+ *   1695: ret
+ *
+ * Computes DPTR = 0x045A + offset (passed in A).
+ */
+__xdata uint8_t *get_ptr_045a_offset_168c(uint8_t offset)
+{
+    uint8_t low = offset + 0x5A;
+    uint16_t addr = 0x0400 + low;
+    if (low < 0x5A) {
+        addr += 0x0100;  /* Handle overflow carry */
+    }
+    return (__xdata uint8_t *)addr;
+}
+
+/*
+ * get_ptr_0466_1660 - Get pointer at 0x0460 + offset (without adding 0x4E first)
+ * Address: 0x1660-0x1667 (8 bytes)
+ *
+ * This is the same code as 0x165e but entered after the add instruction.
+ * Called when A already contains (offset + 0x4E) from caller.
+ *
+ * Disassembly:
+ *   1660: mov 0x82, a         ; DPL = A (already has offset + 0x4E)
+ *   1662: clr a
+ *   1663: addc a, #0x04       ; DPH = 0x04 + carry
+ *   1665: mov 0x83, a
+ *   1667: ret
+ *
+ * Entry point when A already contains low byte offset.
+ */
+__xdata uint8_t *get_ptr_04xx_raw_1660(uint8_t low_byte, uint8_t carry)
+{
+    uint16_t addr = 0x0400 + low_byte;
+    if (carry) {
+        addr += 0x0100;
+    }
+    return (__xdata uint8_t *)addr;
+}
+
+/*
+ * get_ptr_04b7_idx55_1696 - Get pointer to 0x04B7 + I_WORK_55
+ * Address: 0x1696-0x16a1 (12 bytes)
+ *
+ * Disassembly:
+ *   1696: mov a, #0xb7        ; A = 0xB7
+ *   1698: add a, 0x55         ; A = 0xB7 + I_WORK_55
+ *   169a: mov 0x82, a         ; DPL = A
+ *   169c: clr a
+ *   169d: addc a, #0x04       ; DPH = 0x04 + carry
+ *   169f: mov 0x83, a
+ *   16a1: ret
+ *
+ * Computes DPTR = 0x04B7 + I_WORK_55
+ */
+__xdata uint8_t *get_ptr_04b7_idx55_1696(void)
+{
+    uint8_t low = 0xB7 + I_WORK_55;
+    uint16_t addr = 0x0400 + low;
+    if (low < 0xB7) {
+        addr += 0x0100;  /* Handle overflow carry */
+    }
+    return (__xdata uint8_t *)addr;
+}
+
+/*
+ * get_ptr_0466_r7_16de - Get pointer to 0x0466 + R7 offset
+ * Address: 0x16de-0x16e8 (11 bytes)
+ *
+ * Disassembly:
+ *   16de: mov a, #0x66        ; A = 0x66
+ *   16e0: add a, r7           ; A = 0x66 + R7
+ *   16e1: mov 0x82, a         ; DPL = A
+ *   16e3: clr a
+ *   16e4: addc a, #0x04       ; DPH = 0x04 + carry
+ *   16e6: mov 0x83, a
+ *   16e8: ret
+ *
+ * Computes DPTR = 0x0466 + R7
+ */
+__xdata uint8_t *get_ptr_0466_r7_16de(uint8_t r7_offset)
+{
+    uint8_t low = 0x66 + r7_offset;
+    uint16_t addr = 0x0400 + low;
+    if (low < 0x66) {
+        addr += 0x0100;  /* Handle overflow carry */
+    }
+    return (__xdata uint8_t *)addr;
+}
+
+/*
+ * get_ptr_0456_offset_16e9 - Get pointer to 0x0456 + offset
+ * Address: 0x16e9-0x16f2 (10 bytes)
+ *
+ * Disassembly:
+ *   16e9: add a, #0x56        ; A = A + 0x56
+ *   16eb: mov 0x82, a         ; DPL = A
+ *   16ed: clr a
+ *   16ee: addc a, #0x04       ; DPH = 0x04 + carry
+ *   16f0: mov 0x83, a
+ *   16f2: ret
+ *
+ * Computes DPTR = 0x0456 + A
+ */
+__xdata uint8_t *get_ptr_0456_offset_16e9(uint8_t offset)
+{
+    uint8_t low = offset + 0x56;
+    uint16_t addr = 0x0400 + low;
+    if (low < 0x56) {
+        addr += 0x0100;  /* Handle overflow carry */
+    }
+    return (__xdata uint8_t *)addr;
+}
+
+/*
+ * clear_c8d6_bits_16f3 - Clear bits 3 and 2 of register 0xC8D6
+ * Address: 0x16f3-0x16fe (12 bytes)
+ *
+ * Disassembly:
+ *   16f3: mov dptr, #0xc8d6
+ *   16f6: movx a, @dptr
+ *   16f7: anl a, #0xf7        ; Clear bit 3
+ *   16f9: movx @dptr, a
+ *   16fa: movx a, @dptr
+ *   16fb: anl a, #0xfb        ; Clear bit 2
+ *   16fd: movx @dptr, a
+ *   16fe: ret
+ *
+ * Clears bits 3 and 2 of register 0xC8D6.
+ */
+void clear_c8d6_bits_16f3(void)
+{
+    REG_DMA_STATUS &= 0xF7;  /* Clear bit 3 */
+    REG_DMA_STATUS &= 0xFB;  /* Clear bit 2 */
+}
+
+/*
+ * read_009f_idx3e_1b88 - Read from address 0x009F + I_WORK_3E
+ * Address: 0x1b88-0x1b95 (14 bytes)
+ *
+ * Disassembly:
+ *   1b88: mov r7, a           ; Save A in R7
+ *   1b89: mov a, #0x9f        ; A = 0x9F
+ *   1b8b: add a, 0x3e         ; A = 0x9F + I_WORK_3E
+ *   1b8d: mov 0x82, a         ; DPL = A
+ *   1b8f: clr a
+ *   1b90: addc a, #0x00       ; DPH = carry
+ *   1b92: mov 0x83, a
+ *   1b94: movx a, @dptr       ; Read from DPTR
+ *   1b95: ret
+ *
+ * Reads byte from address 0x009F + I_WORK_3E.
+ */
+uint8_t read_009f_idx3e_1b88(void)
+{
+    uint8_t low = 0x9F + I_WORK_3E;
+    uint16_t addr = 0x0000 + low;
+    if (low < 0x9F) {
+        addr += 0x0100;  /* Handle overflow carry */
+    }
+    return *(__xdata uint8_t *)addr;
+}
+
+/*
+ * read_0472_pair_171d - Read 16-bit value from 0x0472-0x0473
+ * Address: 0x171d-0x1729 (13 bytes)
+ *
+ * Disassembly:
+ *   171d: mov dptr, #0x0472
+ *   1720: movx a, @dptr
+ *   1721: mov r6, a           ; R6 = low byte
+ *   1722: inc dptr
+ *   1723: movx a, @dptr
+ *   1724: mov r7, a           ; R7 = high byte
+ *   1725: mov r5, 0x03        ; R5 = some parameter
+ *   1727: mov r4, #0x00
+ *   1729: ljmp 0x0c0f         ; Jump to division routine
+ *
+ * Reads 16-bit value from G_TRANSFER_SIZE_0472 and jumps to 0x0c0f.
+ */
+uint16_t read_0472_pair_171d(void)
+{
+    return ((uint16_t)G_DMA_LOAD_PARAM2 << 8) | G_DMA_LOAD_PARAM1;
+}
+
+/*
+ * write_idx41_plus2_17d8 - Write I_WORK_41+2 and I_WORK_41+3 to DPTR
+ * Address: 0x17d8-0x17e2 (11 bytes)
+ *
+ * Disassembly:
+ *   17d8: mov a, 0x41         ; A = I_WORK_41
+ *   17da: add a, #0x02        ; A = I_WORK_41 + 2
+ *   17dc: movx @dptr, a       ; Write to DPTR
+ *   17dd: mov a, 0x41         ; A = I_WORK_41
+ *   17df: add a, #0x03        ; A = I_WORK_41 + 3
+ *   17e1: movx @dptr, a       ; Write to DPTR again
+ *   17e2: ret
+ *
+ * Writes I_WORK_41+2 and I_WORK_41+3 to consecutive DPTR locations.
+ * Note: The second write overwrites the same location (bug or intentional).
+ */
+void write_idx41_plus2_17d8(__xdata uint8_t *ptr)
+{
+    *ptr = I_WORK_41 + 2;
+    *ptr = I_WORK_41 + 3;
+}
+
+/*
+ * setup_c415_from_0475_1b47 - Read 0x0475 and 0xC415, combine and write
+ * Address: 0x1b47-0x1b5e (24 bytes)
+ *
+ * Disassembly:
+ *   1b47: mov dptr, #0x0475
+ *   1b4a: movx a, @dptr
+ *   1b4b: mov r6, a           ; R6 = value from 0x0475
+ *   1b4c: mov dptr, #0xc415
+ *   1b4f: movx a, @dptr
+ *   1b50: anl a, #0xc0        ; Keep bits 7-6 only
+ *   1b52: mov r5, a           ; R5 = (0xC415 & 0xC0)
+ *   1b53: mov a, r6
+ *   1b54: orl a, r5           ; A = R6 | R5
+ *   1b55: movx @dptr, a       ; Write to 0xC415
+ *   1b56: mov dptr, #0xc412   ; Falls through to set bit on C412
+ *   ...continues at 1b59...
+ *
+ * Reads G_NVME_PARAM_0475, combines with bits 7-6 of REG_NVME_CONFIG_C415,
+ * writes result to REG_NVME_CONFIG_C415, then sets bit 1 of REG_NVME_CTRL_STATUS.
+ */
+void setup_c415_from_0475_1b47(void)
+{
+    uint8_t val_0475 = G_STATE_HELPER_42;
+    uint8_t val_c415 = REG_NVME_DEV_STATUS & 0xC0;
+    REG_NVME_DEV_STATUS = val_0475 | val_c415;
+    REG_NVME_CTRL_STATUS &= 0xFD;  /* Clear bit 1 */
+    REG_NVME_CTRL_STATUS |= 0x02;  /* Set bit 1 */
+}
+
+/*
+ * flash_config_copy_9403 - Copy flash config to XDATA globals
+ * Address: 0x9403-0x9535 (306 bytes)
+ *
+ * This function reads flash configuration from the flash buffer area (0x7076-0x707D)
+ * and copies the data to config globals (0x086E-0x0871, 0x0AE3-0x0AF1), extracting
+ * various bitfields and setting system flags.
+ *
+ * Flash buffer layout:
+ *   0x7076-0x7077: Config block 1 (copied to 0x086E-0x086F if valid)
+ *   0x7078-0x7079: Config block 2 (copied to 0x0870-0x0871 if valid)
+ *   0x707A: Config byte A (low nibble -> 0x0AE9, bits 4-5 -> 0x0AEE)
+ *   0x707B: Config byte B (bits 0-1 -> 0x0AEB/0x0AEC, bits 4-5 -> 0x0AED)
+ *   0x707D: Config byte D (individual bits -> 0x0AEA, 0x0AE3-0x0AE8, 0x0AF0)
+ *
+ * A block is considered "invalid" if both bytes read as 0xFF.
+ */
+extern void helper_e5fe(void);
+extern void helper_dbbb(void);
+extern void helper_048a(void);
+extern void helper_bbc0(__xdata uint8_t *dest);
+extern void helper_bb6e(__xdata uint8_t *dest);
+
+void flash_config_copy_9403(void)
+{
+    uint8_t val;
+    uint8_t cfg_707d;
+    uint8_t cfg_707a;
+    uint8_t cfg_707b;
+    uint8_t r6_ae3;
+    uint8_t r7_ae6;
+
+    /* Check if flash block 0x7076-0x7077 is valid (not both 0xFF) */
+    val = G_FLASH_BUF_7076;
+    if (val != 0xFF || (uint8_t)~G_FLASH_BUF_7077 != 0) {
+        /* Valid - copy 0x7076 -> 0x086E, 0x7077 -> 0x086F */
+        G_FLASH_CFG_086E = G_FLASH_BUF_7076;
+        G_FLASH_CFG_086F = G_FLASH_BUF_7077;
+    }
+
+    /* Check if flash block 0x7078-0x7079 is valid (not both 0xFF) */
+    val = G_FLASH_BUF_7078;
+    if (val != 0xFF || (uint8_t)~G_FLASH_BUF_7079 != 0) {
+        /* Valid - copy 0x7078 -> 0x0870, 0x7079 -> 0x0871 */
+        G_FLASH_CFG_0870 = G_FLASH_BUF_7078;
+        G_FLASH_CFG_0871 = G_FLASH_BUF_7079;
+    }
+
+    /* Read config byte from 0x707D and extract bitfields */
+    cfg_707d = G_FLASH_BUF_707D;
+
+    /* Bit 0 -> 0x0AEA (flash config flag) */
+    G_FLASH_CFG_0AEA = cfg_707d & 0x01;
+
+    /* Bit 1 (shifted to bit 0) -> 0x0AE3 (state flag) */
+    cfg_707d = G_FLASH_BUF_707D;  /* Re-read for helper chain */
+    G_STATE_FLAG_0AE3 = (cfg_707d >> 1) & 0x01;
+
+    /* Bit 2 (shifted) -> 0x0AE4 (PHY lane config) */
+    cfg_707d = G_FLASH_BUF_707D;
+    G_PHY_LANE_CFG_0AE4 = (cfg_707d >> 2) & 0x01;
+
+    /* Bit 3 -> 0x0AF0 (flash config) */
+    cfg_707d = G_FLASH_BUF_707D;
+    G_FLASH_CFG_0AF0 = (cfg_707d >> 3) & 0x01;
+
+    /* Bit 4 (from swap) -> 0x0AE5 (TLP init flag) */
+    cfg_707d = G_FLASH_BUF_707D;
+    G_TLP_INIT_FLAG_0AE5 = (cfg_707d >> 4) & 0x01;
+
+    /* Bit 5 (from swap + shift) -> 0x0AE6 (link speed mode) */
+    cfg_707d = G_FLASH_BUF_707D;
+    G_LINK_SPEED_MODE_0AE6 = r7_ae6 = (cfg_707d >> 5) & 0x01;
+
+    /* Bit 6 (from swap/rrc/rrc) -> 0x0AE7 (link config bit) */
+    cfg_707d = G_FLASH_BUF_707D;
+    G_LINK_CFG_BIT_0AE7 = (cfg_707d >> 6) & 0x01;
+
+    /* Bit 7 -> 0x0AE8 (state) */
+    cfg_707d = G_FLASH_BUF_707D;
+    G_STATE_0AE8 = (cfg_707d >> 7) & 0x01;
+
+    /* Read config byte from 0x707A and extract bitfields */
+    cfg_707a = G_FLASH_BUF_707A;
+
+    /* Low nibble -> 0x0AE9 (state) */
+    G_STATE_0AE9 = cfg_707a & 0x0F;
+
+    /* Bits 4-5 -> 0x0AEE (state check byte) */
+    G_STATE_CHECK_0AEE = (cfg_707a >> 4) & 0x03;
+
+    /* Process 0x707A upper bits with helper_bb96 pattern -> 0x0AEF */
+    cfg_707a = G_FLASH_BUF_707A;
+    G_LINK_CFG_0AEF = (cfg_707a >> 6) & 0x03;
+
+    /* Read config byte from 0x707B */
+    cfg_707b = G_FLASH_BUF_707B;
+
+    /* Bits 0-1 -> 0x0AEB (link config) */
+    G_LINK_CFG_0AEB = cfg_707b & 0x03;
+
+    /* Bits 4-5 -> 0x0AED (PHY config) */
+    G_PHY_CFG_0AED = (cfg_707b >> 4) & 0x03;
+
+    /* Set bit 0 of G_SYS_FLAGS_07F7 */
+    G_SYS_FLAGS_07F7 |= 0x01;
+
+    /* Set bit 0 of link config 0x0AEB */
+    G_LINK_CFG_0AEB |= 0x01;
+
+    /* Check G_LINK_SPEED_MODE_0AE6 (r7) for conditional processing */
+    if (r7_ae6 != 0) {
+        /* Clear G_STATE_FLAG_0AF1 (set to 0) */
+        G_STATE_FLAG_0AF1 = 0;
+    } else {
+        /* Set G_STATE_FLAG_0AF1 to 0x3F */
+        G_STATE_FLAG_0AF1 = 0x3F;
+    }
+
+    /* Read G_STATE_FLAG_0AE3 (r6) for conditional PHY config */
+    r6_ae3 = G_STATE_FLAG_0AE3;
+
+    /* PHY config based on G_PHY_LANE_CFG_0AE4 and r6_ae3 */
+    if (G_PHY_LANE_CFG_0AE4 == 0) {
+        /* Call helper_bbc0 to set bit 3 at 0xC655 and 0xC65A */
+        helper_bbc0(&REG_PHY_CFG_C655);
+        helper_bbc0(&REG_PHY_CFG_C65A);
+    } else {
+        /* Clear bit 3 at 0xC65A */
+        REG_PHY_CFG_C65A &= 0xF7;
+    }
+
+    /* Check r6_ae3 and r7_ae6 for REG_CPU_EXEC_STATUS_3 (0xCC35) update */
+    if (r6_ae3 == 0 || r7_ae6 == 0) {
+        helper_bb6e(&REG_CPU_EXEC_STATUS_3);
+    } else {
+        REG_CPU_EXEC_STATUS_3 &= 0xFB;  /* Clear bit 2 */
+    }
+
+    /* Call helper based on r6_ae3 state */
+    if (r6_ae3 == 0) {
+        helper_e5fe();
+    }
+
+    /* Check G_STATE_FLAG_0AF1 bits and call helpers */
+    val = G_STATE_FLAG_0AF1;
+    if (val & 0x01) {
+        helper_dbbb();
+    }
+
+    val = G_STATE_FLAG_0AF1;
+    if (val & 0x04) {
+        helper_048a();
+    }
+
+    /* Clear bit 4 of USB endpoint control */
+    REG_USB_EP_CTRL_905F &= 0xEF;
+}

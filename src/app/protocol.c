@@ -3295,3 +3295,158 @@ __xdata uint8_t *helper_3226(uint8_t addr_low, uint8_t addr_high)
     return (__xdata uint8_t *)((addr_high << 8) | addr_low);
 }
 
+/*
+ * nvme_call_and_signal_3219 - Call USB buffer helper and signal completion
+ * Address: 0x3219-0x3222 (10 bytes)
+ *
+ * Calls the USB buffer setup function at 0x53c0, then writes 1 to
+ * the USB signal register 0x90A1 to signal operation complete.
+ *
+ * Original disassembly:
+ *   3219: lcall 0x53c0       ; helper_53c0
+ *   321c: mov dptr, #0x90a1
+ *   321f: mov a, #0x01
+ *   3221: movx @dptr, a
+ *   3222: ret
+ */
+void nvme_call_and_signal_3219(void)
+{
+    helper_53c0();
+    REG_USB_SIGNAL_90A1 = 0x01;
+}
+
+/*
+ * nvme_ep_config_init_3267 - Initialize USB endpoint configuration
+ * Address: 0x3267-0x3271 (11 bytes)
+ *
+ * Sets up USB endpoint configuration registers:
+ *   - 0x9093 = 0x02 (endpoint config 1)
+ *   - 0x9094 = 0x10 (endpoint config 2)
+ *
+ * Original disassembly:
+ *   3267: mov dptr, #0x9093
+ *   326a: mov a, #0x02
+ *   326c: movx @dptr, a
+ *   326d: inc dptr           ; now 0x9094
+ *   326e: mov a, #0x10
+ *   3270: movx @dptr, a
+ *   3271: ret
+ */
+void nvme_ep_config_init_3267(void)
+{
+    REG_USB_EP_CFG1 = 0x02;   /* 0x9093 */
+    REG_USB_EP_CFG2 = 0x10;   /* 0x9094 */
+}
+
+/*
+ * usb_link_status_read_328a - Read USB link status bits 0-1
+ * Address: 0x328a-0x3290 (7 bytes)
+ *
+ * Reads the USB link status register at 0x9100 and returns
+ * only the lower 2 bits (masked with 0x03).
+ *
+ * Returns: (REG_USB_LINK_STATUS & 0x03)
+ *
+ * Original disassembly:
+ *   328a: mov dptr, #0x9100
+ *   328d: movx a, @dptr
+ *   328e: anl a, #0x03
+ *   3290: ret
+ */
+uint8_t usb_link_status_read_328a(void)
+{
+    return REG_USB_LINK_STATUS & 0x03;
+}
+
+/*
+ * queue_idx_get_3291 - Get queue index from IDATA[0x0D]
+ * Address: 0x3291-0x3297 (7 bytes)
+ *
+ * Reads the queue index (I_QUEUE_IDX) from IDATA address 0x0D
+ * and returns it in R7, with R5 cleared to 0.
+ *
+ * Returns: I_QUEUE_IDX (via R7 in original code)
+ *
+ * Original disassembly:
+ *   3291: mov r0, #0x0d
+ *   3293: mov a, @r0         ; read IDATA[0x0D]
+ *   3294: mov r7, a
+ *   3295: clr a
+ *   3296: mov r5, a
+ *   3297: ret
+ */
+uint8_t queue_idx_get_3291(void)
+{
+    return I_QUEUE_IDX;
+}
+
+/*
+ * dma_status3_read_3298 - Read DMA status 3 upper bits
+ * Address: 0x3298-0x329e (7 bytes)
+ *
+ * Reads the DMA status 3 register at 0xC8D9 and returns
+ * only bits 3-7 (masked with 0xF8).
+ *
+ * Returns: (REG_DMA_STATUS3 & 0xF8)
+ *
+ * Original disassembly:
+ *   3298: mov dptr, #0xc8d9
+ *   329b: movx a, @dptr
+ *   329c: anl a, #0xf8
+ *   329e: ret
+ */
+uint8_t dma_status3_read_3298(void)
+{
+    return REG_DMA_STATUS3 & 0xF8;
+}
+
+/*
+ * int_aux_set_bit1_3280 - Set bit 1 of auxiliary interrupt status
+ * Address: 0x3280-0x3289 (10 bytes)
+ *
+ * Reads the auxiliary interrupt status register, clears bits 1-2,
+ * sets bit 1, and writes back. Net effect is to set bit 1 and clear bit 2.
+ *
+ * Original disassembly:
+ *   3280: mov dptr, #0xc805
+ *   3283: movx a, @dptr
+ *   3284: anl a, #0xf9       ; clear bits 1,2
+ *   3286: orl a, #0x02       ; set bit 1
+ *   3288: movx @dptr, a
+ *   3289: ret
+ */
+void int_aux_set_bit1_3280(void)
+{
+    uint8_t val;
+
+    val = REG_INT_AUX_STATUS;
+    val &= 0xF9;  /* Clear bits 1,2 */
+    val |= 0x02;  /* Set bit 1 */
+    REG_INT_AUX_STATUS = val;
+}
+
+/*
+ * xdata_read_0a7e_329f - Read 32-bit value from XDATA 0x0A7E
+ * Address: 0x329f-0x32a4 (6 bytes)
+ *
+ * Sets up DPTR to 0x0A7E and jumps to the dword reader at 0x0DDD.
+ * Returns the 32-bit value at XDATA[0x0A7E-0x0A81] in R4-R7.
+ *
+ * Original disassembly:
+ *   329f: mov dptr, #0x0a7e
+ *   32a2: ljmp 0x0ddd        ; xdata_load_dword
+ */
+uint32_t xdata_read_0a7e_329f(void)
+{
+    /* Read 32-bit value from XDATA 0x0A7E-0x0A81 */
+    __xdata uint8_t *ptr = (__xdata uint8_t *)0x0A7E;
+    uint32_t result;
+
+    result = (uint32_t)ptr[0];
+    result |= (uint32_t)ptr[1] << 8;
+    result |= (uint32_t)ptr[2] << 16;
+    result |= (uint32_t)ptr[3] << 24;
+
+    return result;
+}
+

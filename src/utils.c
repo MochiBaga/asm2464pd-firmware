@@ -961,3 +961,317 @@ void delay_wait_e80a(uint16_t delay, uint8_t flag)
     /* TODO: Implement timer-based delay */
 }
 
+/*
+ * cmp32 - 32-bit comparison (check if equal)
+ * Address: 0x0d22-0x0d32 (17 bytes)
+ *
+ * Compares R0:R1:R2:R3 with R4:R5:R6:R7.
+ * Returns 0 in A (via B register ORing) if equal, non-zero if different.
+ *
+ * Original disassembly:
+ *   0d22: mov a, r3       ; A = R3
+ *   0d23: subb a, r7      ; A = R3 - R7 (with borrow)
+ *   0d24: mov 0xf0, a     ; B = result
+ *   0d26: mov a, r2       ; A = R2
+ *   0d27: subb a, r6      ; A = R2 - R6
+ *   0d28: orl 0xf0, a     ; B |= result
+ *   0d2a: mov a, r1       ; A = R1
+ *   0d2b: subb a, r5      ; A = R1 - R5
+ *   0d2c: orl 0xf0, a     ; B |= result
+ *   0d2e: mov a, r0       ; A = R0
+ *   0d2f: subb a, r4      ; A = R0 - R4
+ *   0d30: orl a, 0xf0     ; A |= B
+ *   0d32: ret             ; Return A (0 if equal)
+ */
+uint8_t cmp32(uint32_t val1, uint32_t val2)
+{
+    /* Returns 0 if equal, non-zero if different */
+    uint8_t b0 = (uint8_t)(val1 & 0xFF) - (uint8_t)(val2 & 0xFF);
+    uint8_t b1 = (uint8_t)((val1 >> 8) & 0xFF) - (uint8_t)((val2 >> 8) & 0xFF);
+    uint8_t b2 = (uint8_t)((val1 >> 16) & 0xFF) - (uint8_t)((val2 >> 16) & 0xFF);
+    uint8_t b3 = (uint8_t)((val1 >> 24) & 0xFF) - (uint8_t)((val2 >> 24) & 0xFF);
+    return b0 | b1 | b2 | b3;
+}
+
+/*
+ * code_load_dword - Load 32-bit value from CODE memory
+ * Address: 0x0da9-0x0db8 (16 bytes)
+ *
+ * Reads 4 bytes from CODE memory at DPTR into R0:R1:R2:R3.
+ * Uses movc a, @a+dptr to read from code space.
+ *
+ * Original disassembly:
+ *   0da9: clr a             ; A = 0
+ *   0daa: movc a, @a+dptr   ; Read byte 0
+ *   0dab: mov r0, a
+ *   0dac: mov a, #0x01
+ *   0dae: movc a, @a+dptr   ; Read byte 1
+ *   0daf: mov r1, a
+ *   0db0: mov a, #0x02
+ *   0db2: movc a, @a+dptr   ; Read byte 2
+ *   0db3: mov r2, a
+ *   0db4: mov a, #0x03
+ *   0db6: movc a, @a+dptr   ; Read byte 3
+ *   0db7: mov r3, a
+ *   0db8: ret
+ */
+uint32_t code_load_dword(__code uint8_t *ptr)
+{
+    uint32_t val;
+    val = ptr[0];
+    val |= ((uint32_t)ptr[1]) << 8;
+    val |= ((uint32_t)ptr[2]) << 16;
+    val |= ((uint32_t)ptr[3]) << 24;
+    return val;
+}
+
+/*
+ * pdata_store_dword - Store 32-bit value to PDATA (external RAM via @R0)
+ * Address: 0x0e4f-0x0e5a (12 bytes)
+ *
+ * Stores R4:R5:R6:R7 (32-bit value) to PDATA at @R0 using movx @r0,a.
+ * PDATA is the 256-byte page of external RAM addressed via R0/R1.
+ *
+ * Original disassembly:
+ *   0e4f: mov a, r4
+ *   0e50: movx @r0, a       ; Store byte 0
+ *   0e51: inc r0
+ *   0e52: mov a, r5
+ *   0e53: movx @r0, a       ; Store byte 1
+ *   0e54: inc r0
+ *   0e55: mov a, r6
+ *   0e56: movx @r0, a       ; Store byte 2
+ *   0e57: inc r0
+ *   0e58: mov a, r7
+ *   0e59: movx @r0, a       ; Store byte 3
+ *   0e5a: ret
+ */
+void pdata_store_dword(__pdata uint8_t *ptr, uint32_t val)
+{
+    ptr[0] = (uint8_t)(val & 0xFF);
+    ptr[1] = (uint8_t)((val >> 8) & 0xFF);
+    ptr[2] = (uint8_t)((val >> 16) & 0xFF);
+    ptr[3] = (uint8_t)((val >> 24) & 0xFF);
+}
+
+/*
+ * banked_store_dword - Store 32-bit value to banked XDATA memory
+ * Address: 0x0ba9-0x0bc7 (31 bytes)
+ *
+ * Writes R4:R5:R6:R7 to external memory with bank select via DPX.
+ * Input: R1=DPL, R2=DPH, R3=bank (will be adjusted)
+ *
+ * The bank (R3) is decremented and masked with 0x7F before use.
+ * If the adjusted bank >= 0x80, the write is skipped.
+ *
+ * Original disassembly:
+ *   0ba9: mov 0x82, r1      ; DPL = R1
+ *   0bab: mov 0x83, r2      ; DPH = R2
+ *   0bad: mov 0x93, r3      ; DPX = R3
+ *   0baf: dec 0x93          ; DPX--
+ *   0bb1: anl 0x93, #0x7f   ; DPX &= 0x7F
+ *   0bb4: cjne r3, #0x80, 0x0bb7
+ *   0bb7: jnc 0x0bc4        ; Skip if bank >= 0x80
+ *   0bb9-0bc3: write R4:R5:R6:R7 to @DPTR
+ *   0bc4: mov 0x93, #0x00   ; Reset DPX to 0
+ *   0bc7: ret
+ */
+void banked_store_dword(uint8_t dpl, uint8_t dph, uint8_t bank, uint32_t val)
+{
+    uint8_t adjusted_bank;
+    __xdata uint8_t *ptr;
+
+    /* Adjust bank: decrement and mask with 0x7F */
+    adjusted_bank = (bank - 1) & 0x7F;
+
+    /* Only write if adjusted bank < 0x80 (which is always true after mask) */
+    /* But the original checks if R3 >= 0x80 after adjustment */
+    if (bank < 0x80) {
+        /* Set DPX for bank selection */
+        DPX = adjusted_bank;
+
+        /* Write to XDATA */
+        ptr = (__xdata uint8_t *)((dph << 8) | dpl);
+        ptr[0] = (uint8_t)(val & 0xFF);
+        ptr[1] = (uint8_t)((val >> 8) & 0xFF);
+        ptr[2] = (uint8_t)((val >> 16) & 0xFF);
+        ptr[3] = (uint8_t)((val >> 24) & 0xFF);
+    }
+
+    /* Reset DPX to 0 */
+    DPX = 0x00;
+}
+
+/*
+ * banked_load_byte - Load single byte from banked XDATA memory
+ * Address: 0x0bc8-0x0bd4 (13 bytes)
+ *
+ * Reads one byte from external memory with bank select via DPX.
+ * R3=memory type: 0x01=XDATA, <0x01=IDATA, 0xFE=PDATA
+ *
+ * Original disassembly:
+ *   0bc8: cjne r3, #0x01, 0x0bd1
+ *   0bcb: mov 0x82, r1      ; DPL = R1
+ *   0bcd: mov 0x83, r2      ; DPH = R2
+ *   0bcf: movx a, @dptr     ; Read from XDATA
+ *   0bd0: ret
+ *   0bd1: jnc 0x0bd5        ; If R3 > 0x01
+ *   0bd3: mov a, @r1        ; Read from IDATA
+ *   0bd4: ret
+ */
+uint8_t banked_load_byte(uint8_t addrlo, uint8_t addrhi, uint8_t memtype)
+{
+    if (memtype == 0x01) {
+        /* XDATA access */
+        __xdata uint8_t *ptr = (__xdata uint8_t *)((addrhi << 8) | addrlo);
+        return *ptr;
+    } else if (memtype < 0x01) {
+        /* IDATA access - use addrlo as pointer */
+        return *((__idata uint8_t *)addrlo);
+    } else if (memtype == 0xFE) {
+        /* PDATA access */
+        return *((__pdata uint8_t *)addrlo);
+    }
+    /* Invalid memory type */
+    return 0;
+}
+
+/*
+ * table_search_dispatch - Table-driven dispatch based on R4:R5:R6:R7 key
+ * Address: 0x0e15-0x0e4e (58 bytes)
+ *
+ * This function pops the return address from the stack and uses it as a
+ * pointer to a dispatch table in CODE memory. It searches for an entry
+ * matching the key in R4:R5:R6:R7 and jumps to the corresponding target.
+ *
+ * Table format (6 bytes per entry):
+ *   Bytes 0-1: Target address (hi, lo)
+ *   Bytes 2-5: Key to match with R4:R5:R6:R7
+ *
+ * End-of-table marker:
+ *   Bytes 0-1: 0x00, 0x00
+ *   Bytes 2-3: Default target address (hi, lo)
+ *
+ * Algorithm:
+ *   1. Pop return address (points to table after LCALL)
+ *   2. For each entry:
+ *      - If entry[0:1] == 0x0000: reached end, jump to default (entry[2:3])
+ *      - If entry[2:5] matches R4:R5:R6:R7: jump to entry[0:1]
+ *      - Else: advance to next entry (DPTR += 6)
+ *   3. Loop until match or end
+ *
+ * Original disassembly:
+ *   0e15: pop 0x83         ; DPH = return_addr_hi
+ *   0e17: pop 0x82         ; DPL = return_addr_lo
+ *   ; Loop start
+ *   0e19: clr a
+ *   0e1a: movc a, @a+dptr  ; A = table[0]
+ *   0e1b: jnz 0x0e2f       ; if != 0, check key
+ *   0e1d: mov a, #0x01
+ *   0e1f: movc a, @a+dptr  ; A = table[1]
+ *   0e20: jnz 0x0e2f       ; if != 0, check key
+ *   ; End marker found - go to default
+ *   0e22: inc dptr         ; skip 0x00
+ *   0e23: inc dptr         ; skip 0x00
+ *   ; Read target and jump (shared with match path)
+ *   0e24: movc a, @a+dptr  ; A = target_hi (A was 0 from movc)
+ *   0e25: mov r0, a
+ *   0e26: mov a, #0x01
+ *   0e28: movc a, @a+dptr  ; A = target_lo
+ *   0e29: mov 0x82, a      ; DPL = target_lo
+ *   0e2b: mov 0x83, r0     ; DPH = target_hi
+ *   0e2d: clr a
+ *   0e2e: jmp @a+dptr      ; Jump to target
+ *   ; Check key match
+ *   0e2f: mov a, #0x02
+ *   0e31: movc a, @a+dptr  ; A = key[0]
+ *   0e32: xrl a, r4        ; Compare with R4
+ *   0e33: jnz 0x0e47       ; No match
+ *   0e35: mov a, #0x03
+ *   0e37: movc a, @a+dptr  ; A = key[1]
+ *   0e38: xrl a, r5        ; Compare with R5
+ *   0e39: jnz 0x0e47       ; No match
+ *   0e3b: mov a, #0x04
+ *   0e3d: movc a, @a+dptr  ; A = key[2]
+ *   0e3e: xrl a, r6        ; Compare with R6
+ *   0e3f: jnz 0x0e47       ; No match
+ *   0e41: mov a, #0x05
+ *   0e43: movc a, @a+dptr  ; A = key[3]
+ *   0e44: xrl a, r7        ; Compare with R7
+ *   0e45: jz 0x0e24        ; Match! Go read target
+ *   ; No match - skip to next entry
+ *   0e47: inc dptr         ; 6x inc to skip entry
+ *   0e48: inc dptr
+ *   0e49: inc dptr
+ *   0e4a: inc dptr
+ *   0e4b: inc dptr
+ *   0e4c: inc dptr
+ *   0e4d: sjmp 0x0e19      ; Loop back
+ */
+void table_search_dispatch(void) __naked
+{
+    __asm
+        ; Pop return address into DPTR (points to table)
+        pop  dph            ; 0x83
+        pop  dpl            ; 0x82
+
+    _tsd_loop:
+        ; Check for end-of-table marker (0x00, 0x00)
+        clr  a
+        movc a, @a+dptr     ; Read table[0]
+        jnz  _tsd_check_key ; If not 0, check key match
+        mov  a, #0x01
+        movc a, @a+dptr     ; Read table[1]
+        jnz  _tsd_check_key ; If not 0, check key match
+
+        ; End marker found - skip to default address
+        inc  dptr
+        inc  dptr
+
+    _tsd_jump:
+        ; Read 2-byte target address and jump
+        ; Note: A is 0 here (either from end-marker path where table[1]=0,
+        ;       or from match path where XOR result = 0)
+        movc a, @a+dptr     ; A = target_hi
+        mov  r0, a
+        mov  a, #0x01
+        movc a, @a+dptr     ; A = target_lo
+        mov  dpl, a         ; DPL = target_lo
+        mov  dph, r0        ; DPH = target_hi
+        clr  a
+        jmp  @a+dptr        ; Jump to target
+
+    _tsd_check_key:
+        ; Compare table[2:5] with R4:R5:R6:R7
+        mov  a, #0x02
+        movc a, @a+dptr     ; A = key[0]
+        xrl  a, r4          ; Compare with R4
+        jnz  _tsd_next      ; No match
+
+        mov  a, #0x03
+        movc a, @a+dptr     ; A = key[1]
+        xrl  a, r5          ; Compare with R5
+        jnz  _tsd_next      ; No match
+
+        mov  a, #0x04
+        movc a, @a+dptr     ; A = key[2]
+        xrl  a, r6          ; Compare with R6
+        jnz  _tsd_next      ; No match
+
+        mov  a, #0x05
+        movc a, @a+dptr     ; A = key[3]
+        xrl  a, r7          ; Compare with R7
+        jz   _tsd_jump      ; Match! A=0, jump to target
+
+    _tsd_next:
+        ; No match - advance to next 6-byte entry
+        inc  dptr
+        inc  dptr
+        inc  dptr
+        inc  dptr
+        inc  dptr
+        inc  dptr
+        sjmp _tsd_loop
+    __endasm;
+}
+

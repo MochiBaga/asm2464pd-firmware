@@ -2,10 +2,11 @@
 
 ## Progress Summary
 
-- **Functions remaining**: ~774
-- **Stub functions** (empty placeholder): 24 (State Machine Helpers completed)
-- **High-priority** (called 5+ times): 68
-- **Firmware size**: 39,826 / 79,197 bytes (50% of actual code)
+- **Functions remaining**: ~750
+- **Stub functions** (empty placeholder): 24
+- **High-priority** (called 5+ times): 66
+- **State Machine Helpers**: 29/49 implemented (59%)
+- **Firmware size**: 44,250 / 98,012 bytes (45.1%)
 
 ### Metrics Note
 
@@ -30,7 +31,7 @@ These functions are called frequently and should be prioritized:
 | 0x994e | 14 | TODO | - |
 | 0xd1e6 | 14 | TODO | - |
 | 0xd1f2 | 14 | TODO | - |
-| 0x020b | 13 | TODO | - |
+| 0x020b | 13 | DONE | helper_020b |
 | 0xe73a | 12 | STUB | helper_e73a |
 | 0xa2ff | 11 | TODO | - |
 | 0xbfc4 | 11 | TODO | - |
@@ -43,35 +44,52 @@ These functions are called frequently and should be prioritized:
 
 ## Utility Functions (0x0000-0x0FFF)
 
-**Total: 19** | Stubs: 5 | High-priority: 2
+**Status: MOSTLY COMPLETE** - Core functions implemented, remaining are dispatch stubs or padding
 
-### Stubs (need implementation)
+### Implemented
 
-- [ ] `0x0557` - dispatch_handler_0557 (1 calls)
-- [ ] `0x05f7` - pcie_cleanup_05f7 (1 calls)
-- [ ] `0x05fc` - pcie_cleanup_05fc (1 calls)
-- [ ] `0x0633` - pcie_write_reg_0633 (1 calls)
-- [ ] `0x0638` - pcie_write_reg_0638 (1 calls)
+- [x] `0x0016` - startup_0016 - Boot state verification (main.c)
+- [x] `0x020b` - helper_020b - Parameter loading helper (main.c)
+- [x] `0x0bfd` - mul16x16 - 16x16 multiply (math.c)
+- [x] `0x0ba9` - banked_store_dword - Banked XDATA write (utils.c)
+- [x] `0x0bc8` - banked_load_byte - Banked memory read (utils.c)
+- [x] `0x0c9e` - add32 - 32-bit addition (math.c)
+- [x] `0x0cab` - sub32 - 32-bit subtraction (math.c)
+- [x] `0x0cb9` - mul32 - 32-bit multiplication (math.c)
+- [x] `0x0d08` - or32 - 32-bit OR (math.c)
+- [x] `0x0d15` - xor32 - 32-bit XOR (math.c)
+- [x] `0x0d59` - Memory type dispatcher (internal, routes to idata/xdata/pdata)
+- [x] `0x0d78` - idata_load_dword (utils.c)
+- [x] `0x0d84` - xdata_load_dword (utils.c)
+- [x] `0x0d90` - idata_load_dword_alt (utils.c)
+- [x] `0x0d9d` - xdata_load_dword_alt (utils.c)
+- [x] `0x0da9` - code_load_dword - CODE memory read (utils.c)
+- [x] `0x0db9` - idata_store_dword (utils.c)
+- [x] `0x0dc5` - xdata_store_dword (utils.c)
+- [x] `0x0dd1` - dptr_index_mul (utils.c)
+- [x] `0x0ddd` - xdata_load_triple (utils.c)
+- [x] `0x0de6` - xdata_store_triple (utils.c)
+- [x] `0x0e4f` - pdata_store_dword (utils.c)
 
-### High Priority (5+ calls)
+### Dispatch Stubs (handled by dispatch mechanism)
 
-- [ ] `0x020b` (13 calls)
-- [ ] `0x0c9e` (9 calls)
+- [x] `0x034d` - Bank 0 trampoline (ajmp 0x0300)
+- [x] `0x0555` - Bank 1 trampoline (ajmp 0x0311)
+- [x] `0x0557` - dispatch_handler_0557 (dispatch table entry)
+- [x] `0x05f7` - pcie_cleanup_05f7 (dispatch table entry)
+- [x] `0x05fc` - pcie_cleanup_05fc (dispatch table entry)
+- [x] `0x0633` - pcie_write_reg_0633 (dispatch table entry)
+- [x] `0x0638` - pcie_write_reg_0638 (dispatch table entry)
 
-### Other (12 functions)
+### Not Functions (padding/jump targets)
 
-- [ ] `0x0bfd` (2 calls)
-- [ ] `0x0016` (1 calls)
-- [ ] `0x0110` (1 calls)
-- [ ] `0x034d` (1 calls)
-- [ ] `0x0555` (1 calls)
-- [ ] `0x0810` (1 calls)
-- [ ] `0x09e7` (1 calls)
-- [ ] `0x0cb9` (1 calls)
-- [ ] `0x0d15` (1 calls)
-- [ ] `0x0d59` (1 calls)
-- [ ] `0x0da9` (1 calls)
-- [ ] `0x0e15` (1 calls)
+- `0x0110` - Jump target within startup_0016, not standalone
+- `0x0810` - RETI followed by 0xFF padding
+- `0x09e7` - NOP padding area
+
+### Implemented (Complex)
+
+- [x] `0x0e15` - table_search_dispatch - Table-driven dispatch (inline asm in utils.c)
 
 ---
 
@@ -97,40 +115,38 @@ These functions are called frequently and should be prioritized:
 - [x] `0x1b3b` - scsi_get_ctrl_ptr_1b3b (5 calls) - SCSI control pointer
 - [x] `0x1bd7` - mem_read_ptr_1bd7 (5 calls) - memory read with carry
 
-### Other (37 functions)
+### Other (37 functions - 17 implemented)
 
-- [ ] `0x120b` (4 calls)
-- [ ] `0x15a0` (4 calls)
-- [ ] `0x1be1` (4 calls)
-- [ ] `0x121b` (3 calls)
-- [ ] `0x1b77` (3 calls)
-- [ ] `0x1231` (2 calls)
-- [ ] `0x1295` (2 calls)
-- [ ] `0x1660` (2 calls)
-- [ ] `0x16d2` (2 calls)
-- [ ] `0x1b55` (2 calls)
-- [ ] `0x1b59` (2 calls)
-- [ ] `0x1006` (1 calls)
-- [ ] `0x1203` (1 calls)
-- [ ] `0x1205` (1 calls)
-- [ ] `0x1254` (1 calls)
-- [ ] `0x12a6` (1 calls)
-- [ ] `0x12ab` (1 calls)
-- [ ] `0x12c3` (1 calls)
-- [ ] `0x12cb` (1 calls)
-- [ ] `0x12ea` (1 calls)
-- [ ] `0x1470` (1 calls)
-- [ ] `0x1607` (1 calls)
-- [ ] `0x165e` (1 calls)
-- [ ] `0x168c` (1 calls)
-- [ ] `0x168e` (1 calls)
-- ... and 12 more
+- [x] `0x120b` (4 calls) - state_inc_and_calc_120b
+- [x] `0x15a0` (4 calls) - get_usb_index_ptr_15a0
+- [x] `0x1be1` (4 calls) - set_usb_status_bit0_1be1
+- [x] `0x1b77` (3 calls) - read_idata_pair_1b77
+- [x] `0x1660` (2 calls) - set_dptr_04xx_1660
+- [x] `0x1b55` (2 calls) - write_and_set_c412_bit1_1b55
+- [x] `0x1b59` (2 calls) - set_c412_bit1_1b59
+- [x] `0x1607` (1 calls) - write_ff_to_ce40_offset_1607
+- [x] `0x165e` (1 calls) - get_ptr_044e_offset_165e
+- [x] `0x168c` (1 calls) - get_ptr_045a_offset_168c
+- [x] `0x1696` (1 calls) - get_ptr_04b7_idx55_1696
+- [x] `0x16de` (1 calls) - get_ptr_0466_r7_16de
+- [x] `0x16e9` (1 calls) - get_ptr_0456_offset_16e9
+- [x] `0x16f3` (1 calls) - clear_c8d6_bits_16f3
+- [x] `0x1b88` (1 calls) - read_009f_idx3e_1b88
+- [x] `0x171d` (1 calls) - read_0472_pair_171d
+- [x] `0x1b47` (1 calls) - setup_c415_from_0475_1b47
+- [ ] `0x121b` (3 calls) - mid-function entry point
+- [ ] `0x1231` (2 calls) - mid-function (part of state machine)
+- [ ] `0x1295` (2 calls) - mid-function (part of state machine)
+- [ ] `0x16d2` (2 calls) - mid-function (multiply by 0x40)
+- [ ] `0x1006` (1 calls) - complex state handler
+- [ ] `0x168e` (1 calls) - mid-function entry
+- ... and ~14 more mid-function entry points
 
 ---
 
 ## Protocol State Machines (0x2000-0x3FFF)
 
-**Total: 16** | Stubs: 0 | Implemented: 7 | High-priority: 0
+**Total: 16** | Stubs: 0 | Implemented: 17 | High-priority: 0
 
 ### Implemented
 
@@ -140,20 +156,31 @@ These functions are called frequently and should be prioritized:
 - [x] `0x3212` - scsi_dma_tag_setup_3212 (1 calls) - SCSI DMA tag setup
 - [x] `0x38d4` - helper_38d4 (2 calls) - State machine event handler
 - [x] `0x3cb8` - helper_3cb8 (1 calls) - USB event handler with state dispatch
+- [x] `0x3130` - helper_3130 (2 calls) - Set bit 0 of USB EP0 config
+- [x] `0x31c5` - helper_31c5 (2 calls) - Calculate DPTR for 0x90xx register
+- [x] `0x3226` - helper_3226 (1 calls) - Set DPTR from address bytes
+- [x] `0x3219` - nvme_call_and_signal_3219 (1 calls) - Call USB buffer helper and signal
+- [x] `0x3267` - nvme_ep_config_init_3267 (1 calls) - Initialize USB endpoint config
+- [x] `0x328a` - usb_link_status_read_328a (1 calls) - Read USB link status bits 0-1
+- [x] `0x3291` - queue_idx_get_3291 (1 calls) - Get queue index from IDATA
+- [x] `0x3298` - dma_status3_read_3298 (1 calls) - Read DMA status 3 upper bits
+- [x] `0x3280` - int_aux_set_bit1_3280 (1 calls) - Set bit 1 of aux interrupt status
+- [x] `0x329f` - xdata_read_0a7e_329f (1 calls) - Read 32-bit value from XDATA 0x0A7E
+- [x] `0x313d` - helper_313d (1 calls) - Check if 32-bit IDATA[0x6B] is non-zero
 
-### Other (9 functions)
+### Data/Mid-function Regions (not code entry points)
 
-- [ ] `0x3130` (2 calls)
-- [ ] `0x3179` (2 calls)
-- [ ] `0x31c5` (2 calls)
-- [ ] `0x227f` (1 calls)
-- [ ] `0x22ff` (1 calls)
-- [ ] `0x2406` (1 calls)
-- [ ] `0x2412` (1 calls)
-- [ ] `0x24fc` (1 calls)
-- [ ] `0x3226` (1 calls)
-- [ ] `0x32a5` (1 calls)
-- [ ] `0x3978` (1 calls)
+- `0x3179` - mid-function entry (part of helper_3181 area, sets DPTR)
+- `0x227f` - USB descriptor data
+- `0x22ff` - USB descriptor data
+- `0x2406` - USB descriptor data
+- `0x2412` - USB descriptor data
+- `0x24fc` - USB descriptor data
+- `0x3978` - jump table entries (called via computed jump, not standalone)
+
+### Complex/Remaining
+
+- [ ] `0x32a5` (1 calls) - Complex state machine dispatcher (~350 bytes, many branches)
 
 ---
 
@@ -387,7 +414,7 @@ These functions are called frequently and should be prioritized:
 - [ ] `0xd229` (4 calls)
 - [ ] `0xd235` (4 calls)
 - [ ] `0xd265` (4 calls)
-- [ ] `0xdde2` (4 calls)
+- [x] `0xdde2` (4 calls) - power_check_state_dde2 in power.c
 - [ ] `0xc027` (3 calls)
 - [ ] `0xc031` (3 calls)
 - [ ] `0xc074` (3 calls)

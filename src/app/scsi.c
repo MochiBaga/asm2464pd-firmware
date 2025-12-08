@@ -87,6 +87,9 @@ extern void usb_copy_status_to_buffer(void);
 extern void xdata_store_dword(__xdata uint8_t *ptr, uint32_t val);
 extern void handler_d6bc(void);               /* was: dispatch_0534 */
 extern void dispatch_0426(void);              /* Bank 0 target 0xE762 */
+extern void dispatch_041c(uint8_t param);     /* Bank 0 dispatch */
+extern void dispatch_0453(void);              /* Bank 0 dispatch */
+extern void helper_173b(void);                /* Helper at 0x173b */
 
 /* Forward declarations */
 static void scsi_setup_buffer_length(uint8_t hi, uint8_t lo);
@@ -1725,4 +1728,715 @@ uint8_t scsi_queue_check_52c7(uint8_t index)
     }
 
     return 0;
+}
+
+/*
+ * scsi_slot_config_46f8 - Slot configuration handler
+ * Address: 0x46f8-0x4783 (140 bytes)
+ *
+ * Configures slot based on endpoint dispatch values.
+ * Sets up transfer parameters and calls various helpers.
+ */
+extern void helper_1b77(void);
+extern uint8_t helper_1c1b(void);
+extern void helper_1ba5(void);
+extern void helper_1c6d(void);
+extern void helper_1cc1(void);
+extern void helper_1b47(void);
+extern void helper_1c77(void);
+extern void helper_1d39(uint8_t param);
+extern void helper_1d43(void);
+extern void helper_1aad(uint8_t param);
+extern void helper_1cae(void);
+extern void helper_1c56(void);
+extern void helper_041c(uint8_t param);
+
+void scsi_slot_config_46f8(uint8_t r7_val, uint8_t r5_val)
+{
+    uint8_t mode;
+    uint8_t tmp;
+
+    /* Store parameters to endpoint dispatch values */
+    G_EP_DISPATCH_VAL3 = r7_val;  /* 0x0A7D */
+    G_EP_DISPATCH_VAL4 = r5_val;  /* 0x0A7E */
+
+    /* Call helper sequence */
+    helper_1b77();
+    if (helper_1c1b()) {
+        /* Carry set - setup additional parameters */
+        helper_1ba5();
+        /* Store values via indirect addressing @R0 */
+        I_WORK_18 = G_WORK_0006;
+        I_WORK_19 = G_WORK_0007;
+        helper_1c6d();
+    }
+    helper_1cc1();
+
+    /* Store endpoint dispatch value to queue status */
+    G_EP_QUEUE_STATUS = G_EP_DISPATCH_VAL3;  /* 0x0565 = 0x0A7D */
+
+    /* Set mode based on dispatch value 4 */
+    mode = 0x02;
+    if (G_EP_DISPATCH_VAL4 == 0x01) {
+        mode = 0x01;
+    }
+    helper_1aad(mode);
+    helper_1d43();
+
+    /* Clear bit 7 of REG_NVME_DATA_CTRL (0xC414) */
+    REG_NVME_DATA_CTRL &= 0x7F;
+
+    /* Check SCSI control */
+    tmp = G_SCSI_CTRL;  /* 0x0171 */
+    if (tmp > 0) {
+        /* Get DMA work value and add to dispatch value */
+        tmp = G_DMA_WORK_0216 + G_EP_DISPATCH_VAL3;
+        helper_1c56();
+        G_EP_DISPATCH_VAL3 |= tmp;
+    } else {
+        helper_1b47();
+    }
+
+    /* Continue with address calculation */
+    tmp = G_EP_DISPATCH_VAL3;
+    helper_1c77();
+    G_EP_DISPATCH_VAL3 |= tmp;
+
+    /* Check SCSI control again for NVMe setup */
+    if (G_SCSI_CTRL > 0) {
+        helper_1d39(G_DMA_WORK_0216);
+        nvme_scsi_cmd_buffer_setup();
+    }
+
+    helper_1cae();
+
+    /* Final check for dispatch value 4 */
+    if (G_EP_DISPATCH_VAL4 == 0) {
+        helper_041c(G_USB_PARAM_0B00);
+    }
+}
+
+/*
+ * scsi_state_switch_4784 - State-based command switch
+ * Address: 0x4784-0x480b (136 bytes)
+ *
+ * Handles state machine transitions based on I_STATE_6A value.
+ * Processes different command types (0x03, 0x04, 0x05).
+ */
+extern void helper_3133(void);
+extern void helper_3130(void);
+extern void helper_312a(void);
+extern void helper_31ce(void);
+extern void helper_0206(void);
+
+void scsi_state_switch_4784(void)
+{
+    uint8_t state;
+    uint8_t cmd_type;
+
+    state = I_STATE_6A;
+
+    /* Check state value (add 0xFD = check if state == 3) */
+    if (state == 0x03) {
+        /* State 3: Check command type */
+        cmd_type = G_IO_CMD_TYPE;
+        if (cmd_type == 0x03 || cmd_type == 0x00) {
+            scsi_csw_build();
+            return;
+        }
+    } else if (state == 0x04) {
+        /* State 4: Check for command types 0x07 or 0x00 */
+        cmd_type = G_IO_CMD_TYPE;
+        if (cmd_type == 0x07 || cmd_type == 0x00) {
+            scsi_csw_build();
+            return;
+        }
+    } else if (state == 0x05) {
+        /* State 5: Multiple checks */
+        cmd_type = G_IO_CMD_TYPE;
+        if (cmd_type == 0x03 || cmd_type == 0x00) {
+            if (cmd_type == 0x03) {
+                if ((REG_USB_STATUS & 0x01) == 0) {
+                    helper_3130();
+                }
+            }
+            goto check_usb_status;
+        }
+    }
+
+    /* Default path - call protocol handlers */
+    helper_312a();
+    helper_31ce();
+
+check_usb_status:
+    /* Check USB control register bit 0 */
+    if (REG_USB_STATUS & 0x01) {
+        helper_3291();
+        helper_0206();
+    } else {
+        helper_3219();
+    }
+
+    /* Set state to 5 */
+    I_STATE_6A = 0x05;
+}
+
+/*
+ * scsi_csw_build_ext_488f - Extended CSW build handler
+ * Address: 0x488f-0x4903 (117 bytes)
+ *
+ * Extended CSW building with additional status checks.
+ */
+extern void helper_2608(void);
+
+void scsi_csw_build_ext_488f(void)
+{
+    uint8_t tmp;
+
+    /* Check REG_NVME_LINK_STATUS (0xC520) bit 1 */
+    if (REG_NVME_LINK_STATUS & 0x02) {
+        scsi_csw_build_ext_488f();  /* Recursive call at 0x488f */
+    }
+
+    /* Check REG_NVME_LINK_STATUS bit 7 */
+    if (REG_NVME_LINK_STATUS & 0x80) {
+        tmp = REG_NVME_LINK_STATUS;
+        REG_NVME_LINK_STATUS = tmp | 0x20;
+    }
+
+    /* Check for error condition */
+    if (G_NVME_QUEUE_READY != 0) {
+        return;
+    }
+
+    /* Check REG_CPU_LINK_CEF3 bit 3 */
+    if (REG_CPU_LINK_CEF3 & 0x08) {
+        REG_CPU_LINK_CEF3 = 0x08;  /* Clear bit by writing 1 */
+        helper_2608();
+    }
+
+    /* Check bit 1 again */
+    if (REG_NVME_LINK_STATUS & 0x02) {
+        scsi_csw_build_ext_488f();
+    }
+
+    /* Check bit 7 */
+    if (REG_NVME_LINK_STATUS & 0x80) {
+        tmp = REG_NVME_LINK_STATUS;
+        REG_NVME_LINK_STATUS = tmp | 0x20;
+    }
+}
+
+/*
+ * scsi_nvme_setup_49e9 - NVMe command setup
+ * Address: 0x49e9-0x4a56 (110 bytes)
+ *
+ * Sets up NVMe command from SCSI parameters.
+ */
+extern void helper_1bd7(uint8_t param);
+extern void helper_15a0(void);
+
+void scsi_nvme_setup_49e9(uint8_t param)
+{
+    uint8_t status;
+    uint8_t val;
+    (void)param;
+
+    /* Get system status and check */
+    status = G_SYS_STATUS_PRIMARY;
+
+    /* Setup base addresses based on status */
+    if (status == 0x01) {
+        G_BUF_BASE_HI = 0xA8;
+    } else {
+        G_BUF_BASE_HI = 0xA0;
+    }
+    G_BUF_BASE_LO = 0x00;
+
+    /* Call helper for status secondary */
+    helper_1bd7(G_SYS_STATUS_SECONDARY);
+
+    /* Store DMA work value */
+    G_DMA_WORK_0216 = G_SYS_STATUS_SECONDARY;
+
+    /* Calculate buffer address */
+    helper_15a0();
+    G_BUF_ADDR_HI = G_EP_CONFIG_BASE;
+    G_BUF_ADDR_LO = G_EP_CONFIG_ARRAY;
+
+    /* Get offset value */
+    val = helper_1b0b(G_SYS_STATUS_SECONDARY);
+    G_DMA_OFFSET = val;
+}
+
+/*
+ * scsi_dma_config_4a57 - DMA configuration handler
+ * Address: 0x4a57-0x4abe (104 bytes)
+ *
+ * Configures DMA based on transfer parameters.
+ */
+void scsi_dma_config_4a57(void)
+{
+    uint8_t val;
+
+    /* Check REG_XFER_CTRL_CE8A */
+    val = REG_XFER_CTRL_CE8A;
+    REG_XFER_CTRL_CE8A = val & 0xFB;  /* Clear bit 2 */
+
+    /* Get USB parameter and combine with CE01 */
+    val = G_USB_PARAM_0B00;
+    REG_SCSI_DMA_PARAM = val | (REG_SCSI_DMA_PARAM & 0xC0);
+
+    /* Set up CE3A from NVMe param */
+    val = G_NVME_PARAM_053A;
+    REG_SCSI_DMA_TAG_CE3A = val;
+
+    /* Write command and wait for completion */
+    REG_SCSI_DMA_CTRL = 0x03;
+    while (REG_SCSI_DMA_CTRL != 0) {
+        /* Wait for command completion */
+    }
+
+    /* Increment circular counter */
+    nvme_util_advance_queue();
+
+    /* Check result and call appropriate handler */
+    if (G_SYS_STATUS_PRIMARY == 0) {
+        power_check_status(0);
+    }
+
+    /* Get EP config and check */
+    usb_get_sys_status_offset();
+    val = G_SYS_STATUS_SECONDARY;
+    if (val == 0) {
+        /* Add to global NVMe param */
+        G_NVME_PARAM_053A++;
+    }
+}
+
+/*
+ * scsi_queue_setup_4b25 - Queue setup handler
+ * Address: 0x4b25-0x4b5e (58 bytes)
+ *
+ * Sets up queue with DMA parameters.
+ */
+extern void usb_configure(void);
+extern void nvme_calc_addr_01xx(uint8_t param);
+extern void nvme_get_config_offset(void);
+
+void scsi_queue_setup_4b25(uint8_t param)
+{
+    uint8_t val;
+    uint8_t status;
+
+    /* Get slot index and mask */
+    val = REG_NVME_QUEUE_STATUS;  /* 0xC51E */
+    I_WORK_3B = val & 0x3F;
+
+    /* Update CE88 with slot value */
+    val = REG_XFER_CTRL_CE88;
+    REG_XFER_CTRL_CE88 = (val & 0xC0) | I_WORK_3B;
+
+    /* Wait for CE89 bit 0 */
+    while ((REG_XFER_READY & 0x01) == 0) {
+        /* Wait */
+    }
+
+    /* Get system status */
+    status = G_SYS_STATUS_PRIMARY;
+    helper_1b0b(0);
+    I_WORK_3C = G_SYS_STATUS_PRIMARY;
+
+    /* Calculate address offset */
+    nvme_calc_addr_01xx(param + 0x94);
+
+    /* Set CE3A with param */
+    val = REG_SCSI_DMA_TAG_CE3A;
+    REG_SCSI_DMA_TAG_CE3A = val | param;
+
+    /* Set CE01 based on status */
+    val = 0x00;
+    if (status == 0x01) {
+        val = 0x40;
+    }
+    REG_SCSI_DMA_PARAM = I_WORK_3C | val;
+
+    /* Configure and get offset */
+    usb_configure();
+    I_WORK_3C = (I_WORK_3C + 1) & 0x1F;
+    power_check_status(I_WORK_3C);
+    nvme_get_config_offset();
+    REG_SCSI_DMA_CTRL = I_WORK_3C;
+}
+
+/*
+ * scsi_dma_init_4be6 - DMA initialization
+ * Address: 0x4be6-0x4c3f (90 bytes)
+ *
+ * Initializes DMA registers and control bits.
+ */
+extern void reg_set_bit_0(uint16_t addr);
+extern void helper_03a4(void);
+extern void helper_0584(void);
+extern void helper_048f(void);
+
+void scsi_dma_init_4be6(void)
+{
+    uint8_t val;
+
+    /* Set up fixed values at 0x07F0-0x07F5 */
+    G_SYS_FLAGS_07F0 = 0x24;
+    G_SYS_FLAGS_07F1 = 0x04;
+    G_SYS_FLAGS_07F2 = 0x17;
+    G_SYS_FLAGS_07F3 = 0x85;
+    G_SYS_FLAGS_07F4 = 0x00;
+    G_SYS_FLAGS_07F5 = 0x00;
+
+    /* Clear bit 0 of CC35 */
+    val = REG_CPU_EXEC_STATUS_3;  /* 0xCC35 */
+    REG_CPU_EXEC_STATUS_3 = val & 0xFE;
+
+    /* Modify C801 */
+    val = REG_INT_ENABLE;  /* 0xC801 */
+    REG_INT_ENABLE = (val & 0xEF) | 0x10;
+
+    /* Modify C800 */
+    val = REG_INT_STATUS_C800;
+    REG_INT_STATUS_C800 = (val & 0xFB) | 0x04;
+
+    /* Modify CA60 */
+    val = REG_CPU_CTRL_CA60;
+    REG_CPU_CTRL_CA60 = (val & 0xF8) | 0x06;
+    val = REG_CPU_CTRL_CA60;
+    REG_CPU_CTRL_CA60 = (val & 0xF7) | 0x08;
+
+    /* Set bit 0 of C800 */
+    reg_set_bit_0(0xC800);
+
+    /* Set bit 0 and modify CC3B */
+    reg_set_bit_0(0xCC3B);
+    val = REG_TIMER_CTRL_CC3B;  /* 0xCC3B */
+    REG_TIMER_CTRL_CC3B = (val & 0xFD) | 0x02;
+
+    /* Call initialization helpers */
+    helper_03a4();
+    helper_0584();
+    helper_048f();
+}
+
+/*
+ * scsi_buffer_setup_4e25 - Buffer setup handler
+ * Address: 0x4e25-0x4e6c (72 bytes)
+ *
+ * Sets up buffer addresses for transfer.
+ */
+void scsi_buffer_setup_4e25(void)
+{
+    uint8_t status;
+    uint8_t val;
+
+    status = G_SYS_STATUS_PRIMARY;
+
+    /* Set buffer base address based on status */
+    if (status == 0x01) {
+        G_BUF_BASE_HI = 0xA8;
+    } else {
+        G_BUF_BASE_HI = 0xA0;
+    }
+    G_BUF_BASE_LO = 0x00;
+
+    /* Get EP config */
+    val = G_SYS_STATUS_SECONDARY;
+    helper_1bd7(val);
+    G_DMA_WORK_0216 = val;
+
+    /* Calculate buffer address using multiply-add */
+    helper_15a0();
+    G_BUF_ADDR_HI = G_EP_CONFIG_BASE;
+    G_BUF_ADDR_LO = G_EP_CONFIG_ARRAY;
+
+    /* Get DMA offset */
+    val = helper_1b0b(G_SYS_STATUS_SECONDARY);
+    G_DMA_OFFSET = val;
+}
+
+/*
+ * scsi_ep_config_4e6d - Endpoint configuration
+ * Address: 0x4e6d-0x4ef4 (136 bytes)
+ *
+ * Configures endpoint for SCSI transfer.
+ */
+extern uint8_t ep_config_read(uint8_t param);
+extern void mul_add_index(uint8_t param1, uint8_t param2);
+extern uint8_t helper_1b9d(uint8_t p1, uint16_t p2);
+
+void scsi_ep_config_4e6d(void)
+{
+    uint8_t status;
+    uint8_t val;
+
+    status = G_SYS_STATUS_PRIMARY;
+
+    /* Set buffer base based on status */
+    if (status == 0x01) {
+        G_BUF_BASE_HI = 0xA8;
+    } else {
+        G_BUF_BASE_HI = 0xA0;
+    }
+    G_BUF_BASE_LO = 0x00;
+
+    /* Read endpoint config */
+    val = G_SYS_STATUS_SECONDARY;
+    val = ep_config_read(val);
+    G_DMA_WORK_0216 = val;
+
+    /* Calculate address with multiply-add */
+    mul_add_index(G_SYS_STATUS_SECONDARY, 0x14);
+    G_BUF_ADDR_HI = G_EP_CONFIG_BASE;
+    G_BUF_ADDR_LO = G_EP_CONFIG_ARRAY;
+
+    /* Get offset from helper */
+    val = helper_1b9d(G_SYS_STATUS_SECONDARY, 0x054F);
+    G_DMA_OFFSET = val;
+}
+
+/*
+ * scsi_transfer_helper_4f77 - Transfer helper function
+ * Address: 0x4f77-0x4fb5 (63 bytes)
+ *
+ * Handles transfer with parameter checking.
+ */
+void scsi_transfer_helper_4f77(uint8_t param)
+{
+    uint8_t val;
+
+    /* Clear bit 2 of CE8A */
+    val = REG_XFER_CTRL_CE8A;
+    REG_XFER_CTRL_CE8A = val & 0xFB;
+
+    /* Combine USB param with CE01 */
+    val = G_USB_PARAM_0B00;
+    REG_SCSI_DMA_PARAM = val | (REG_SCSI_DMA_PARAM & 0xC0);
+
+    /* Set CE3A */
+    val = G_NVME_PARAM_053A;
+    REG_SCSI_DMA_TAG_CE3A = val | param;
+
+    /* Start command */
+    REG_SCSI_DMA_CTRL = 0x03;
+    while (REG_SCSI_DMA_CTRL != 0) {
+        /* Wait */
+    }
+
+    /* Advance queue */
+    nvme_util_advance_queue();
+
+    /* Check status and handle */
+    if (G_SYS_STATUS_PRIMARY == 0) {
+        power_check_status(0);
+    }
+
+    /* Get EP config */
+    usb_get_sys_status_offset();
+    if (G_SYS_STATUS_SECONDARY == 0) {
+        G_NVME_PARAM_053A++;
+    }
+}
+
+/*
+ * scsi_queue_handler_4fb6 - Queue processing handler
+ * Address: 0x4fb6-0x4ff1 (60 bytes)
+ *
+ * Processes queue with DMA initialization.
+ */
+void scsi_queue_handler_4fb6(void)
+{
+    /* Initialize DMA */
+    scsi_dma_init_4be6();
+}
+
+/*
+ * scsi_core_handler_4ff2 - Core command handler
+ * Address: 0x4ff2-0x5007 (22 bytes)
+ *
+ * Core handler that dispatches to NVMe functions.
+ */
+void scsi_core_handler_4ff2(uint8_t flag, uint8_t param)
+{
+    (void)param;
+    if (flag) {
+        scsi_ep_config_4e6d();
+    }
+}
+
+/*
+ * scsi_addr_calc_5038 - Calculate XDATA address 0x0517 + offset
+ * Address: 0x5038-0x5042 (11 bytes)
+ *
+ * Sets up DPTR to point to XDATA address 0x0517 + param
+ * Returns the high byte of the address (0x05 + carry)
+ */
+uint8_t scsi_addr_calc_5038(uint8_t param)
+{
+    /* mov a, #0x17; add a, r7; mov dpl, a; clr a; addc a, #0x05; mov dph, a */
+    uint16_t addr = 0x0517 + param;
+    (void)addr;  /* Address would be used by caller via DPTR */
+    return (uint8_t)(addr >> 8);
+}
+
+/*
+ * scsi_xdata_read_5043 - Read from XDATA[0x0108 + offset]
+ * Address: 0x5043-0x504e (12 bytes)
+ *
+ * Reads a byte from XDATA address 0x0108 + param (with carry)
+ */
+uint8_t scsi_xdata_read_5043(uint8_t param)
+{
+    /* mov a, #0x08; add a, r7 -> falls through to 5046 which reads @dptr */
+    __xdata uint8_t *ptr = (__xdata uint8_t *)(0x0108 + param);
+    return *ptr;
+}
+
+/*
+ * scsi_xdata_read_5046 - Read from calculated XDATA address
+ * Address: 0x5046-0x504e (9 bytes)
+ *
+ * Reads from XDATA[0x0100 | low_byte]
+ */
+uint8_t scsi_xdata_read_5046(uint8_t low_addr)
+{
+    __xdata uint8_t *ptr = (__xdata uint8_t *)(0x0100 | low_addr);
+    return *ptr;
+}
+
+/*
+ * scsi_xdata_setup_504f - Setup DPTR from XDATA[0x0a84] + 0x0c
+ * Address: 0x504f-0x505c (14 bytes)
+ *
+ * Reads XDATA[0x0a84], adds 0x0c, returns whether overflow occurred
+ */
+uint8_t scsi_xdata_setup_504f(void)
+{
+    /* mov dptr, #0x0a84; movx a, @dptr; add a, #0x0c */
+    uint8_t val = XDATA8(0x0a84);
+    uint8_t sum = val + 0x0c;
+    /* Returns 0xFF if overflow, 0x00 if no overflow */
+    return (sum < val) ? 0xFF : 0x00;
+}
+
+/*
+ * scsi_addr_adjust_5058 - Adjust address with carry
+ * Address: 0x5058-0x505c (5 bytes)
+ *
+ * Subtracts carry from param
+ */
+uint8_t scsi_addr_adjust_5058(uint8_t param, uint8_t carry)
+{
+    return param - carry;
+}
+
+/*
+ * scsi_xdata_read_505d - Read from XDATA[param + 0xc2]
+ * Address: 0x505d-0x5068 (12 bytes)
+ *
+ * Reads from low XDATA address param + 0xc2
+ */
+uint8_t scsi_xdata_read_505d(uint8_t param)
+{
+    /* add a, #0xc2 -> falls through to read */
+    __xdata uint8_t *ptr = (__xdata uint8_t *)(param + 0xc2);
+    if ((uint16_t)(param + 0xc2) >= 0x100) {
+        /* With carry, use 0x01XX */
+        ptr = (__xdata uint8_t *)(0x0100 | ((param + 0xc2) & 0xFF));
+    }
+    return *ptr;
+}
+
+/*
+ * scsi_xdata_read_5061 - Read from low XDATA with carry-based high byte
+ * Address: 0x5061-0x5068 (8 bytes)
+ */
+uint8_t scsi_xdata_read_5061(uint8_t low_addr, uint8_t carry)
+{
+    __xdata uint8_t *ptr;
+    if (carry) {
+        ptr = (__xdata uint8_t *)(0xFF00 | low_addr);
+    } else {
+        ptr = (__xdata uint8_t *)low_addr;
+    }
+    return *ptr;
+}
+
+/*
+ * scsi_usbc_signature_check_51f9 - Check for "USBC" signature at DPTR
+ * Address: 0x51f9-0x5215 (29 bytes)
+ *
+ * Checks if current DPTR points to USB CBW signature "USBC" (0x55534243)
+ * Returns 1 if signature matches, 0 otherwise
+ */
+uint8_t scsi_usbc_signature_check_51f9(__xdata uint8_t *ptr)
+{
+    /* Check for USBC signature at ptr */
+    /* Byte 0 should be 0 (already checked by caller) */
+    if (ptr[0] != 0) return 0;
+
+    /* Byte 1 should be 0x55 ('U') */
+    if (ptr[1] != 0x55) return 0;
+
+    /* Byte 2 should be 0x53 ('S') */
+    if (ptr[2] != 0x53) return 0;
+
+    /* Byte 3 should be 0x42 ('B') */
+    if (ptr[3] != 0x42) return 0;
+
+    /* Byte 4 should be 0x43 ('C') */
+    if (ptr[4] != 0x43) return 0;
+
+    return 1;
+}
+
+/*
+ * scsi_reg_write_5398 - Write value to register C001
+ * Address: 0x5398-0x53a3 (12 bytes)
+ *
+ * Part of a loop that writes R7 to REG_C001 and increments R1:R2
+ */
+void scsi_reg_write_5398(uint8_t val)
+{
+    XDATA8(0xC001) = val;
+}
+
+/*
+ * scsi_init_slot_53d4 - Initialize slot register
+ * Address: 0x53d4-0x53e5 (18 bytes)
+ *
+ * Writes 0xFF to REG_C51A, increments G_012B and masks with 0x1F
+ */
+void scsi_init_slot_53d4(void)
+{
+    uint8_t val;
+
+    /* Write 0xFF to REG_C51A */
+    REG_NVME_LINK_STATUS = 0xFF;
+
+    /* Read, increment, mask and write back */
+    val = XDATA8(0x012B);
+    val = (val + 1) & 0x1F;
+    XDATA8(0x012B) = val;
+
+    /* Jump to dispatch_041c - represented as call */
+    dispatch_041c(val);
+}
+
+/*
+ * scsi_dispatch_5426 - Dispatch handler
+ * Address: 0x5426-0x5454 (47 bytes)
+ *
+ * Calls dispatch_0426 with param 0x14, then helper_173b with DPTR=0xB220
+ */
+void scsi_dispatch_5426(void)
+{
+    dispatch_0426();
+    helper_173b();
+    dispatch_0453();
 }

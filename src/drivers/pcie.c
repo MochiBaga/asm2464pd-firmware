@@ -3050,3 +3050,44 @@ uint8_t pcie_tlp_init_and_transfer(void)
     /* Step 9: Read operation - poll for completion data */
     return pcie_poll_and_read_completion();
 }
+
+/*
+ * pcie_init_read_e8f9 - Initialize PCIe direction for read and execute
+ * Address: 0xe8f9-0xe901 (Bank 1)
+ *
+ * Sets direction to read mode and executes a PCIe TLP transaction.
+ *
+ * Disassembly:
+ *   e8f9: clr a                ; a = 0
+ *   e8fa: mov dptr, #0x05ae    ; G_PCIE_DIRECTION
+ *   e8fd: movx @dptr, a        ; Write 0 (read mode)
+ *   e8fe: lcall 0xc1f9         ; pcie_tlp_init_and_transfer
+ *   e901: ret
+ *
+ * Returns: Result from pcie_tlp_init_and_transfer
+ */
+uint8_t pcie_init_read_e8f9(void)
+{
+    G_PCIE_DIRECTION = 0;           /* Set direction to read */
+    return pcie_tlp_init_and_transfer();
+}
+
+/*
+ * pcie_init_write_e902 - Initialize PCIe direction for write and execute
+ * Address: 0xe902-0xe90a (Bank 1)
+ *
+ * Sets direction to write mode and executes a PCIe TLP transaction.
+ *
+ * Disassembly:
+ *   e902: mov dptr, #0x05ae    ; G_PCIE_DIRECTION
+ *   e905: mov a, #0x01         ; Write mode
+ *   e907: movx @dptr, a
+ *   e908: ljmp 0xc1f9          ; tail call to pcie_tlp_init_and_transfer
+ *
+ * Returns: Result from pcie_tlp_init_and_transfer
+ */
+uint8_t pcie_init_write_e902(void)
+{
+    G_PCIE_DIRECTION = 1;           /* Set direction to write */
+    return pcie_tlp_init_and_transfer();
+}

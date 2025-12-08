@@ -26,6 +26,11 @@
 //=============================================================================
 /* These are IDATA (internal 8051 RAM) locations used as fast work variables.
  * With __at() absolute addressing, these can be defined in the header. */
+/* Boot signature bytes (0x09-0x0C) - used in startup_0016 */
+__idata __at(0x09) uint8_t I_BOOT_SIG_0;      /* Boot signature byte 0 */
+__idata __at(0x0A) uint8_t I_BOOT_SIG_1;      /* Boot signature byte 1 */
+__idata __at(0x0B) uint8_t I_BOOT_SIG_2;      /* Boot signature byte 2 */
+__idata __at(0x0C) uint8_t I_BOOT_SIG_3;      /* Boot signature byte 3 */
 __idata __at(0x0D) uint8_t I_QUEUE_IDX;       /* Queue index / endpoint offset */
 __idata __at(0x11) uint8_t I_SCSI_TAG;        /* SCSI command tag */
 __idata __at(0x12) uint8_t I_WORK_12;         /* Work variable 0x12 */
@@ -36,7 +41,9 @@ __idata __at(0x15) uint8_t I_WORK_15;         /* Work variable 0x15 */
 /* IDATA pointers for SCSI command buffer (0x12-0x15) */
 #define IDATA_SCSI_CMD_BUF    ((__idata uint8_t *)0x12)   /* SCSI cmd buffer pointer */
 __idata __at(0x16) uint8_t I_CORE_STATE_L;    /* Core state low byte */
+#define I_WORK_16 I_CORE_STATE_L              /* Alias for work variable 0x16 */
 __idata __at(0x17) uint8_t I_CORE_STATE_H;    /* Core state high byte */
+#define I_WORK_17 I_CORE_STATE_H              /* Alias for work variable 0x17 */
 __idata __at(0x18) uint8_t I_WORK_18;         /* Work variable 0x18 */
 __idata __at(0x19) uint8_t I_WORK_19;         /* Work variable 0x19 */
 __idata __at(0x21) uint8_t I_LOG_INDEX;       /* Log index */
@@ -366,7 +373,13 @@ __idata __at(0x72) uint8_t I_BUF_CTRL_GLOBAL; /* Buffer control global */
 #define G_FLASH_BUF_705D        XDATA_VAR8(0x705D)  /* Flash buffer data 2 */
 #define G_FLASH_BUF_705E        XDATA_VAR8(0x705E)  /* Flash buffer data 3 */
 #define G_FLASH_BUF_705F        XDATA_VAR8(0x705F)  /* Flash buffer data 4 */
+#define G_FLASH_BUF_7076        XDATA_VAR8(0x7076)  /* Flash config source byte 0 */
+#define G_FLASH_BUF_7077        XDATA_VAR8(0x7077)  /* Flash config source byte 1 */
+#define G_FLASH_BUF_7078        XDATA_VAR8(0x7078)  /* Flash config source byte 2 */
+#define G_FLASH_BUF_7079        XDATA_VAR8(0x7079)  /* Flash config source byte 3 */
+#define G_FLASH_BUF_707A        XDATA_VAR8(0x707A)  /* Flash config source byte 4 */
 #define G_FLASH_BUF_707B        XDATA_VAR8(0x707B)  /* Flash buffer byte 0x707B */
+#define G_FLASH_BUF_707C        XDATA_VAR8(0x707C)  /* Flash buffer byte 0x707C */
 #define G_FLASH_BUF_707D        XDATA_VAR8(0x707D)  /* Flash buffer byte 0x707D */
 #define G_FLASH_BUF_707E        XDATA_VAR8(0x707E)  /* Flash header marker */
 #define G_FLASH_BUF_707F        XDATA_VAR8(0x707F)  /* Flash checksum */
@@ -374,8 +387,14 @@ __idata __at(0x72) uint8_t I_BUF_CTRL_GLOBAL; /* Buffer control global */
 //=============================================================================
 // Work Variables 0x0A5x-0x0A9x
 //=============================================================================
-#define G_NIBBLE_SWAP_0A5B      XDATA_VAR8(0x0A5B)  /* Nibble swap work variable */
-#define G_NIBBLE_SWAP_0A5C      XDATA_VAR8(0x0A5C)  /* Nibble swap work variable */
+#define G_EP_CFG_FLAG_0A5B      XDATA_VAR8(0x0A5B)  /* EP config flag (set to 1 by 0x99c7) */
+#define G_NIBBLE_SWAP_0A5B      G_EP_CFG_FLAG_0A5B  /* Alias for nibble_swap_helper */
+#define G_EP_CFG_0A5C           XDATA_VAR8(0x0A5C)  /* EP config value */
+#define G_NIBBLE_SWAP_0A5C      G_EP_CFG_0A5C       /* Alias for nibble_swap_helper */
+#define G_EP_CFG_0A5D           XDATA_VAR8(0x0A5D)  /* EP config value */
+#define G_EP_CFG_0A5E           XDATA_VAR8(0x0A5E)  /* EP config value (cleared by 0x9741) */
+#define G_EP_CFG_0A5F           XDATA_VAR8(0x0A5F)  /* EP config value (cleared by 0x9741) */
+#define G_EP_CFG_0A60           XDATA_VAR8(0x0A60)  /* EP config value (cleared by 0x9741) */
 #define G_LANE_STATE_0A9D       XDATA_VAR8(0x0A9D)  /* Lane state value */
 #define G_TLP_MASK_0ACB         XDATA_VAR8(0x0ACB)  /* TLP mask value */
 #define G_TLP_BLOCK_SIZE_0ACC   XDATA_VAR8(0x0ACC)  /* TLP block size (double = 2x) */
