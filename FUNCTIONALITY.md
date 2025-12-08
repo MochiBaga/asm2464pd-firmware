@@ -1,264 +1,178 @@
-# ASM2464PD Functionality Overview
+# ASM2464PD USB4 eGPU Functionality
 
-This document describes how the ASM2464PD USB4/NVMe bridge controller works and how its hardware blocks cooperate to bridge USB Mass Storage commands to NVMe storage.
+## Overview
 
-## Device Purpose
+The original firmware supports USB4 PCIe tunneling. Key functions:
 
-The ASM2464PD is a bridge IC that allows NVMe SSDs to appear as USB Mass Storage devices. It translates between:
+| Function | Address | Status | Location |
+|----------|---------|--------|----------|
+| pcie_tunnel_enable | 0xC00D | DONE | drivers/pcie.c |
+| pcie_tunnel_setup | 0xCD6C | Stub | app/dispatch.c |
+| pcie_adapter_config | 0xC8DB | TODO | - |
+| pcie_lane_config | 0xD436 | DONE | drivers/phy.c |
 
-- **Host side**: USB 3.2/USB4/Thunderbolt using SCSI commands over USB Mass Storage (BOT protocol)
-- **Storage side**: PCIe 4.0 x4 using NVMe commands
+## PCIe Tunnel Adapter Registers (0xB400-0xB4FF)
 
-This enables NVMe drives to work with any USB host without requiring NVMe drivers.
+| Register | Address | Function |
+|----------|---------|----------|
+| REG_PCIE_TUNNEL_CTRL | 0xB401 | Tunnel control (bit 0 = enable) |
+| REG_PCIE_CTRL_B402 | 0xB402 | PCIe control flags |
+| REG_PCIE_LINK_PARAM | 0xB404 | Link parameters |
+| REG_PCIE_ADAPTER_10 | 0xB410 | Adapter config byte 0 |
+| REG_PCIE_ADAPTER_11 | 0xB411 | Adapter config byte 1 |
+| REG_PCIE_ADAPTER_12 | 0xB412 | Adapter config byte 2 |
+| REG_PCIE_ADAPTER_13 | 0xB413 | Adapter config byte 3 |
+| REG_PCIE_ADAPTER_15 | 0xB415 | Adapter config |
+| REG_PCIE_ADAPTER_1A | 0xB41A | Link config low |
+| REG_PCIE_ADAPTER_1B | 0xB41B | Link config high |
+| REG_PCIE_ADAPTER_20 | 0xB420 | Data register |
+| REG_PCIE_ADAPTER_22 | 0xB422 | Status byte 0 |
+| REG_PCIE_ADAPTER_23 | 0xB423 | Status byte 1 |
+| REG_PCIE_ADAPTER_25 | 0xB425 | Config |
+| REG_PCIE_ADAPTER_2A | 0xB42A | Additional config |
+| REG_PCIE_LINK_STATE | 0xB430 | Link state (bit 0 = up) |
+| REG_PCIE_LANE_CONFIG | 0xB436 | Lane configuration |
+| REG_PCIE_ADAPTER_82 | 0xB482 | Adapter mode (0xF0 = tunnel) |
 
-## High-Level Data Flow
+### Other Registers
 
-```
-USB Host                                              NVMe SSD
-   |                                                     |
-   |  USB Bulk Transfer (CBW)                            |
-   v                                                     |
-[USB Interface] --> [SCSI Parser] --> [Command Engine]   |
-       |                                    |            |
-       |                                    v            |
-       |                           [NVMe Translation]    |
-       |                                    |            |
-       |                                    v            |
-       |                           [PCIe TLP Engine] --> |
-       |                                    |            |
-       |            <-- DMA Engine <--------|            |
-       |                    |                            |
-       v                    v                            |
-[USB Bulk Transfer (Data/CSW)] <-------------------------|
-```
+| Register | Address | Function |
+|----------|---------|----------|
+| REG_PCIE_TLP_CTRL | 0xB298 | TLP control (bit 4 = tunnel enable) |
+| REG_CPU_MODE_NEXT | 0xCA06 | CPU mode (bit 4 = NVMe, clear for tunnel) |
 
-## Hardware Block Interactions
+## Implemented Functions
 
-### 1. USB Command Reception
+### pcie_tunnel_enable (0xC00D) - DONE
 
-When the host sends a SCSI command:
+Located in `drivers/pcie.c`. Enables USB4 PCIe tunneling:
 
-1. **USB Interface (0x9000)** receives USB bulk transfer
-2. CBW (Command Block Wrapper) is parsed from **USB/SCSI Buffer (0x8000)**
-3. CBW signature "USBC" validated at 0x911B-0x911E
-4. Transfer length extracted from 0x9123-0x9126
-5. Command data parsed from buffer
+```c
+void pcie_tunnel_enable(void) {
+    if (G_STATE_FLAG_06E6 == 0) return;
 
-### 2. SCSI Command Processing
+    // Clear state flags
+    G_STATE_FLAG_06E6 = 0;
+    XDATA8(0x06E7) = 1;
+    XDATA8(0x06E8) = 1;
 
-The **Command Engine (0xE400)** processes SCSI commands:
+    // Clear PCIe transaction state
+    G_PCIE_TXN_COUNT_HI = 0;
+    XDATA8(0x06EB) = 0;
+    XDATA8(0x05AC) = 0;
+    XDATA8(0x05AD) = 0;
 
-1. SCSI opcode examined (READ_10, WRITE_10, INQUIRY, etc.)
-2. For storage commands, LBA and transfer count extracted
-3. Command queued in **SCSI DMA Control (0xCE00)**
-4. State machine in protocol.c tracks command progress
+    // Clear tunnel control bit 0
+    REG_PCIE_TUNNEL_CTRL &= 0xFE;
 
-Key SCSI commands translated:
-- READ_10/READ_16 → NVMe Read
-- WRITE_10/WRITE_16 → NVMe Write
-- INQUIRY → Return cached device info
-- READ_CAPACITY → Return drive size
-- TEST_UNIT_READY → Check NVMe status
+    // Call tunnel setup
+    pcie_tunnel_setup();  // 0xCD6C
 
-### 3. NVMe Command Submission
+    // Clear CPU mode bit 4 (exit NVMe mode)
+    REG_CPU_MODE_NEXT &= 0xEF;
 
-For storage operations, SCSI commands become NVMe commands:
+    // Configure all 4 lanes
+    pcie_lane_config(0x0F);  // 0xD436
 
-1. **NVMe Interface (0xC400)** constructs NVMe command
-2. Command placed in **NVMe I/O Submission Queue (0xA000)**
-3. Admin commands use **Admin Submission Queue (0xB000)**
-4. Doorbell written via **REG_NVME_DOORBELL (0xC42A)**
-
-NVMe command structure (64 bytes):
-- Opcode, namespace ID, PRP pointers
-- LBA, transfer count
-- Command-specific fields
-
-### 4. PCIe Transaction Layer
-
-The **PCIe TLP Engine (0xB200)** generates PCIe packets:
-
-1. Memory write TLP for submission queue entry
-2. Doorbell write TLP to notify NVMe controller
-3. Memory read TLP for completion queue polling
-4. Data transfer TLPs for read/write payloads
-
-Key registers:
-- REG_PCIE_FMT_TYPE (0xB210): TLP format/type
-- REG_PCIE_ADDR_0-3 (0xB218-0xB21B): Target address
-- REG_PCIE_DATA (0xB220): Data payload
-
-### 5. DMA Data Movement
-
-The **DMA Engine (0xC8B0)** moves data between buffers:
-
-```
-USB Buffer (0x8000) <--> DMA <--> NVMe Data Buffer (0xF000)
-                         |
-                         v
-                   PCIe to/from SSD
+    // Clear state
+    IDATA8(0x62) = 0;
+    G_MAX_LOG_ENTRIES = 0;
+}
 ```
 
-DMA operations:
-1. Configure source/destination addresses
-2. Set transfer length (REG_DMA_XFER_CNT)
-3. Trigger transfer (REG_DMA_TRIGGER)
-4. Poll for completion (REG_DMA_STATUS)
+### pcie_tunnel_setup (0xCD6C) - Stub
 
-### 6. Completion Handling
+Currently a dispatch stub in `app/dispatch.c`. Needs full implementation:
 
-When NVMe command completes:
+```c
+void pcie_tunnel_setup(void) {
+    // Clear CPU mode bit 4
+    REG_CPU_MODE_NEXT &= 0xEF;
 
-1. **NVMe Completion Queue (0xB100)** receives completion entry
-2. **Interrupt Controller (0xC800)** signals CPU
-3. ISR reads completion status
-4. Error codes translated to SCSI sense data
-5. CSW (Command Status Wrapper) built in buffer
-6. USB bulk transfer sends CSW to host
+    // Configure adapter (0xC8DB)
+    pcie_adapter_config();
 
-## Interrupt Flow
+    // Set tunnel control via helper
+    pcie_helper_99e4(0xB401);
 
-The 8051 handles interrupts for coordination:
+    // Configure adapter mode - set high nibble to 0xF0
+    REG_PCIE_ADAPTER_82 = (REG_PCIE_ADAPTER_82 & 0x0F) | 0xF0;
 
-```
-INT0 (External 0): USB events
-  └─> USB packet received/transmitted
-  └─> Endpoint status changes
+    // Clear tunnel control bit 0
+    REG_PCIE_TUNNEL_CTRL &= 0xFE;
 
-INT1 (External 1): PCIe/NVMe events
-  └─> NVMe completion available
-  └─> PCIe link status changes
-  └─> DMA completion
+    // Clear link state bit 0
+    REG_PCIE_LINK_STATE &= 0xFE;
 
-Timer: Periodic tasks
-  └─> Link monitoring
-  └─> Timeout handling
-  └─> Power management
+    // Set TLP control bit 4
+    REG_PCIE_TLP_CTRL |= 0x10;
+}
 ```
 
-## State Machines
+### pcie_adapter_config (0xC8DB) - TODO
 
-### Protocol State Machine (G_IO_CMD_STATE at 0x0002)
+Writes adapter config from globals to hardware registers:
 
-Tracks overall command processing:
-- 0x28: Starting new command
-- 0x2A: Processing in progress
-- 0x88: Data phase
-- 0x8A: Status phase
-
-### USB State Machine
-
-Tracks USB connection:
-- Disconnected
-- Default (after reset)
-- Addressed
-- Configured
-- Suspended
-
-### NVMe State Machine
-
-Tracks NVMe initialization and operation:
-- Controller reset
-- Admin queue setup
-- I/O queue creation
-- Normal operation
-- Error recovery
-
-## Buffer Architecture
-
-```
-┌─────────────────────────────────────────────────────────┐
-│ XDATA Memory Map                                        │
-├─────────────────────────────────────────────────────────┤
-│ 0x0000-0x5FFF: RAM                                      │
-│   ├─ Global variables                                   │
-│   ├─ Stack                                              │
-│   └─ Work areas                                         │
-├─────────────────────────────────────────────────────────┤
-│ 0x7000-0x7FFF: Flash Buffer (4KB)                       │
-│   └─ Firmware updates, flash operations                 │
-├─────────────────────────────────────────────────────────┤
-│ 0x8000-0x8FFF: USB/SCSI Buffer (4KB)                    │
-│   ├─ CBW reception                                      │
-│   ├─ Data staging                                       │
-│   └─ CSW transmission                                   │
-├─────────────────────────────────────────────────────────┤
-│ 0xA000-0xAFFF: NVMe I/O Submission Queue (4KB)          │
-│   └─ Up to 64 queued I/O commands                       │
-├─────────────────────────────────────────────────────────┤
-│ 0xB000-0xB0FF: NVMe Admin Submission Queue              │
-│ 0xB100-0xB1FF: NVMe Admin Completion Queue              │
-│   └─ Controller management commands                     │
-├─────────────────────────────────────────────────────────┤
-│ 0xF000-0xFFFF: NVMe Data Buffer (4KB)                   │
-│   └─ Read/write data staging to/from SSD               │
-└─────────────────────────────────────────────────────────┘
+```c
+void pcie_adapter_config(void) {
+    // Copy config from 0x0A52-0x0A54 to adapter registers
+    REG_PCIE_ADAPTER_10 = XDATA8(0x0A53);
+    REG_PCIE_ADAPTER_11 = XDATA8(0x0A52);
+    REG_PCIE_ADAPTER_13 = XDATA8(0x0A54);
+    REG_PCIE_ADAPTER_22 = XDATA8(0x0A53);
+    REG_PCIE_ADAPTER_23 = XDATA8(0x0A52);
+    REG_PCIE_ADAPTER_1A = XDATA8(0x0A53);
+    REG_PCIE_ADAPTER_1B = XDATA8(0x0A52);
+    // ... plus helpers for 0xB412, 0xB415, 0xB420, 0xB425, 0xB42A
+}
 ```
 
-## Initialization Sequence
+### pcie_lane_config (0xD436) - DONE
 
-1. **CPU startup**: Reset vector, stack setup
-2. **Clock configuration**: PLL, clock dividers
-3. **PHY initialization**: USB and PCIe PHYs
-4. **USB setup**: Descriptors, endpoints
-5. **PCIe link training**: Wait for link up
-6. **NVMe initialization**:
-   - Read controller capabilities
-   - Create admin queues
-   - Identify controller/namespace
-   - Create I/O queues
-7. **Ready for commands**: Main loop active
+Located in `drivers/phy.c`. Configures PCIe x4 lane setup.
 
-## Power Management
+## Data Flow
 
-The **Power Management (0x92C0)** block handles:
+```
+USB4 Host                   ASM2464PD                      GPU
+   |                           |                            |
+   | USB4 Tunnel Packets       |                            |
+   |==========================>|                            |
+   |                           | 0xB4xx Adapter             |
+   |                           | (hardware passthrough)     |
+   |                           |===========================>|
+   |                           |                            |
+   |                           |<===========================|
+   |<==========================|                            |
 
-- USB suspend/resume
-- PCIe power states (L0, L1, L2)
-- NVMe power states (PS0-PS4)
-- Clock gating for idle blocks
+8051 role: Setup only, not in data path
+```
 
-Power transitions coordinated through:
-- REG_POWER_ENABLE (0x92C0)
-- REG_CLOCK_ENABLE (0x92C1)
-- REG_POWER_STATUS (0x92C2)
+## Initialization Flow
 
-## Error Handling
+```
+main()
+  └─> process_init_table()
+  └─> main_loop()
+        └─> phy_init_sequence_0720()
+              └─> pcie_tunnel_setup()      // 0xCD6C
+              └─> G_STATE_FLAG_06E6 = 1
+        └─> [flag check]
+              └─> pcie_tunnel_enable()     // 0xC00D
+                    └─> pcie_tunnel_setup()
+                    └─> pcie_lane_config(0x0F)
+```
 
-Errors at each layer are caught and translated:
+## Remaining Work
 
-| Source | Detection | Response |
-|--------|-----------|----------|
-| USB protocol | Invalid CBW signature | STALL endpoint, send CSW with error |
-| SCSI command | Unsupported opcode | CHECK CONDITION sense data |
-| NVMe error | Completion status != 0 | Map to SCSI sense code |
-| PCIe timeout | No completion | Reset link, retry |
-| DMA error | REG_DMA_STATUS bit 3 | Abort transfer |
-
-## Code Bank Switching
-
-With 98KB firmware in 64KB address space:
-
-- Bank 0: 0x0000-0xFFFF direct access
-- Bank 1: 0x10000-0x17FFF mapped at 0x8000
-
-**Dispatch stubs** at 0x0300-0x0650 handle cross-bank calls:
-1. Save current bank state
-2. Switch DPX register
-3. Call target function
-4. Restore bank state
-5. Return to caller
-
-## Performance Path
-
-For maximum throughput (USB to NVMe read):
-
-1. USB bulk OUT → CBW in USB buffer
-2. Parse CBW, extract LBA/count (fast path in protocol.c)
-3. Build NVMe read command
-4. Ring doorbell
-5. DMA data from SSD → NVMe buffer → USB buffer
-6. USB bulk IN → data to host
-7. USB bulk IN → CSW to host
-
-The DMA engine supports scatter-gather and can pipeline multiple commands for queue depth > 1.
+1. **Implement pcie_tunnel_setup body** - Currently just a dispatch stub, needs full 0xCD6C logic
+2. **Implement pcie_adapter_config** (0xC8DB) - Copy config to 0xB4xx registers
+3. **Add adapter registers** to registers.h:
+   ```c
+   #define REG_PCIE_ADAPTER_10    XDATA_REG8(0xB410)
+   #define REG_PCIE_ADAPTER_11    XDATA_REG8(0xB411)
+   #define REG_PCIE_ADAPTER_12    XDATA_REG8(0xB412)
+   #define REG_PCIE_ADAPTER_13    XDATA_REG8(0xB413)
+   #define REG_PCIE_ADAPTER_82    XDATA_REG8(0xB482)
+   ```
+4. **Test** with TB3/USB4 host and GPU

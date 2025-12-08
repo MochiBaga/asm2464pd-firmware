@@ -287,12 +287,11 @@ void dispatch_0453(void) { jump_bank_0(0xE902); }
 /* 0x0458: Target 0xE77A - handler_e77a */
 void dispatch_0458(void) { jump_bank_0(0xE77A); }
 
-/* 0x045D: Target 0xC00D - pcie_error_handler (defined in pcie.c at 0xC00D) */
-/* Note: Not renamed because pcie_error_handler already exists in pcie.c */
+/* 0x045D: Target 0xC00D - pcie_tunnel_enable (defined in pcie.c) */
 void dispatch_045d(void) { jump_bank_0(0xC00D); }
 
-/* 0x0462: Target 0xCD6C - handler_cd6c */
-void dispatch_0462(void) { jump_bank_0(0xCD6C); }
+/* 0x0462: Target 0xCD6C - pcie_tunnel_setup */
+void pcie_tunnel_setup(void) { jump_bank_0(0xCD6C); }
 
 /* 0x0467: Target 0xE57D - handler_e57d */
 void dispatch_0467(void) { jump_bank_0(0xE57D); }
@@ -377,7 +376,7 @@ void dispatch_04df(void) { jump_bank_0(0xE95F); }
 void dispatch_04e4(void) { jump_bank_0(0xE2EC); }
 
 /* 0x04E9: Target 0xE8E4 - handler_e8e4 */
-void handler_e8e4(void) { jump_bank_0(0xE8E4); }  /* was: dispatch_04e9 */
+void dispatch_04e9(void) { jump_bank_0(0xE8E4); }
 
 /* 0x04EE: Target 0xE6FC - handler_e6fc */
 void handler_e6fc(void) { jump_bank_0(0xE6FC); }  /* was: dispatch_04ee */

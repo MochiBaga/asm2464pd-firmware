@@ -1504,9 +1504,9 @@ void error_state_config(void)
     REG_CPU_DMA_CCD8 = val;
 
     /* Configure interrupt control - clear bit 4, set bit 4 */
-    val = REG_INT_CTRL_C801;
+    val = REG_INT_ENABLE;
     val = (val & 0xEF) | 0x10;
-    REG_INT_CTRL_C801 = val;
+    REG_INT_ENABLE = val;
 
     /* Configure CPU DMA control - clear bits 0-2, set bits 0-2 to 4 */
     val = REG_CPU_DMA_CCD8;

@@ -862,11 +862,11 @@ void nvme_read_status(__xdata uint8_t *ptr)
  * nvme_set_int_aux_bit1 - Set bit 1 on interrupt auxiliary register
  * Address: 0x3280-0x3289 (10 bytes)
  *
- * Manipulates REG_INT_AUX_C805: clears bits 1 and 2, then sets bit 1.
+ * Manipulates REG_INT_AUX_STATUS: clears bits 1 and 2, then sets bit 1.
  *
  * Original disassembly:
  *   3280: mov dptr, #0xc805
- *   3283: movx a, @dptr        ; read REG_INT_AUX_C805
+ *   3283: movx a, @dptr        ; read REG_INT_AUX_STATUS
  *   3284: anl a, #0xf9         ; clear bits 1 and 2
  *   3286: orl a, #0x02         ; set bit 1
  *   3288: movx @dptr, a        ; write back
@@ -874,9 +874,9 @@ void nvme_read_status(__xdata uint8_t *ptr)
  */
 void nvme_set_int_aux_bit1(void)
 {
-    uint8_t val = REG_INT_AUX_C805;
+    uint8_t val = REG_INT_AUX_STATUS;
     val = (val & 0xF9) | 0x02;
-    REG_INT_AUX_C805 = val;
+    REG_INT_AUX_STATUS = val;
 }
 
 /*
@@ -2091,7 +2091,7 @@ check_scsi:
  * state flags.
  *
  * Key registers:
- * - 0xC516: REG_NVME_QUEUE_C516 - Queue status (bits 0-5: index)
+ * - 0xC516: REG_NVME_QUEUE_PENDING - Queue status (bits 0-5: index)
  * - 0x009F: Queue reference base
  * - 0x00C2: Init state comparison
  * - 0x00E5: Secondary state flag
@@ -2100,7 +2100,7 @@ check_scsi:
  * - 0x05AC: Buffer state flag
  *
  * Original disassembly:
- *   3e81: mov dptr, #0xc516     ; REG_NVME_QUEUE_C516
+ *   3e81: mov dptr, #0xc516     ; REG_NVME_QUEUE_PENDING
  *   3e84: movx a, @dptr
  *   3e85: anl a, #0x3f          ; Mask to 6 bits
  *   3e87: mov 0x38, a           ; Store to IDATA 0x38
@@ -2124,7 +2124,7 @@ void nvme_queue_process_pending(void)
     __xdata uint8_t *ptr;
 
     /* Read queue status and get index */
-    status = REG_NVME_QUEUE_C516;
+    status = REG_NVME_QUEUE_PENDING;
     *queue_idx = status & 0x3F;
 
     /* Increment counter at 0x0517 + index */
@@ -2276,7 +2276,7 @@ void nvme_queue_helper(void)
  * REG_CMD_PARAM_H         0xE42C
  * REG_CMD_PARAM           0xE430
  * REG_CMD_STATUS          0xE431
- * REG_INT_CTRL_C801       0xC801 (now defined in registers.h)
+ * REG_INT_ENABLE       0xC801 (now defined in registers.h)
  */
 
 /* Additional globals */
@@ -2492,8 +2492,8 @@ void nvme_cmd_shift_6(__xdata uint8_t *ptr, uint8_t val)
  */
 void nvme_int_ctrl_set_bit4(void)
 {
-    uint8_t val = REG_INT_CTRL_C801;
-    REG_INT_CTRL_C801 = (val & 0xEF) | 0x10;
+    uint8_t val = REG_INT_ENABLE;
+    REG_INT_ENABLE = (val & 0xEF) | 0x10;
 }
 
 /*

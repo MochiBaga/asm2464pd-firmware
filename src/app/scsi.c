@@ -59,8 +59,8 @@ extern void interface_ready_check(uint8_t p1, uint8_t p2, uint8_t p3);
 extern void handler_d916(void);               /* was: dispatch_039f */
 extern void handler_e96c(void);               /* was: dispatch_04fd */
 extern void handler_e6fc(void);               /* was: dispatch_04ee */
-extern void handler_e8e4(void);               /* was: dispatch_04e9 */
-extern void pcie_error_handler(void);         /* was: dispatch_045d */
+extern void dispatch_04e9(void);              /* 0x04e9 -> 0xE8E4 */
+extern void pcie_tunnel_enable(void);         /* 0xC00D */
 extern void handler_e91d(void);               /* was: dispatch_044e */
 extern void phy_power_config_handler(void);   /* was: dispatch_032c */
 extern void handler_bf8e(void);               /* was: dispatch_0340 */
@@ -619,7 +619,7 @@ void scsi_transfer_dispatch(void)
 
     status = REG_PHY_EXT_56;
     if (((status >> 5) & 0x01) != 1) {
-        handler_e8e4();  /* was: dispatch_04e9 */
+        dispatch_04e9();  /* 0x04e9 -> 0xE8E4 */
         return;
     }
 
@@ -653,7 +653,7 @@ void scsi_transfer_dispatch(void)
 
     if (val == 0x81 || val == 0x0F) {
         usb_set_done_flag();
-        pcie_error_handler();  /* was: dispatch_045d */
+        pcie_tunnel_enable();  /* 0xC00D */
     }
 }
 

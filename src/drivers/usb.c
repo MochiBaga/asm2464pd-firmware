@@ -591,7 +591,7 @@ void usb_buffer_handler(void)
     status = REG_USB_STATUS;
     if (status & 0x01) {
         /* USB status bit 0 set - check NVMe queue pointer */
-        status = REG_NVME_QUEUE_PTR_C471;
+        status = REG_NVME_QUEUE_BUSY;
         if (status & 0x01) {
             return;
         }
@@ -1371,7 +1371,7 @@ void usb_master_handler(void)
     }
 
     /* Check USB master interrupt bit 2 (0xC802) - NVMe queue processing */
-    status = REG_INT_USB_MASTER;
+    status = REG_INT_USB_STATUS;
     if (!(status & 0x04)) {
         return;
     }
@@ -1387,7 +1387,7 @@ void usb_master_handler(void)
      */
     for (counter = 0; counter < 0x20; counter++) {
         /* Check NVMe queue pointer bit 0 */
-        status = REG_NVME_QUEUE_PTR_C471;
+        status = REG_NVME_QUEUE_BUSY;
         if (!(status & 0x01)) {
             break;  /* No more queue entries */
         }
@@ -4440,7 +4440,7 @@ void usb_buffer_dispatch(void)
     val = REG_USB_STATUS;
     if (val & 0x01) {
         /* Check NVMe queue pointer bit 0 */
-        val = REG_NVME_QUEUE_PTR_C471;
+        val = REG_NVME_QUEUE_BUSY;
         if (val & 0x01) {
             return;
         }

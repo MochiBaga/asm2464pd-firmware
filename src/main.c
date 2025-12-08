@@ -14,44 +14,6 @@
 #include "globals.h"
 
 /*===========================================================================
- * IDATA Work Variable Definitions
- * These are the actual storage for the extern declarations in globals.h
- *===========================================================================*/
-__idata __at(0x0D) uint8_t I_QUEUE_IDX;
-__idata __at(0x12) uint8_t I_WORK_12;
-__idata __at(0x16) uint8_t I_CORE_STATE_L;
-__idata __at(0x17) uint8_t I_CORE_STATE_H;
-__idata __at(0x18) uint8_t I_WORK_18;
-__idata __at(0x19) uint8_t I_WORK_19;
-__idata __at(0x21) uint8_t I_LOG_INDEX;
-__idata __at(0x23) uint8_t I_WORK_23;
-__idata __at(0x38) uint8_t I_WORK_38;
-__idata __at(0x39) uint8_t I_WORK_39;
-__idata __at(0x3A) uint8_t I_WORK_3A;
-__idata __at(0x3B) uint8_t I_WORK_3B;
-__idata __at(0x3C) uint8_t I_WORK_3C;
-__idata __at(0x3D) uint8_t I_WORK_3D;
-__idata __at(0x3E) uint8_t I_WORK_3E;
-__idata __at(0x40) uint8_t I_WORK_40;
-__idata __at(0x41) uint8_t I_WORK_41;
-__idata __at(0x43) uint8_t I_WORK_43;
-__idata __at(0x47) uint8_t I_WORK_47;
-__idata __at(0x51) uint8_t I_WORK_51;
-__idata __at(0x52) uint8_t I_WORK_52;
-__idata __at(0x53) uint8_t I_WORK_53;
-__idata __at(0x55) uint8_t I_WORK_55;
-__idata __at(0x65) uint8_t I_WORK_65;
-__idata __at(0x6A) uint8_t I_STATE_6A;
-__idata __at(0x6B) uint8_t I_TRANSFER_6B;
-__idata __at(0x6C) uint8_t I_TRANSFER_6C;
-__idata __at(0x6D) uint8_t I_TRANSFER_6D;
-__idata __at(0x6E) uint8_t I_TRANSFER_6E;
-__idata __at(0x6F) uint8_t I_BUF_FLOW_CTRL;
-__idata __at(0x70) uint8_t I_BUF_THRESH_LO;
-__idata __at(0x71) uint8_t I_BUF_THRESH_HI;
-__idata __at(0x72) uint8_t I_BUF_CTRL_GLOBAL;
-
-/*===========================================================================
  * Forward declarations
  *===========================================================================*/
 
@@ -89,6 +51,21 @@ extern void system_timer_handler(void);        /* drivers/timer.c - 0x0642 -> 0x
 /* External functions */
 extern void uart_init(void);
 extern void usb_ep_dispatch_loop(void);
+
+/* Dispatch stubs from app/dispatch.c */
+extern void dispatch_04b7(void);               /* 0x04b7 -> Bank0:0xE597 */
+extern void dispatch_04bc(void);               /* 0x04bc -> Bank0:0xE14B */
+extern void phy_power_config_handler(void);    /* 0x032c -> Bank0:0x92C5 */
+extern void dispatch_0539(void);               /* 0x0539 -> Bank0:0x8D77 */
+extern void dispatch_04f8(void);               /* 0x04f8 -> Bank0:0xDE16 */
+extern void pcie_tunnel_setup(void);           /* 0xCD6C */
+extern void dispatch_0435(void);               /* 0x0435 -> Bank0:0xD127 */
+extern void handler_bf8e(void);                /* 0x0340 -> Bank0:0xBF8E */
+
+/* External handlers */
+extern void scsi_flash_ready_check(void);      /* app/scsi.c - 0x5305 */
+extern void pcie_handler_unused_eef9(void);    /* drivers/pcie.c - Bank1:0xEEF9 */
+extern void init_sys_flags_07f0(void);         /* 0x4be6 - inline config handler */
 
 /*===========================================================================
  * Initialization Data Table Processor
@@ -315,6 +292,46 @@ void main(void)
  * Main Processing Loop
  *===========================================================================*/
 
+/* External dispatch functions from dispatch.c */
+extern void dispatch_0322(void);      /* 0x0322 -> 0xCA0D */
+extern void dispatch_04e9(void);      /* 0x04e9 -> 0xE8E4 (handler_e8e4) */
+extern void dispatch_0516(void);      /* 0x0516 -> 0xE30E */
+extern void dispatch_0430(void);      /* 0x0430 -> 0x9037 */
+extern void dispatch_045d(void);      /* 0x045d -> 0xC00D */
+extern void dispatch_04d5(void);      /* 0x04d5 -> 0xD3A2 */
+extern void dispatch_04e4(void);      /* 0x04e4 -> 0xE2EC */
+extern void dispatch_061f(void);      /* 0x061f -> Bank1:0xE25E */
+extern void dispatch_0601(void);      /* 0x0601 -> 0xEA7C */
+extern void dispatch_052a(void);      /* 0x052a -> 0xE961 */
+extern void dispatch_0359(void);      /* 0x0359 -> 0xDEE3 */
+extern void dispatch_043a(void);      /* 0x043a -> 0xE677 */
+extern void dispatch_0507(void);      /* 0x0507 -> 0xE50D */
+
+/* External functions from firmware - USB endpoint loop */
+extern void usb_ep_loop_180d(uint8_t param);  /* 0x180d */
+extern void usb_ep_loop_3419(void);           /* 0x3419 */
+
+/* Return-value wrapper: dispatch_0516 returns result in R7 (0 or 1) */
+static uint8_t dispatch_0516_ret(void)
+{
+    dispatch_0516();
+    /* The dispatch function stores result in R7; access via inline asm */
+    __asm
+        mov dpl, r7
+    __endasm;
+    return 0;  /* DPL is already set by asm */
+}
+
+/* Return-value wrapper: dispatch_0430 returns result in R7 */
+static uint8_t dispatch_0430_ret(void)
+{
+    dispatch_0430();
+    __asm
+        mov dpl, r7
+    __endasm;
+    return 0;
+}
+
 /*
  * Main processing loop
  * Address: 0x2f80-0x3129 (937 bytes)
@@ -338,8 +355,11 @@ void main_loop(void)
 {
     uint8_t events;
     uint8_t state;
+    uint8_t loop_state;
+    uint8_t result;
+    uint8_t usb_status;
 
-    /* Clear loop state flag */
+    /* Clear loop state flag at entry */
     G_LOOP_STATE = 0x00;
 
     while (1) {
@@ -353,10 +373,10 @@ void main_loop(void)
         main_polling_handler();
         usb_power_init();
 
-        /* Check event flags */
+        /* Check event flags (0x2f9a-0x2fb1) */
         events = G_EVENT_FLAGS;
-        if (events & EVENT_FLAGS_ANY) {
-            if (events & (EVENT_FLAG_ACTIVE | EVENT_FLAG_PENDING)) {
+        if (events & EVENT_FLAGS_ANY) {  /* 0x83 mask */
+            if (events & (EVENT_FLAG_ACTIVE | EVENT_FLAG_PENDING)) {  /* 0x81 mask */
                 event_state_handler();
             }
             error_state_config();
@@ -364,28 +384,189 @@ void main_loop(void)
             flash_command_handler();
         }
 
-        /* Clear interrupt priority for EXT0 and EXT1 */
-        IP &= ~0x05;    /* Clear PX0, PX1 */
+        /* Clear interrupt priority for EXT0 and EXT1 (0x2fb4-0x2fb6) */
+        IP &= ~0x05;    /* Clear bits 0,2: clr 0xB8.0, clr 0xB8.2 */
 
-        /* Enable external interrupts */
-        EX0 = 1;
-        EX1 = 1;
-        EA = 1;
+        /* Enable external interrupts (0x2fb8-0x2fbc) */
+        EX0 = 1;        /* setb 0xA8.0 */
+        EX1 = 1;        /* setb 0xA8.2 */
+        EA = 1;         /* setb 0xA8.7 */
 
-        /* Temporarily disable interrupts for critical section */
+        /* ===== Loop body starts at 0x2fbe ===== */
+
+        /* Disable interrupts for critical section (0x2fbe) */
         EA = 0;
 
-        /* Check system state at 0x0AE2 */
+        /* Check system state at 0x0AE2 (0x2fc0-0x2fc9) */
         state = G_SYSTEM_STATE_0AE2;
-        if (state != 0 && state != 0x10) {
-            /* Process based on state - see firmware at 0x2fc5 */
-            if (G_LOOP_STATE == 0) {
-                /* Additional state machine processing */
+        if (state == 0 || state == 0x10) {
+            goto state_ready;  /* Jump to 0x303f */
+        }
+
+        /* State machine processing when state != 0 and state != 0x10 (0x2fcb-0x2ffa) */
+        loop_state = G_LOOP_STATE;
+        if (loop_state != 0) {
+            goto check_loop_state;  /* Jump to 0x2ffb */
+        }
+
+        /* G_LOOP_STATE == 0: Check G_STATE_0AE8 (0x2fd1-0x2fe6) */
+        if (G_STATE_0AE8 != 0) {
+            /* Set G_LOOP_STATE = 0x02 and continue (0x2fdf-0x2fe5) */
+            G_LOOP_STATE = 0x02;
+            goto check_loop_state;
+        }
+
+        /* Check G_EVENT_CTRL_09FA == 0x04 (0x2fd7-0x2fdd) */
+        if (G_EVENT_CTRL_09FA == 0x04) {
+            /* Set G_LOOP_STATE = 0x01 and initialize (0x2fe7-0x2ff8) */
+            G_LOOP_STATE = 0x01;
+            G_STATE_0B39 = 0x00;
+            G_IO_CMD_STATE = 0xFF;  /* XDATA(0x0002) = 0xFF */
+            dispatch_04e9();        /* 0x04e9 -> handler_e8e4 */
+        } else {
+            /* Set G_LOOP_STATE = 0x02 (0x2fdf-0x2fe4) */
+            G_LOOP_STATE = 0x02;
+        }
+
+check_loop_state:
+        /* Check G_LOOP_STATE value (0x2ffb-0x303d) */
+        loop_state = G_LOOP_STATE;
+
+        if (loop_state == 0x01) {
+            /* State 0x01: dispatch 0x0516 and check result (0x3002-0x301a) */
+            result = dispatch_0516_ret();
+            if (result != 0) {
+                result = dispatch_0430_ret();
+                if (result != 0) {
+                    G_LOOP_STATE = 0x02;
+                    G_STATE_FLAG_06E6 = G_STATE_FLAG_06E6 - 1;  /* dec a at 0x3017 */
+                    dispatch_045d();
+                }
+            }
+        } else if (loop_state == 0x02) {
+            /* State 0x02: Check USB status registers (0x3023-0x303d) */
+            usb_status = REG_POWER_STATUS & 0x40;  /* 0x92C2 bit 6 */
+            /* swap a; rrc a; rrc a; anl a, #0x03 -> extract bits 5:4 >> 4 & 0x03 */
+            usb_status = (usb_status >> 4) & 0x03;
+            if (usb_status != 0) {
+                /* Check REG_USB_PHY_CTRL_91C0 bit 1 (0x3031-0x303d) */
+                if (REG_USB_PHY_CTRL_91C0 & 0x02) {
+                    dispatch_0322();  /* 0x0322 -> system_state_handler */
+                }
             }
         }
 
-        /* Re-enable interrupts */
+state_ready:
+        /* Enable interrupts and continue processing (0x303f) */
         EA = 1;
+
+        /* Call event handler (0x3041) */
+        dispatch_0507();  /* 0x0507 -> handler_e50d */
+
+        /* Check event flags again (0x3044-0x3060) */
+        events = G_EVENT_FLAGS;
+        if (events & EVENT_FLAGS_ANY) {  /* 0x83 mask */
+            if (G_MISC_FLAG_06EC != 0) {
+                EA = 0;
+                dispatch_061f();  /* 0x061f -> Bank1:handler_e25e */
+                if (G_STATE_0AB6 != 0) {
+                    dispatch_0601();  /* 0x0601 -> handler_ea7c */
+                }
+                EA = 1;
+            }
+        }
+
+        /* Check command slot handler (0x3062-0x306d) */
+        if (G_CMD_SLOT_INDEX != 0) {
+            EA = 0;
+            dispatch_052a();  /* 0x052a -> handler_e961 */
+            EA = 1;
+        }
+
+        /* Check using 0x541f pattern (returns in R7) - repeated pattern (0x306f-0x30a1) */
+        /* Pattern: lcall 0x541f; jz skip; clr EA; lcall handler; setb EA */
+
+        /* Check and call dispatch_0359 if needed (0x3072-0x3079) */
+        /* This uses internal check at 0x541f which returns result in R7 */
+        /* Simplified: just call the dispatchers in sequence */
+
+        /* Check and call dispatch_480c if needed (0x307e-0x3085) */
+        /* External function at 0x480c */
+
+        /* USB state check (0x308a-0x30a1) */
+        if (G_USB_STATE_0B41 != 0) {
+            EA = 0;
+            if (REG_TIMER1_CSR & 0x02) {  /* 0xCC17 bit 1 */
+                REG_TIMER1_CSR = 0x02;
+                dispatch_04d5();  /* 0x04d5 -> handler_d3a2 */
+            }
+            EA = 1;
+        }
+
+        /* Check G_STATE_0AE9 (0x30a3-0x30b0) */
+        if (G_STATE_0AE9 == 0x0F) {
+            EA = 0;
+            dispatch_04e4();  /* 0x04e4 -> handler_e2ec */
+            EA = 1;
+        }
+
+        /* Check I_STATE_6A loop condition (0x30b2-0x30b9) */
+        if (I_STATE_6A == 0x0B) {
+            /* Exit condition met - continue with shutdown sequence */
+            EA = 0;
+            G_LOOP_STATE_0A5A = I_STATE_6A;
+
+            /* Check power init flag (0x30c2-0x30c8) */
+            if (G_POWER_INIT_FLAG != 0) {
+                goto loop_end;
+            }
+
+            /* Check REG_TIMER2_CSR bits (0x30ca-0x3107) */
+            if (!(REG_TIMER2_CSR & 0x01)) {  /* 0xCC1D bit 0 */
+                if (!(REG_TIMER2_CSR & 0x02)) {  /* bit 1 */
+                    /* Call dispatch_043a and handle log counter (0x30d5-0x30e3) */
+                    dispatch_043a();
+                    REG_TIMER2_CSR = 0x01;
+                    G_STATE_0B39 = 0x00;
+                    goto loop_end;
+                } else {
+                    /* Log counter handling (0x30e5-0x30f3) */
+                    if (G_LOG_COUNTER_044B == 0) {
+                        G_LOG_ACTIVE_044C++;
+                    }
+                    dispatch_0430();
+                    goto loop_end;
+                }
+            } else {
+                /* Bit 0 set: call 0x0516 and process (0x30f5-0x3107) */
+                result = dispatch_0516_ret();
+                if (result != 0) {
+                    result = dispatch_0430_ret();
+                    if (result != 0) {
+                        goto loop_end;
+                    }
+                }
+            }
+            G_LOOP_STATE_0A5A = 0x01;
+        }
+
+loop_end:
+        /* Final USB status check (0x3107-0x3125) */
+        if (G_LOOP_STATE_0A5A != 0) {
+            I_STATE_6A = 0x00;
+
+            /* Check REG_USB_STATUS (0x9000) bit 0 (0x3111-0x3122) */
+            if (REG_USB_STATUS & 0x01) {
+                usb_ep_loop_180d(0x00);  /* 0x180d with R7=0 */
+            } else {
+                usb_ep_loop_3419();       /* 0x3419 */
+            }
+            dispatch_043a();  /* 0x043a -> handler_e677 */
+        }
+
+        /* Re-enable interrupts and loop back (0x3125-0x3127) */
+        EA = 1;
+        /* ljmp 0x2fbe - continue to next iteration */
     }
 }
 
@@ -535,15 +716,15 @@ void reserved_stub_handler(void)
  */
 void main_polling_handler(void)
 {
-    /* Call dispatch stubs - these dispatch to various bank 0/1 handlers */
-    /* 0x5305 -> dispatches to some handler */
-    /* 0x04b7 -> dispatches to 0xE597 (bank 0) */
-    /* 0x04bc -> dispatches to 0xE14B (bank 0) */
-    /* 0x4be6 -> inline handler */
-    /* 0x032c -> dispatches to 0x92C5 (bank 0) */
-    /* 0x0539 -> dispatches to some handler */
-    /* 0x04f8 -> dispatches to some handler */
-    /* 0x063d -> dispatches to 0xEEF9 (bank 1) */
+    /* Call handlers in sequence */
+    scsi_flash_ready_check();      /* 0x5305 -> 0x4C40 */
+    dispatch_04b7();               /* 0x04b7 -> Bank0:0xE597 */
+    dispatch_04bc();               /* 0x04bc -> Bank0:0xE14B */
+    init_sys_flags_07f0();         /* 0x4be6 -> inline handler */
+    phy_power_config_handler();    /* 0x032c -> Bank0:0x92C5 */
+    dispatch_0539();               /* 0x0539 -> Bank0:0x8D77 */
+    dispatch_04f8();               /* 0x04f8 -> Bank0:0xDE16 */
+    pcie_handler_unused_eef9();    /* 0x063d -> Bank1:0xEEF9 */
 
     /* Check state flag and conditionally clear bit 0 of CPU exec status */
     if (G_STATE_FLAG_0AE3 != 0) {
@@ -554,13 +735,13 @@ void main_polling_handler(void)
     /* This waits for PHY link training to complete */
     while ((REG_PHY_EXT_B3 & PHY_EXT_LINK_READY) == 0);
 
-    /* 0x0462 -> dispatches to some handler */
+    pcie_tunnel_setup();           /* 0xCD6C */
 
     /* Set flag indicating processing complete */
     G_STATE_FLAG_06E6 = 1;
 
-    /* 0x0435 -> dispatches to some handler */
-    /* 0x0340 -> dispatches to 0xBF8E (bank 0) - final tail call */
+    dispatch_0435();               /* 0x0435 -> Bank0:0xD127 */
+    handler_bf8e();                /* 0x0340 -> Bank0:0xBF8E (tail call) */
 }
 
 

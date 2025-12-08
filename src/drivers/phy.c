@@ -315,9 +315,9 @@ void phy_register_config(void)
     uint8_t val;
 
     /* Configure interrupt control 2 - clear bit 1, set bit 1 */
-    val = REG_INT_CTRL_C809;
+    val = REG_INT_CTRL;
     val = (val & 0xFD) | 0x02;
-    REG_INT_CTRL_C809 = val;
+    REG_INT_CTRL = val;
 
     /* Read state flag and check bit 1 */
     val = G_STATE_FLAG_0AF1;

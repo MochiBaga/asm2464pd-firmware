@@ -9,6 +9,7 @@
 #include "types.h"
 #include "sfr.h"
 #include "registers.h"
+#include "globals.h"
 
 /*
  * idata_load_dword - Load 32-bit value from IDATA
@@ -665,21 +666,21 @@ void reg_write_and_set_link_bit0(__xdata uint8_t *reg, uint8_t val)
  * reg_timer_setup_and_set_bits - Setup timer and set bits in 0xCC3A and 0xCC38
  * Address: 0xbcf2-0xbd04 (19 bytes)
  *
- * Sets bit 1 in REG_CPU_CTRL_CC3A and REG_CPU_CTRL_CC38.
+ * Sets bit 1 in REG_TIMER_ENABLE_B and REG_TIMER_ENABLE_A.
  */
 void reg_timer_setup_and_set_bits(void)
 {
     uint8_t val;
 
-    /* Set bit 1 in REG_CPU_CTRL_CC3A */
-    val = REG_CPU_CTRL_CC3A;
+    /* Set bit 1 in REG_TIMER_ENABLE_B */
+    val = REG_TIMER_ENABLE_B;
     val = (val & 0xFD) | 0x02;
-    REG_CPU_CTRL_CC3A = val;
+    REG_TIMER_ENABLE_B = val;
 
-    /* Set bit 1 in REG_CPU_CTRL_CC38 */
-    val = REG_CPU_CTRL_CC38;
+    /* Set bit 1 in REG_TIMER_ENABLE_A */
+    val = REG_TIMER_ENABLE_A;
     val = (val & 0xFD) | 0x02;
-    REG_CPU_CTRL_CC38 = val;
+    REG_TIMER_ENABLE_A = val;
 }
 
 /*
@@ -696,18 +697,18 @@ void reg_timer_init_and_start(void)
 }
 
 /*
- * reg_timer_clear_bits - Clear bit 1 in REG_CPU_CTRL_CC3A and REG_CPU_CTRL_CC38
+ * reg_timer_clear_bits - Clear bit 1 in REG_TIMER_ENABLE_B and REG_TIMER_ENABLE_A
  * Address: 0xbd14-0xbd22 (15 bytes)
  */
 void reg_timer_clear_bits(void)
 {
     uint8_t val;
 
-    val = REG_CPU_CTRL_CC3A;
-    REG_CPU_CTRL_CC3A = val & 0xFD;
+    val = REG_TIMER_ENABLE_B;
+    REG_TIMER_ENABLE_B = val & 0xFD;
 
-    val = REG_CPU_CTRL_CC38;
-    REG_CPU_CTRL_CC38 = val & 0xFD;
+    val = REG_TIMER_ENABLE_A;
+    REG_TIMER_ENABLE_A = val & 0xFD;
 }
 
 /*
@@ -757,13 +758,13 @@ void reg_set_bit6_generic(__xdata uint8_t *reg)
 }
 
 /*
- * reg_clear_bit1_cc3b - Clear bit 1 in REG_CPU_CTRL_CC3B
+ * reg_clear_bit1_cc3b - Clear bit 1 in REG_TIMER_CTRL_CC3B
  * Address: 0xbd41-0xbd48 (8 bytes)
  */
 void reg_clear_bit1_cc3b(void)
 {
-    uint8_t val = REG_CPU_CTRL_CC3B;
-    REG_CPU_CTRL_CC3B = val & 0xFD;
+    uint8_t val = REG_TIMER_CTRL_CC3B;
+    REG_TIMER_CTRL_CC3B = val & 0xFD;
 }
 
 /*
@@ -879,3 +880,44 @@ void reg_clear_state_flags(void)
     G_SYS_FLAGS_07EE = 0;
     G_TRANSFER_FLAG_0AF2 = 0;
 }
+
+/*
+ * init_sys_flags_07f0 - Initialize system flags at 0x07F0
+ * Address: 0x4be6-0x4c03 (30 bytes)
+ *
+ * Initializes system configuration flags and clears bit 0 of REG_CPU_EXEC_STATUS_3.
+ *
+ * Original disassembly:
+ *   4be6: mov dptr, #0x07f0
+ *   4be9: mov a, #0x24
+ *   4beb: movx @dptr, a
+ *   4bec: inc dptr
+ *   4bed: mov a, #0x04
+ *   4bef: movx @dptr, a
+ *   4bf0: inc dptr
+ *   4bf1: mov a, #0x17
+ *   4bf3: movx @dptr, a
+ *   4bf4: inc dptr
+ *   4bf5: mov a, #0x85
+ *   4bf7: movx @dptr, a
+ *   4bf8: inc dptr
+ *   4bf9: clr a
+ *   4bfa: movx @dptr, a
+ *   4bfb: inc dptr
+ *   4bfc: movx @dptr, a
+ *   4bfd: mov dptr, #0xcc35
+ *   4c00: movx a, @dptr
+ *   4c01: anl a, #0xfe
+ *   4c03: movx @dptr, a
+ */
+void init_sys_flags_07f0(void)
+{
+    G_SYS_FLAGS_07F0 = 0x24;
+    G_SYS_FLAGS_07F1 = 0x04;
+    G_SYS_FLAGS_07F2 = 0x17;
+    G_SYS_FLAGS_07F3 = 0x85;
+    G_SYS_FLAGS_07F4 = 0x00;
+    G_SYS_FLAGS_07F5 = 0x00;
+    REG_CPU_EXEC_STATUS_3 = REG_CPU_EXEC_STATUS_3 & 0xFE;
+}
+

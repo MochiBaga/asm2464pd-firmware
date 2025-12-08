@@ -141,7 +141,7 @@ uint8_t int_get_pcie_nvme_status(void)
  */
 uint8_t int_get_usb_status(void)
 {
-    return REG_INT_USB_MASTER;
+    return REG_INT_USB_STATUS;
 }
 
 /*
@@ -271,7 +271,7 @@ void ext0_isr(void) __interrupt(INT_EXT0) __using(1)
     uint8_t status;
 
     /* Check USB master interrupt status - 0xC802 bit 0 */
-    status = REG_INT_USB_MASTER;
+    status = REG_INT_USB_STATUS;
     if (status & 0x01) {
         /* USB master interrupt - handle at 0x10e0 path */
         goto usb_master_handler;
@@ -320,7 +320,7 @@ usb_master_handler:
     }
 
     /* Check 0xC802 bit 2 - NVMe queue processing */
-    status = REG_INT_USB_MASTER;
+    status = REG_INT_USB_STATUS;
     if (status & 0x04) {
         /* NVMe queue processing loop - iterates 0x20 times (0x1114-0x1138) */
         /* Checks 0xC471, 0x0055, 0xC520 bits */

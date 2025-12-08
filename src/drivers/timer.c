@@ -485,17 +485,17 @@ void timer_link_status_handler(void)
      * - Clears bit 0 of 0xCC3E
      * - Configures 0xCA81
      */
-    val = REG_CPU_CTRL_CC30;
+    val = REG_CPU_MODE;
     val = (val & 0xFB) | 0x04;  /* Set bit 2 */
-    REG_CPU_CTRL_CC30 = val;
+    REG_CPU_MODE = val;
 
     REG_CPU_EXEC_STATUS_2 = 0x04;
 
     REG_LINK_CTRL_E324 = REG_LINK_CTRL_E324 & 0xFB;  /* Clear bit 2 */
-    REG_CPU_CTRL_CC3B = REG_CPU_CTRL_CC3B & 0xFE;  /* Clear bit 0 */
+    REG_TIMER_CTRL_CC3B = REG_TIMER_CTRL_CC3B & 0xFE;  /* Clear bit 0 */
 
     /* Set bits 5,6 in 0xCC3A */
-    REG_CPU_CTRL_CC3A = (REG_CPU_CTRL_CC3A & 0x9F) | 0x60;
+    REG_TIMER_ENABLE_B = (REG_TIMER_ENABLE_B & 0x9F) | 0x60;
 
     REG_CPU_CTRL_CC3E = REG_CPU_CTRL_CC3E & 0xFE;  /* Clear bit 0 */
 

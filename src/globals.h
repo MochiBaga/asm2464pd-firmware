@@ -24,40 +24,46 @@
 //=============================================================================
 // IDATA Work Variables (0x00-0x7F)
 //=============================================================================
-/* These are IDATA (internal 8051 RAM) locations used as fast work variables */
-__idata __at(0x0D) extern uint8_t I_QUEUE_IDX;       /* Queue index / endpoint offset */
-__idata __at(0x12) extern uint8_t I_WORK_12;         /* Work variable 0x12 */
-__idata __at(0x16) extern uint8_t I_CORE_STATE_L;    /* Core state low byte */
-__idata __at(0x17) extern uint8_t I_CORE_STATE_H;    /* Core state high byte */
-__idata __at(0x18) extern uint8_t I_WORK_18;         /* Work variable 0x18 */
-__idata __at(0x19) extern uint8_t I_WORK_19;         /* Work variable 0x19 */
-__idata __at(0x21) extern uint8_t I_LOG_INDEX;       /* Log index */
-__idata __at(0x23) extern uint8_t I_WORK_23;         /* Work variable 0x23 */
-__idata __at(0x38) extern uint8_t I_WORK_38;         /* Work variable 0x38 */
-__idata __at(0x39) extern uint8_t I_WORK_39;         /* Work variable 0x39 */
-__idata __at(0x3A) extern uint8_t I_WORK_3A;         /* Work variable 0x3A */
-__idata __at(0x3B) extern uint8_t I_WORK_3B;         /* Work variable 0x3B */
-__idata __at(0x3C) extern uint8_t I_WORK_3C;         /* Work variable 0x3C */
-__idata __at(0x3D) extern uint8_t I_WORK_3D;         /* Work variable 0x3D */
-__idata __at(0x3E) extern uint8_t I_WORK_3E;         /* Work variable 0x3E */
-__idata __at(0x40) extern uint8_t I_WORK_40;         /* Work variable 0x40 */
-__idata __at(0x41) extern uint8_t I_WORK_41;         /* Work variable 0x41 */
-__idata __at(0x43) extern uint8_t I_WORK_43;         /* Work variable 0x43 */
-__idata __at(0x47) extern uint8_t I_WORK_47;         /* Work variable 0x47 */
-__idata __at(0x51) extern uint8_t I_WORK_51;         /* Work variable 0x51 */
-__idata __at(0x52) extern uint8_t I_WORK_52;         /* Work variable 0x52 */
-__idata __at(0x53) extern uint8_t I_WORK_53;         /* Work variable 0x53 */
-__idata __at(0x55) extern uint8_t I_WORK_55;         /* Work variable 0x55 */
-__idata __at(0x65) extern uint8_t I_WORK_65;         /* Work variable 0x65 */
-__idata __at(0x6A) extern uint8_t I_STATE_6A;        /* State machine variable */
-__idata __at(0x6B) extern uint8_t I_TRANSFER_6B;     /* Transfer pending byte 0 */
-__idata __at(0x6C) extern uint8_t I_TRANSFER_6C;     /* Transfer pending byte 1 */
-__idata __at(0x6D) extern uint8_t I_TRANSFER_6D;     /* Transfer pending byte 2 */
-__idata __at(0x6E) extern uint8_t I_TRANSFER_6E;     /* Transfer pending byte 3 */
-__idata __at(0x6F) extern uint8_t I_BUF_FLOW_CTRL;   /* Buffer flow control */
-__idata __at(0x70) extern uint8_t I_BUF_THRESH_LO;   /* Buffer threshold low */
-__idata __at(0x71) extern uint8_t I_BUF_THRESH_HI;   /* Buffer threshold high */
-__idata __at(0x72) extern uint8_t I_BUF_CTRL_GLOBAL; /* Buffer control global */
+/* These are IDATA (internal 8051 RAM) locations used as fast work variables.
+ * With __at() absolute addressing, these can be defined in the header. */
+__idata __at(0x0D) uint8_t I_QUEUE_IDX;       /* Queue index / endpoint offset */
+__idata __at(0x12) uint8_t I_WORK_12;         /* Work variable 0x12 */
+__idata __at(0x16) uint8_t I_CORE_STATE_L;    /* Core state low byte */
+__idata __at(0x17) uint8_t I_CORE_STATE_H;    /* Core state high byte */
+__idata __at(0x18) uint8_t I_WORK_18;         /* Work variable 0x18 */
+__idata __at(0x19) uint8_t I_WORK_19;         /* Work variable 0x19 */
+__idata __at(0x21) uint8_t I_LOG_INDEX;       /* Log index */
+__idata __at(0x23) uint8_t I_WORK_23;         /* Work variable 0x23 */
+__idata __at(0x38) uint8_t I_WORK_38;         /* Work variable 0x38 */
+__idata __at(0x39) uint8_t I_WORK_39;         /* Work variable 0x39 */
+__idata __at(0x3A) uint8_t I_WORK_3A;         /* Work variable 0x3A */
+__idata __at(0x3B) uint8_t I_WORK_3B;         /* Work variable 0x3B */
+__idata __at(0x3C) uint8_t I_WORK_3C;         /* Work variable 0x3C */
+__idata __at(0x3D) uint8_t I_WORK_3D;         /* Work variable 0x3D */
+__idata __at(0x3E) uint8_t I_WORK_3E;         /* Work variable 0x3E */
+__idata __at(0x3F) uint8_t I_WORK_3F;         /* Work variable 0x3F - transfer count */
+__idata __at(0x40) uint8_t I_WORK_40;         /* Work variable 0x40 */
+__idata __at(0x41) uint8_t I_WORK_41;         /* Work variable 0x41 */
+__idata __at(0x42) uint8_t I_WORK_42;         /* Work variable 0x42 - tag status */
+__idata __at(0x43) uint8_t I_WORK_43;         /* Work variable 0x43 - slot index */
+__idata __at(0x44) uint8_t I_WORK_44;         /* Work variable 0x44 - multiplier */
+__idata __at(0x45) uint8_t I_WORK_45;         /* Work variable 0x45 - chain index */
+__idata __at(0x46) uint8_t I_WORK_46;         /* Work variable 0x46 - chain flag */
+__idata __at(0x47) uint8_t I_WORK_47;         /* Work variable 0x47 - product cap */
+__idata __at(0x51) uint8_t I_WORK_51;         /* Work variable 0x51 */
+__idata __at(0x52) uint8_t I_WORK_52;         /* Work variable 0x52 */
+__idata __at(0x53) uint8_t I_WORK_53;         /* Work variable 0x53 */
+__idata __at(0x55) uint8_t I_WORK_55;         /* Work variable 0x55 */
+__idata __at(0x65) uint8_t I_WORK_65;         /* Work variable 0x65 */
+__idata __at(0x6A) uint8_t I_STATE_6A;        /* State machine variable */
+__idata __at(0x6B) uint8_t I_TRANSFER_6B;     /* Transfer pending byte 0 */
+__idata __at(0x6C) uint8_t I_TRANSFER_6C;     /* Transfer pending byte 1 */
+__idata __at(0x6D) uint8_t I_TRANSFER_6D;     /* Transfer pending byte 2 */
+__idata __at(0x6E) uint8_t I_TRANSFER_6E;     /* Transfer pending byte 3 */
+__idata __at(0x6F) uint8_t I_BUF_FLOW_CTRL;   /* Buffer flow control */
+__idata __at(0x70) uint8_t I_BUF_THRESH_LO;   /* Buffer threshold low */
+__idata __at(0x71) uint8_t I_BUF_THRESH_HI;   /* Buffer threshold high */
+__idata __at(0x72) uint8_t I_BUF_CTRL_GLOBAL; /* Buffer control global */
 
 /* IDATA pointers for SCSI register-based operations */
 #define IDATA_CMD_BUF     ((__idata uint8_t *)0x09)   /* Command buffer pointer */
@@ -117,10 +123,12 @@ __idata __at(0x72) extern uint8_t I_BUF_CTRL_GLOBAL; /* Buffer control global */
 #define G_SYSTEM_STATE          XDATA_VAR8(0x0467)  /* System state */
 #define G_DATA_PORT             XDATA_VAR8(0x0468)  /* Data port */
 #define G_INT_STATUS            XDATA_VAR8(0x0469)  /* Interrupt status */
+#define G_SCSI_CMD_PARAM_0470   XDATA_VAR8(0x0470)  /* SCSI command parameter */
 #define G_DMA_LOAD_PARAM1       XDATA_VAR8(0x0472)  /* DMA load parameter 1 */
 #define G_DMA_LOAD_PARAM2       XDATA_VAR8(0x0473)  /* DMA load parameter 2 */
 #define G_STATE_HELPER_41       XDATA_VAR8(0x0474)  /* State helper byte from R41 */
 #define G_STATE_HELPER_42       XDATA_VAR8(0x0475)  /* State helper byte from R42 (masked) */
+#define G_XFER_DIV_0476         XDATA_VAR8(0x0476)  /* Transfer division result */
 
 //=============================================================================
 // Endpoint Configuration Work Area (0x0500-0x05FF)
@@ -183,8 +191,15 @@ __idata __at(0x72) extern uint8_t I_BUF_CTRL_GLOBAL; /* Buffer control global */
 #define G_SYS_FLAGS_07ED        XDATA_VAR8(0x07ED)  /* System flags 0x07ED */
 #define G_SYS_FLAGS_07EE        XDATA_VAR8(0x07EE)  /* System flags 0x07EE */
 #define G_SYS_FLAGS_07EF        XDATA_VAR8(0x07EF)  /* System flags 0x07EF */
+#define G_SYS_FLAGS_07F0        XDATA_VAR8(0x07F0)  /* System flags 0x07F0 */
+#define G_SYS_FLAGS_07F1        XDATA_VAR8(0x07F1)  /* System flags 0x07F1 */
+#define G_SYS_FLAGS_07F2        XDATA_VAR8(0x07F2)  /* System flags 0x07F2 */
+#define G_SYS_FLAGS_07F3        XDATA_VAR8(0x07F3)  /* System flags 0x07F3 */
+#define G_SYS_FLAGS_07F4        XDATA_VAR8(0x07F4)  /* System flags 0x07F4 */
+#define G_SYS_FLAGS_07F5        XDATA_VAR8(0x07F5)  /* System flags 0x07F5 */
 #define G_SYS_FLAGS_07F6        XDATA_VAR8(0x07F6)  /* System flags 0x07F6 */
 #define G_SYS_FLAGS_07E8        XDATA_VAR8(0x07E8)  /* System flags 0x07E8 */
+#define G_TLP_STATE_07E9        XDATA_VAR8(0x07E9)  /* TLP state / queue status */
 
 //=============================================================================
 // Event/Loop State Work Area (0x0900-0x09FF)
@@ -205,6 +220,7 @@ __idata __at(0x72) extern uint8_t I_BUF_CTRL_GLOBAL; /* Buffer control global */
 // Endpoint Dispatch Work Area (0x0A00-0x0BFF)
 //=============================================================================
 #define G_LOOP_STATE            XDATA_VAR8(0x0A59)  /* Main loop state flag */
+#define G_LOOP_STATE_0A5A       XDATA_VAR8(0x0A5A)  /* Main loop state secondary */
 #define G_ACTION_CODE_0A83      XDATA_VAR8(0x0A83)  /* Action code storage for state_action_dispatch */
 #define   ACTION_CODE_EXTENDED    0x02  // Bit 1: Extended mode flag
 #define G_ACTION_PARAM_0A84     XDATA_VAR8(0x0A84)  /* Action parameter (byte after action code) */
@@ -220,9 +236,14 @@ __idata __at(0x72) extern uint8_t I_BUF_CTRL_GLOBAL; /* Buffer control global */
 #define G_STATE_PARAM_0AA2      XDATA_VAR8(0x0AA2)  /* State machine parameter */
 #define G_STATE_RESULT_0AA3     XDATA_VAR8(0x0AA3)  /* State machine result */
 #define G_STATE_WORK_0A84       XDATA_VAR8(0x0A84)  /* State work variable */
-#define G_FLASH_ERROR_0         XDATA_VAR8(0x0AA8)  /* Flash error flag 0 */
-#define G_FLASH_ERROR_1         XDATA_VAR8(0x0AA9)  /* Flash error flag 1 */
-#define G_FLASH_RESET_0AAA      XDATA_VAR8(0x0AAA)  /* Flash reset flag */
+/* TLP handler state variables (also used for flash operations) */
+#define G_TLP_COUNT_HI          XDATA_VAR8(0x0AA8)  /* TLP transfer count high byte */
+#define G_TLP_COUNT_LO          XDATA_VAR8(0x0AA9)  /* TLP transfer count low byte */
+#define G_TLP_STATUS            XDATA_VAR8(0x0AAA)  /* TLP status / pending count */
+/* Legacy names for flash compatibility */
+#define G_FLASH_ERROR_0         G_TLP_COUNT_HI      /* Alias: Flash error flag 0 */
+#define G_FLASH_ERROR_1         G_TLP_COUNT_LO      /* Alias: Flash error flag 1 */
+#define G_FLASH_RESET_0AAA      G_TLP_STATUS        /* Alias: Flash reset flag */
 #define G_STATE_HELPER_0AAB     XDATA_VAR8(0x0AAB)  /* State helper variable */
 #define G_STATE_COUNTER_0AAC    XDATA_VAR8(0x0AAC)  /* State counter/index */
 #define G_FLASH_ADDR_0          XDATA_VAR8(0x0AAD)  /* Flash address byte 0 (low) */
@@ -231,9 +252,12 @@ __idata __at(0x72) extern uint8_t I_BUF_CTRL_GLOBAL; /* Buffer control global */
 #define G_FLASH_ADDR_3          XDATA_VAR8(0x0AB0)  /* Flash address byte 3 (high) */
 #define G_FLASH_LEN_LO          XDATA_VAR8(0x0AB1)  /* Flash data length low */
 #define G_FLASH_LEN_HI          XDATA_VAR8(0x0AB2)  /* Flash data length high */
+#define G_STATE_0AB6            XDATA_VAR8(0x0AB6)  /* State control 0x0AB6 */
 #define G_SYSTEM_STATE_0AE2     XDATA_VAR8(0x0AE2)  /* System state */
 #define G_STATE_FLAG_0AE3       XDATA_VAR8(0x0AE3)  /* System state flag */
 #define G_STATE_CHECK_0AEE      XDATA_VAR8(0x0AEE)  /* State check byte */
+#define G_STATE_0AE8            XDATA_VAR8(0x0AE8)  /* State control 0x0AE8 */
+#define G_STATE_0AE9            XDATA_VAR8(0x0AE9)  /* State control 0x0AE9 */
 #define G_STATE_FLAG_0AF1       XDATA_VAR8(0x0AF1)  /* State flag */
 #define   STATE_FLAG_INIT         0x02  // Bit 1: Init state flag
 #define   STATE_FLAG_PHY_READY    0x20  // Bit 5: PHY link ready
@@ -250,8 +274,10 @@ __idata __at(0x72) extern uint8_t I_BUF_CTRL_GLOBAL; /* Buffer control global */
 #define G_XFER_RETRY_CNT        XDATA_VAR8(0x0AFE)  /* Transfer retry counter */
 #define G_USB_PARAM_0B00        XDATA_VAR8(0x0B00)  /* USB parameter storage */
 #define G_USB_INIT_0B01         XDATA_VAR8(0x0B01)  /* USB init state flag */
+#define G_TLP_PENDING_0B21      XDATA_VAR8(0x0B21)  /* TLP pending count / DMA control */
 #define G_USB_TRANSFER_FLAG     XDATA_VAR8(0x0B2E)  /* USB transfer flag */
 #define G_INTERFACE_READY_0B2F  XDATA_VAR8(0x0B2F)  /* Interface ready flag */
+#define G_STATE_0B39            XDATA_VAR8(0x0B39)  /* State control 0x0B39 */
 #define G_TRANSFER_BUSY_0B3B    XDATA_VAR8(0x0B3B)  /* Transfer busy flag */
 #define G_USB_STATE_0B41        XDATA_VAR8(0x0B41)  /* USB state check */
 #define G_BUFFER_STATE_0AA6     XDATA_VAR8(0x0AA6)  /* Buffer state flags */
@@ -283,8 +309,27 @@ __idata __at(0x72) extern uint8_t I_BUF_CTRL_GLOBAL; /* Buffer control global */
 #define G_NIBBLE_SWAP_0A5B      XDATA_VAR8(0x0A5B)  /* Nibble swap work variable */
 #define G_NIBBLE_SWAP_0A5C      XDATA_VAR8(0x0A5C)  /* Nibble swap work variable */
 #define G_LANE_STATE_0A9D       XDATA_VAR8(0x0A9D)  /* Lane state value */
+#define G_TLP_MASK_0ACB         XDATA_VAR8(0x0ACB)  /* TLP mask value */
+#define G_TLP_BLOCK_SIZE_0ACC   XDATA_VAR8(0x0ACC)  /* TLP block size (double = 2x) */
+#define G_TLP_STATE_0ACF        XDATA_VAR8(0x0ACF)  /* TLP state (low 5 bits) */
+#define G_TLP_CMD_STATE_0AD0    XDATA_VAR8(0x0AD0)  /* TLP command state */
 #define G_LINK_STATE_0AD1       XDATA_VAR8(0x0AD1)  /* Link state counter */
 #define G_LINK_STATE_0AD2       XDATA_VAR8(0x0AD2)  /* Link state flag */
+#define G_TLP_MODE_0AD3         XDATA_VAR8(0x0AD3)  /* TLP mode flag */
+#define G_TLP_ADDR_OFFSET_HI    XDATA_VAR8(0x0AD5)  /* TLP address offset high */
+#define G_TLP_ADDR_OFFSET_LO    XDATA_VAR8(0x0AD6)  /* TLP address offset low */
+#define G_TLP_COUNT_0AD7        XDATA_VAR8(0x0AD7)  /* TLP iteration count */
+#define G_TLP_TIMEOUT_HI        XDATA_VAR8(0x0AD8)  /* TLP timeout counter high */
+#define G_TLP_TIMEOUT_LO        XDATA_VAR8(0x0AD9)  /* TLP timeout counter low */
+#define G_TLP_TRANSFER_HI       XDATA_VAR8(0x0ADA)  /* TLP transfer address high */
+#define G_TLP_TRANSFER_LO       XDATA_VAR8(0x0ADB)  /* TLP transfer address low */
+#define G_TLP_COMPUTED_HI       XDATA_VAR8(0x0ADC)  /* TLP computed value high */
+#define G_TLP_COMPUTED_LO       XDATA_VAR8(0x0ADD)  /* TLP computed value low */
+#define G_TLP_LIMIT_HI          XDATA_VAR8(0x0ADE)  /* TLP limit/max high */
+#define G_TLP_LIMIT_LO          XDATA_VAR8(0x0ADF)  /* TLP limit/max low */
+#define G_TLP_BASE_HI           XDATA_VAR8(0x0AE0)  /* TLP buffer base high */
+#define G_TLP_BASE_LO           XDATA_VAR8(0x0AE1)  /* TLP buffer base low */
+#define G_TLP_INIT_FLAG_0AE5    XDATA_VAR8(0x0AE5)  /* TLP init complete flag */
 
 //=============================================================================
 // Timer/Init Control 0x0B40
@@ -302,6 +347,8 @@ __idata __at(0x72) extern uint8_t I_BUF_CTRL_GLOBAL; /* Buffer control global */
 // Command Engine Work Area (0x07B0-0x07FF)
 //=============================================================================
 #define G_CMD_SLOT_INDEX        XDATA_VAR8(0x07B7)  /* Command slot index (3-bit) */
+#define G_CMD_PENDING_07BB      XDATA_VAR8(0x07BB)  /* Command pending flag */
+#define G_CMD_STATE_07BC        XDATA_VAR8(0x07BC)  /* Command state (0-3) */
 #define G_CMD_OP_COUNTER        XDATA_VAR8(0x07BD)  /* Command operation counter */
 #define G_CMD_ADDR_HI           XDATA_VAR8(0x07BF)  /* Computed slot address high */
 #define G_CMD_ADDR_LO           XDATA_VAR8(0x07C0)  /* Computed slot address low */
@@ -318,5 +365,17 @@ __idata __at(0x72) extern uint8_t I_BUF_CTRL_GLOBAL; /* Buffer control global */
 #define G_CMD_LBA_3             XDATA_VAR8(0x07DD)  /* Command LBA byte 3 (high) */
 #define G_CMD_FLAG_07DE         XDATA_VAR8(0x07DE)  /* Command flag 0x07DE */
 #define G_PCIE_COMPLETE_07DF    XDATA_VAR8(0x07DF)  /* PCIe link complete flag */
+
+//=============================================================================
+// PCIe Interrupt Handler Work Area
+//=============================================================================
+#define G_PCIE_LANE_STATE_0A9E  XDATA_VAR8(0x0A9E)  /* PCIe lane state */
+#define G_PCIE_INT_CTRL_0AD7    XDATA_VAR8(0x0AD7)  /* PCIe interrupt control */
+#define G_PCIE_STATE_0ADE       XDATA_VAR8(0x0ADE)  /* PCIe state 0x0ADE */
+#define G_PCIE_STATE_0ADF       XDATA_VAR8(0x0ADF)  /* PCIe state 0x0ADF */
+#define G_PCIE_STATUS_0B35      XDATA_VAR8(0x0B35)  /* PCIe status work byte */
+#define G_PCIE_STATUS_0B36      XDATA_VAR8(0x0B36)  /* PCIe status work byte */
+#define G_PCIE_STATUS_0B37      XDATA_VAR8(0x0B37)  /* PCIe status work byte */
+#define G_PCIE_STATUS_0B19      XDATA_VAR8(0x0B19)  /* PCIe status flag */
 
 #endif /* __GLOBALS_H__ */

@@ -100,11 +100,15 @@
 #define REG_USB_EP_BUF_HI       XDATA_REG8(0x905B)  // USB endpoint buffer high byte
 #define REG_USB_EP_BUF_LO       XDATA_REG8(0x905C)  // USB endpoint buffer low byte
 #define REG_USB_EP_CTRL_905E    XDATA_REG8(0x905E)
+#define REG_USB_EP_CTRL_905F    XDATA_REG8(0x905F)  /* USB endpoint control 2 */
+#define REG_USB_INT_MASK_9090   XDATA_REG8(0x9090)  /* USB interrupt mask */
 #define REG_INT_FLAGS_EX0       XDATA_REG8(0x9091)
+#define REG_TLP_CMD_TRIGGER     XDATA_REG8(0x9092)  /* TLP command trigger/status */
 #define REG_USB_EP_CFG1         XDATA_REG8(0x9093)
 #define REG_USB_EP_CFG2         XDATA_REG8(0x9094)
 #define REG_USB_EP_READY        XDATA_REG8(0x9096)
 #define REG_USB_STATUS_909E     XDATA_REG8(0x909E)
+#define REG_USB_CTRL_90A0       XDATA_REG8(0x90A0)  /* USB control 0x90A0 */
 #define REG_USB_SIGNAL_90A1     XDATA_REG8(0x90A1)
 #define REG_USB_SPEED           XDATA_REG8(0x90E0)
 #define   USB_SPEED_MASK         0x03  // Bits 0-1: USB speed mode
@@ -148,6 +152,7 @@
 #define REG_USB_PHY_CTRL_91D1   XDATA_REG8(0x91D1)
 
 // USB control registers (0x9200-0x92BF)
+#define REG_USB_CTRL_9200       XDATA_REG8(0x9200)  /* USB control base */
 #define REG_USB_CTRL_9201       XDATA_REG8(0x9201)
 #define REG_USB_CTRL_920C       XDATA_REG8(0x920C)
 #define REG_USB_PHY_CONFIG_9241 XDATA_REG8(0x9241)
@@ -307,11 +312,13 @@
 #define REG_NVME_QUEUE_STATUS_51 XDATA_REG8(0xC451) // NVMe queue status
 #define REG_DMA_ENTRY           XDATA_REG16(0xC462)
 #define REG_CMDQ_DIR_END        XDATA_REG16(0xC470)
-#define REG_NVME_QUEUE_PTR_C471 XDATA_REG8(0xC471)
+#define REG_NVME_QUEUE_BUSY     XDATA_REG8(0xC471)  /* Queue busy status */
+#define   NVME_QUEUE_BUSY_BIT     0x01              /* Bit 0: Queue busy */
 #define REG_NVME_LINK_CTRL      XDATA_REG8(0xC472)  // NVMe link control
 #define REG_NVME_BUF_CFG        XDATA_REG8(0xC508)  // NVMe buffer configuration
 #define REG_NVME_QUEUE_INDEX    XDATA_REG8(0xC512)
-#define REG_NVME_QUEUE_C516     XDATA_REG8(0xC516)
+#define REG_NVME_QUEUE_PENDING  XDATA_REG8(0xC516)  /* Pending queue status */
+#define   NVME_QUEUE_PENDING_IDX  0x3F              /* Bits 0-5: Queue index */
 #define REG_NVME_QUEUE_TRIGGER  XDATA_REG8(0xC51A)
 #define REG_NVME_QUEUE_STATUS   XDATA_REG8(0xC51E)
 #define   NVME_QUEUE_STATUS_IDX   0x3F  // Bits 0-5: Queue index
@@ -333,18 +340,27 @@
 //=============================================================================
 // Interrupt Controller (0xC800-0xC80F)
 //=============================================================================
-#define REG_SYS_CTRL_C801       XDATA_REG8(0xC801)
-#define REG_INT_CTRL_C801       REG_SYS_CTRL_C801  // Alias
-#define REG_INT_USB_MASTER      XDATA_REG8(0xC802)
-#define REG_INT_AUX_C805        XDATA_REG8(0xC805)
-#define REG_INT_SYSTEM          XDATA_REG8(0xC806)
+#define REG_INT_ENABLE          XDATA_REG8(0xC801)  /* Interrupt enable register */
+#define   INT_ENABLE_GLOBAL       0x01  // Bit 0: Global interrupt enable
+#define   INT_ENABLE_USB          0x02  // Bit 1: USB interrupt enable
+#define   INT_ENABLE_PCIE         0x04  // Bit 2: PCIe interrupt enable
+#define   INT_ENABLE_SYSTEM       0x10  // Bit 4: System interrupt enable
+#define REG_INT_USB_STATUS      XDATA_REG8(0xC802)  /* USB interrupt status */
+#define   INT_USB_MASTER          0x01  // Bit 0: USB master interrupt
+#define   INT_USB_NVME_QUEUE      0x04  // Bit 2: NVMe queue processing
+#define REG_INT_AUX_STATUS      XDATA_REG8(0xC805)  /* Auxiliary interrupt status */
+#define   INT_AUX_ENABLE          0x02  // Bit 1: Auxiliary enable
+#define   INT_AUX_STATUS          0x04  // Bit 2: Auxiliary status
+#define REG_INT_SYSTEM          XDATA_REG8(0xC806)  /* System interrupt status */
+#define   INT_SYSTEM_EVENT        0x01  // Bit 0: System event interrupt
 #define   INT_SYSTEM_TIMER        0x10  // Bit 4: System timer event
-#define REG_INT_CTRL_C809       XDATA_REG8(0xC809)
-#define REG_INT_PCIE_NVME       XDATA_REG8(0xC80A)
+#define   INT_SYSTEM_LINK         0x20  // Bit 5: Link state change
+#define REG_INT_CTRL            XDATA_REG8(0xC809)  /* Interrupt control register */
+#define REG_INT_PCIE_NVME       XDATA_REG8(0xC80A)  /* PCIe/NVMe interrupt status */
 #define   INT_PCIE_NVME_EVENTS    0x0F  // Bits 0-3: PCIe event flags
-#define   INT_PCIE_NVME_TIMER     0x10  // Bit 4: Timer-related event
-#define   INT_PCIE_NVME_EVENT     0x20  // Bit 5: Generic event flag
-#define   INT_PCIE_NVME_STATUS    0x40  // Bit 6: PCIe/NVMe status
+#define   INT_PCIE_NVME_TIMER     0x10  // Bit 4: NVMe command completion
+#define   INT_PCIE_NVME_EVENT     0x20  // Bit 5: PCIe link event
+#define   INT_PCIE_NVME_STATUS    0x40  // Bit 6: NVMe queue interrupt
 
 //=============================================================================
 // I2C Controller (0xC870-0xC87F)
@@ -429,14 +445,24 @@
 //=============================================================================
 // CPU Control Extended (0xCC30-0xCCFF)
 //=============================================================================
-#define REG_CPU_CTRL_CC30       XDATA_REG8(0xCC30)
-#define REG_CPU_EXEC_CTRL       XDATA_REG8(0xCC31)
-#define REG_CPU_EXEC_STATUS     XDATA_REG8(0xCC32)
+#define REG_CPU_MODE            XDATA_REG8(0xCC30)  /* CPU mode control */
+#define   CPU_MODE_NORMAL         0x00  // Normal operation
+#define   CPU_MODE_RESET          0x01  // Reset mode
+#define REG_CPU_EXEC_CTRL       XDATA_REG8(0xCC31)  /* CPU execution control */
+#define   CPU_EXEC_ENABLE         0x01  // Bit 0: Execution enable
+#define REG_CPU_EXEC_STATUS     XDATA_REG8(0xCC32)  /* CPU execution status */
 #define   CPU_EXEC_STATUS_ACTIVE  0x01  // Bit 0: CPU execution active
-#define REG_CPU_EXEC_STATUS_2   XDATA_REG8(0xCC33)
-#define REG_CPU_CTRL_CC38       XDATA_REG8(0xCC38)
-#define REG_CPU_CTRL_CC3A       XDATA_REG8(0xCC3A)
-#define REG_CPU_CTRL_CC3B       XDATA_REG8(0xCC3B)
+#define REG_CPU_EXEC_STATUS_2   XDATA_REG8(0xCC33)  /* CPU execution status 2 */
+#define   CPU_EXEC_STATUS_2_INT   0x04  // Bit 2: Interrupt pending
+#define REG_CPU_EXEC_STATUS_3   XDATA_REG8(0xCC35)  /* CPU execution status 3 */
+// Timer enable/disable control registers
+#define REG_TIMER_ENABLE_A      XDATA_REG8(0xCC38)  /* Timer enable control A */
+#define   TIMER_ENABLE_A_BIT      0x02              /* Bit 1: Timer enable */
+#define REG_TIMER_ENABLE_B      XDATA_REG8(0xCC3A)  /* Timer enable control B */
+#define   TIMER_ENABLE_B_BIT      0x02              /* Bit 1: Timer enable */
+#define REG_TIMER_CTRL_CC3B     XDATA_REG8(0xCC3B)  /* Timer control */
+#define   TIMER_CTRL_ENABLE       0x01              /* Bit 0: Timer active */
+#define   TIMER_CTRL_START        0x02              /* Bit 1: Timer start */
 #define REG_CPU_CTRL_CC3D       XDATA_REG8(0xCC3D)
 #define REG_CPU_CTRL_CC3E       XDATA_REG8(0xCC3E)
 #define REG_CPU_CTRL_CC3F       XDATA_REG8(0xCC3F)
@@ -450,8 +476,10 @@
 #define REG_DMA_CMD_CC9B        XDATA_REG8(0xCC9B)  /* DMA command param hi */
 #define REG_CPU_STATUS_CC98     XDATA_REG8(0xCC98)
 #define REG_CPU_DMA_CCD8        XDATA_REG8(0xCCD8)
+#define REG_CPU_STATUS_CCD9     XDATA_REG8(0xCCD9)  /* CPU DMA status */
 #define REG_CPU_DMA_CCDA        XDATA_REG8(0xCCDA)
 #define REG_CPU_DMA_CCDB        XDATA_REG8(0xCCDB)
+#define REG_CPU_STATUS_CCF9     XDATA_REG8(0xCCF9)  /* CPU extended status */
 
 //=============================================================================
 // SCSI DMA Control (0xCE00-0xCE3F)
@@ -470,6 +498,8 @@
 #define REG_SCSI_DMA_PARAM3     XDATA_REG8(0xCE43)
 #define REG_SCSI_DMA_PARAM4     XDATA_REG8(0xCE44)
 #define REG_SCSI_DMA_PARAM5     XDATA_REG8(0xCE45)
+#define REG_SCSI_TAG_IDX        XDATA_REG8(0xCE51)   /* SCSI tag index */
+#define REG_SCSI_TAG_VALUE      XDATA_REG8(0xCE55)   /* SCSI tag value */
 #define REG_SCSI_DMA_COMPL      XDATA_REG8(0xCE5C)
 #define REG_SCSI_DMA_MASK       XDATA_REG8(0xCE5D)  /* SCSI DMA mask register */
 #define REG_SCSI_DMA_QUEUE      XDATA_REG8(0xCE5F)  /* SCSI DMA queue control */

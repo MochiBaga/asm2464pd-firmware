@@ -803,9 +803,9 @@ void cmd_clear_5_bytes(__xdata uint8_t *ptr)
  */
 void cmd_set_c801_bit4(void)
 {
-    uint8_t val = REG_INT_CTRL_C801;
+    uint8_t val = REG_INT_ENABLE;
     val = (val & 0xEF) | 0x10;
-    REG_INT_CTRL_C801 = val;
+    REG_INT_ENABLE = val;
 }
 
 /*

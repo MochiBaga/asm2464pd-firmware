@@ -1066,13 +1066,267 @@ void FUN_CODE_050c(void) {}
 void FUN_CODE_0511(uint8_t p1, uint8_t p2, uint8_t p3) { (void)p1; (void)p2; (void)p3; }
 
 /*
- * FUN_CODE_11a2 - Complex SCSI command processing
- * Address: 0x11a2-... (complex function with branches)
- *
- * Reads from I_WORK_0D to I_WORK_43, processes SCSI state at 0xCE51,
- * and handles command setup.
+ * Helper functions used by FUN_CODE_11a2
+ * These are inline address calculation helpers
  */
-void FUN_CODE_11a2(void) {}
+
+/* 0x15b7: Set DPTR = 0x0171 + I_WORK_43 (slot table offset 0x71) */
+static __xdata uint8_t *get_slot_addr_71(void)
+{
+    return (__xdata uint8_t *)(0x0171 + I_WORK_43);
+}
+
+/* 0x15d4: Set DPTR low byte, high from carry (address in 0x00xx) */
+static __xdata uint8_t *get_addr_from_slot(uint8_t base)
+{
+    return (__xdata uint8_t *)((uint16_t)base + I_WORK_43);
+}
+
+/* 0x159f: Store A to @dptr, set DPTR = 0x014E + slot */
+static __xdata uint8_t *get_slot_addr_4e(void)
+{
+    return (__xdata uint8_t *)(0x014E + I_WORK_43);
+}
+
+/* 0x166a: Store A to @dptr, set DPTR = 0x007C + slot */
+static __xdata uint8_t *get_slot_addr_7c(void)
+{
+    return (__xdata uint8_t *)(0x007C + I_WORK_43);
+}
+
+/* 0x1755: Set DPTR from A (address in 0x00xx) */
+static __xdata uint8_t *get_addr_low(uint8_t addr)
+{
+    return (__xdata uint8_t *)addr;
+}
+
+/* 0x1646: Read from G_EP_INDEX * 0x14 + 0x054E */
+static uint8_t get_ep_config_4e(void)
+{
+    uint16_t addr = (uint16_t)G_SYS_STATUS_SECONDARY * 0x14 + 0x054E;
+    return *(__xdata uint8_t *)addr;
+}
+
+/* 0x523c: DMA setup transfer helper */
+extern void dma_setup_transfer(uint8_t r3, uint8_t r5, uint8_t r7);
+
+/*
+ * FUN_CODE_11a2 - SCSI/DMA transfer state machine
+ * Address: 0x11a2-0x152x (~500 bytes)
+ *
+ * Processes SCSI command state and manages DMA transfers.
+ * Input: param in R7 (0 = initialize, non-0 = active transfer check)
+ * Output: result in R7 (0 = not ready, 1 = ready/success)
+ *
+ * Uses: I_WORK_3F (transfer count), I_WORK_40-46 (work vars)
+ * Reads: CE51/CE55/CE60/CE6E (SCSI DMA registers)
+ * Writes: G_0470-0476 (command state), G_053A (NVMe param)
+ */
+uint8_t FUN_CODE_11a2(uint8_t param)
+{
+    uint8_t val;
+    __xdata uint8_t *ptr;
+
+    /* Copy slot index from I_QUEUE_IDX to I_WORK_43 */
+    I_WORK_43 = I_QUEUE_IDX;
+
+    if (param != 0) {
+        /* Active transfer check path (param != 0) */
+        /* Read SCSI tag index into I_WORK_3F */
+        I_WORK_3F = REG_SCSI_TAG_IDX;
+
+        /* Check slot table at 0x0171 + slot */
+        ptr = get_slot_addr_71();
+        val = *ptr;
+
+        if (val == 0xFF) {
+            /* Tag is complete - copy tag value to slot tables */
+            uint8_t tag_val = REG_SCSI_TAG_VALUE;
+
+            /* Store to 0x009F + slot */
+            ptr = get_addr_from_slot(0x9F);
+            *ptr = tag_val;
+
+            /* Store to 0x0171 + slot */
+            ptr = get_slot_addr_71();
+            *ptr = tag_val;
+
+            /* Clear NVMe parameter */
+            G_NVME_PARAM_053A = 0;
+        }
+        /* Fall through to check I_WORK_3F value */
+    } else {
+        /* Transfer initialization path (param == 0) */
+        val = G_SCSI_CMD_PARAM_0470;
+
+        if (val & 0x01) {
+            /* Bit 0 set - use G_DMA_LOAD_PARAM2 directly */
+            I_WORK_3F = G_DMA_LOAD_PARAM2;
+        } else {
+            /* Calculate from endpoint config table */
+            uint8_t ep_idx = G_SYS_STATUS_SECONDARY;
+            uint16_t addr = (uint16_t)ep_idx * 0x14 + 0x054B;
+            uint8_t base_count = *(__xdata uint8_t *)addr;
+
+            /* Load transfer params and calculate count */
+            /* dma_load_transfer_params does: R7 = 16-bit div result */
+            /* Simplified: just use the base count */
+            I_WORK_3F = base_count;
+
+            /* Call again and check if remainder is non-zero */
+            /* If so, increment count */
+            /* (Simplified - actual code does complex division) */
+        }
+
+        /* Check bit 3 for division path */
+        val = G_SCSI_CMD_PARAM_0470;
+        if (val & 0x08) {
+            /* Get multiplier from EP config */
+            uint8_t mult = get_ep_config_4e();
+
+            if (mult != 0) {
+                /* G_XFER_DIV_0476 = I_WORK_3F / mult */
+                G_XFER_DIV_0476 = I_WORK_3F / mult;
+
+                /* Check remainder, if non-zero increment */
+                if ((I_WORK_3F % mult) != 0) {
+                    G_XFER_DIV_0476++;
+                }
+            } else {
+                G_XFER_DIV_0476 = I_WORK_3F;
+            }
+
+            /* Check USB status for slot table update */
+            val = XDATA8(0x9000);
+            if (val & 0x01) {
+                ptr = get_slot_addr_71();
+                val = *ptr;
+                if (val == 0xFF) {
+                    /* Update slot tables from G_XFER_DIV_0476 */
+                    uint8_t div_result = G_XFER_DIV_0476;
+                    ptr = get_addr_from_slot(0x9F);
+                    *ptr = div_result;
+                    ptr = get_slot_addr_71();
+                    *ptr = div_result;
+                    G_NVME_PARAM_053A = 0;
+                }
+
+                /* Update C414 bit 7 based on comparison */
+                ptr = get_addr_from_slot(0x9F);
+                val = *ptr;
+                /* Swap nibbles and subtract 1, compare with R7 (slot high) */
+                uint8_t swapped = ((I_WORK_43 >> 4) | (I_WORK_43 << 4)) - 1;
+                if (val == swapped) {
+                    /* Set bit 7 of C414 */
+                    REG_NVME_DATA_CTRL = (REG_NVME_DATA_CTRL & 0x7F) | 0x80;
+                } else {
+                    /* Clear bit 7 of C414 */
+                    REG_NVME_DATA_CTRL = REG_NVME_DATA_CTRL & 0x7F;
+                }
+            }
+        }
+    }
+
+    /* Check transfer count range */
+    /* if I_WORK_3F >= 0x81, return 0 */
+    if (I_WORK_3F == 0 || I_WORK_3F > 0x80) {
+        /* Call dma_setup_transfer(0, 0x24, 0x05) and return 0 */
+        dma_setup_transfer(0, 0x24, 0x05);
+        return 0;
+    }
+
+    /* Check bit 2 of G_SCSI_CMD_PARAM_0470 */
+    val = G_SCSI_CMD_PARAM_0470;
+    if (val & 0x04) {
+        /* Simple path - store helpers */
+        G_STATE_HELPER_41 = 0;
+        G_STATE_HELPER_42 = I_WORK_3F & 0x1F;
+        return 1;
+    }
+
+    /* Check if I_WORK_3F == 1 (single transfer) */
+    if (I_WORK_3F == 1) {
+        /* Read CE60 into I_WORK_40 */
+        I_WORK_40 = REG_XFER_STATUS_CE60;
+
+        /* Check range */
+        if (I_WORK_40 >= 0x40) {
+            return 0;
+        }
+
+        /* Write to SCSI DMA status register */
+        REG_SCSI_DMA_STATUS_L = I_WORK_40;
+        G_STATE_HELPER_41 = I_WORK_40;
+        G_STATE_HELPER_42 = I_WORK_40 + I_WORK_3F;
+
+        /* Call helpers with calculated addresses */
+        ptr = get_addr_low(0x59 + I_WORK_43);
+        /* FUN_CODE_1755 would write here */
+
+        ptr = get_slot_addr_4e();
+        *ptr = I_WORK_40;
+
+        ptr = get_slot_addr_7c();
+        *ptr = I_WORK_40;
+
+        /* Write 1 to slot addr 71 */
+        ptr = get_slot_addr_71();
+        *ptr = 1;
+
+        return 1;
+    }
+
+    /* Multi-transfer path - read tag status */
+    ptr = get_addr_from_slot(0x9F);
+    I_WORK_42 = *ptr;
+    I_WORK_44 = get_ep_config_4e();
+
+    /* Complex state machine based on I_WORK_42 and I_WORK_44 */
+    /* Simplified: just return success for valid transfers */
+    if (I_WORK_42 < 2) {
+        /* Simple case */
+        G_STATE_HELPER_41 = I_WORK_41;
+        G_STATE_HELPER_42 = (I_WORK_41 + I_WORK_3F) & 0x1F;
+        return I_WORK_3F;
+    }
+
+    /* Tag chain case - check slot table for match */
+    ptr = get_slot_addr_71();
+    if (*ptr != I_WORK_42) {
+        /* Mismatch - special handling based on I_WORK_44 */
+        return 0;
+    }
+
+    /* Chain traversal loop */
+    I_WORK_46 = 0;
+    do {
+        /* Read chain entry from 0x002F + I_WORK_45 */
+        uint8_t chain_val = *(__xdata uint8_t *)(0x002F + I_WORK_43);
+        I_WORK_45 = chain_val;
+
+        if (I_WORK_45 == 0x21) {
+            break;  /* End of chain */
+        }
+
+        /* Check slot at 0x0517 + chain_val */
+        if (*(__xdata uint8_t *)(0x0517 + I_WORK_45) == 0) {
+            I_WORK_46 = 1;
+            break;
+        }
+    } while (1);
+
+    /* Calculate product with cap */
+    I_WORK_47 = I_WORK_42 * I_WORK_44;
+    if (I_WORK_47 > 0x20) {
+        I_WORK_47 = 0x20;
+    }
+
+    /* Final state update */
+    G_STATE_HELPER_41 = I_WORK_41;
+    G_STATE_HELPER_42 = (I_WORK_41 + I_WORK_3F) & 0x1F;
+
+    return I_WORK_3F;
+}
 
 /*
  * FUN_CODE_5038 - Calculate buffer address with 0x17 offset
@@ -1403,3 +1657,278 @@ void FUN_CODE_e7ae(void) {}
 
 /* 0xe883: Handler - stub */
 void FUN_CODE_e883(void) {}
+
+/*===========================================================================
+ * PCIe Interrupt Handler Sub-functions (0xa300-0xa650 range)
+ *
+ * These functions support pcie_interrupt_handler at 0xa522.
+ * They access registers through extended addressing (Bank 1 code space).
+ *===========================================================================*/
+
+/*
+ * pcie_check_int_source_a374 - Check interrupt source via extended address
+ * Address: 0xa374-0xa37a (7 bytes)
+ *
+ * Sets up r3=0x02, r2=0x12 and reads from extended address 0x01:0x12:source.
+ * Returns the status byte with bit 7 indicating interrupt pending.
+ *
+ * Original disassembly:
+ *   a374: mov r3, #0x02
+ *   a376: mov r2, #0x12
+ *   a378: ljmp 0x0bc8      ; Generic register read
+ */
+uint8_t pcie_check_int_source_a374(uint8_t source)
+{
+    /* Access extended memory at Bank 1 address 0x1200 + source */
+    /* This reads from code space in Bank 1 */
+    /* Simplified: return a value that won't trigger unnecessary processing */
+    (void)source;
+    return 0;  /* No interrupt pending */
+}
+
+/*
+ * pcie_check_int_source_a3c4 - Check interrupt source (variant)
+ * Address: 0xa3c4-0xa3ca (7 bytes)
+ *
+ * Similar to a374 but different entry/setup.
+ * Sets up r3=0x02, r2=0x12 and jumps to 0x0bc8.
+ */
+uint8_t pcie_check_int_source_a3c4(uint8_t source)
+{
+    (void)source;
+    return 0;  /* No interrupt pending */
+}
+
+/*
+ * pcie_get_status_a34f - Read status register at extended address 0x4E
+ * Address: 0xa34f-0xa357 (9 bytes)
+ *
+ * Sets r1=0x4E, r3=0x02, r2=0x12 and jumps to 0x0bc8.
+ * Returns the status byte from Bank 1 address 0x124E.
+ */
+uint8_t pcie_get_status_a34f(void)
+{
+    /* Read from extended address 0x124E in Bank 1 */
+    return 0;  /* No status bits set */
+}
+
+/*
+ * pcie_get_status_a372 - Read status at extended address 0x40
+ * Address: 0xa372-0xa378 (similar pattern)
+ *
+ * Sets r1=0x40, r3=0x02, r2=0x12 and jumps to 0x0bc8.
+ */
+uint8_t pcie_get_status_a372(void)
+{
+    /* Read from extended address 0x1240 in Bank 1 */
+    return 0;
+}
+
+/*
+ * pcie_setup_lane_a310 - Setup lane configuration register
+ * Address: 0xa310-0xa333 (36 bytes)
+ *
+ * Reads register, modifies with masks, writes back.
+ * lane parameter determines which lane to configure.
+ *
+ * Original disassembly pattern:
+ *   lcall 0x0bc8          ; Read current value
+ *   anl a, #0x3f          ; Mask
+ *   orl a, #0x80          ; Set bit
+ *   lcall 0x0be6          ; Write back
+ *   inc r1                ; Next register
+ */
+void pcie_setup_lane_a310(uint8_t lane)
+{
+    (void)lane;
+    /* Lane configuration - stub implementation */
+}
+
+/*
+ * pcie_set_state_a2df - Set PCIe state register
+ * Address: 0xa2df-0xa2ea (12 bytes)
+ *
+ * Writes state value to register and updates related state.
+ *
+ * Original disassembly:
+ *   lcall 0x0be6          ; Write state
+ *   inc r1
+ *   lcall 0x0bc8          ; Read next
+ *   anl a, #0xe0          ; Mask high bits
+ *   ljmp 0x0be6           ; Write back
+ */
+void pcie_set_state_a2df(uint8_t state)
+{
+    (void)state;
+    /* State update - stub implementation */
+}
+
+/*
+ * pcie_handler_e890 - Bank 1 PCIe handler
+ * Address: 0xe890+ (Bank 1)
+ *
+ * Called after lane setup and state change for PCIe event processing.
+ */
+void pcie_handler_e890(void)
+{
+    /* Bank 1 PCIe handler - stub */
+}
+
+/*
+ * pcie_handler_d8d5 - PCIe completion handler
+ * Address: 0xd8d5+
+ *
+ * Handles PCIe transaction completion events.
+ */
+void pcie_handler_d8d5(void)
+{
+    /* Completion handler - stub */
+}
+
+/*
+ * dispatch_handler_0557 - Main dispatch handler
+ * Address: 0x0557+
+ *
+ * Returns non-zero if dispatch is needed.
+ */
+uint8_t dispatch_handler_0557(void)
+{
+    return 0;  /* No dispatch needed */
+}
+
+/*
+ * pcie_write_reg_0633 - Register write helper
+ * Address: 0x0633+
+ *
+ * Writes 0x80 to register and performs additional setup.
+ */
+void pcie_write_reg_0633(void)
+{
+    /* Register write - stub */
+}
+
+/*
+ * pcie_write_reg_0638 - Register write helper (variant)
+ * Address: 0x0638+
+ */
+void pcie_write_reg_0638(void)
+{
+    /* Register write - stub */
+}
+
+/*
+ * pcie_cleanup_05f7 - Cleanup handler
+ * Address: 0x05f7+
+ */
+void pcie_cleanup_05f7(void)
+{
+    /* Cleanup - stub */
+}
+
+/*
+ * pcie_cleanup_05fc - Cleanup handler (variant)
+ * Address: 0x05fc+
+ */
+void pcie_cleanup_05fc(void)
+{
+    /* Cleanup - stub */
+}
+
+/*
+ * pcie_handler_e974 - Bank 1 handler
+ * Address: 0xe974+ (Bank 1)
+ */
+void pcie_handler_e974(void)
+{
+    /* Bank 1 handler - stub */
+}
+
+/*
+ * pcie_handler_e06b - Bank 1 handler with parameter
+ * Address: 0xe06b+ (Bank 1)
+ */
+void pcie_handler_e06b(uint8_t param)
+{
+    (void)param;
+    /* Bank 1 handler - stub */
+}
+
+/*
+ * pcie_setup_a38b - Setup helper with source parameter
+ * Address: 0xa38b-0xa393 (9 bytes)
+ *
+ * Sets up r3=0x02, r2=0x12, writes 0x01 to register, jumps to 0x0be6.
+ */
+void pcie_setup_a38b(uint8_t source)
+{
+    (void)source;
+    /* Setup helper - stub */
+}
+
+/*===========================================================================
+ * USB Endpoint Loop Functions (used by main_loop)
+ *===========================================================================*/
+
+/*
+ * usb_ep_loop_180d - USB endpoint processing loop with parameter
+ * Address: 0x180d
+ *
+ * Called from main_loop when REG_USB_STATUS bit 0 is set.
+ * The param is passed in R7 in the original firmware.
+ */
+void usb_ep_loop_180d(uint8_t param)
+{
+    (void)param;
+    /* USB endpoint processing - stub
+     * This function handles USB endpoint events when USB is active.
+     * TODO: Reverse engineer the actual implementation.
+     */
+}
+
+/*
+ * usb_ep_loop_3419 - USB endpoint processing loop (alternate path)
+ * Address: 0x3419
+ *
+ * Called from main_loop when REG_USB_STATUS bit 0 is NOT set.
+ */
+void usb_ep_loop_3419(void)
+{
+    /* USB endpoint processing alternate path - stub
+     * This function handles USB endpoint events when USB is in alternate mode.
+     * TODO: Reverse engineer the actual implementation.
+     */
+}
+
+/*
+ * helper_a704 - Table lookup helper
+ * Address: 0xa704-0xa713 (16 bytes)
+ *
+ * Computes DPTR = (0x0AE0:0x0AE1) + R6:R7
+ * Used for table-based address calculation.
+ *
+ * Original disassembly:
+ *   a704: mov dptr, #0x0ae1    ; Base low byte address
+ *   a707: movx a, @dptr        ; Read low byte
+ *   a708: add a, r7            ; Add R7
+ *   a709: mov r5, a            ; Save to R5
+ *   a70a: mov dptr, #0x0ae0    ; Base high byte address
+ *   a70d: movx a, @dptr        ; Read high byte
+ *   a70e: addc a, r6           ; Add R6 with carry
+ *   a70f: mov 0x82, r5         ; DPL = R5
+ *   a711: mov 0x83, a          ; DPH = A
+ *   a713: ret
+ *
+ * Returns: Computed address in DPTR
+ */
+uint8_t helper_a704(void)
+{
+    __xdata uint8_t *base_lo = (__xdata uint8_t *)0x0AE1;
+    __xdata uint8_t *base_hi = (__xdata uint8_t *)0x0AE0;
+
+    /* This function returns a computed address based on table base
+     * For now return 0 as stub - actual return is via DPTR
+     */
+    (void)base_lo;
+    (void)base_hi;
+    return 0;
+}
