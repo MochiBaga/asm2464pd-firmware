@@ -483,30 +483,56 @@ void handler_039a_buffer_dispatch(void) {}
  */
 void handler_d676(void) {}
 
+/* Forward declarations for handler_e3d8 */
+extern void helper_e3b7(uint8_t param);
+extern void helper_3578(uint8_t param);
+extern void dispatch_039a(void);  /* 0xD810 usb_buffer_handler */
+
 /*
  * handler_e3d8 - Event handler with conditional processing
  * Address: 0xe3d8-0xe3f8 (33 bytes)
  *
  * Disassembly:
- *   e3d8: mov dptr, #0x0b41  ; G_EVENT_FLAGS
+ *   e3d8: mov dptr, #0x0b41  ; G_USB_STATE_0B41
  *   e3db: movx a, @dptr      ; Read flags
  *   e3dc: jz 0xe3e3          ; Skip if zero
  *   e3de: mov r7, #0x03      ; Param = 3
- *   e3e0: lcall 0xe3b7       ; Call sub-handler
- *   e3e3: mov dptr, #0x0aee  ; G_PROTOCOL_STATE
+ *   e3e0: lcall 0xe3b7       ; Call helper_e3b7
+ *   e3e3: mov dptr, #0x0aee  ; G_STATE_CHECK_0AEE
  *   e3e6: movx a, @dptr      ; Read state
  *   e3e7: mov r7, a          ; R7 = state
  *   e3e8: lcall 0x3578       ; helper_3578
- *   e3eb: lcall 0xd810       ; DMA handler
+ *   e3eb: lcall 0xd810       ; dispatch_039a (usb_buffer_handler)
  *   e3ee: clr a
- *   e3ef: mov dptr, #0x07e8  ; G_TRANSFER_STATUS
- *   e3f2: movx @dptr, a      ; Clear status
- *   e3f3: mov dptr, #0x0b2f  ; G_PROTOCOL_FLAGS
+ *   e3ef: mov dptr, #0x07e8  ; G_SYS_FLAGS_07E8
+ *   e3f2: movx @dptr, a      ; Clear flags
+ *   e3f3: mov dptr, #0x0b2f  ; G_INTERFACE_READY_0B2F
  *   e3f6: inc a              ; A = 1
- *   e3f7: movx @dptr, a      ; Set flags
+ *   e3f7: movx @dptr, a      ; Set ready flag
  *   e3f8: ret
  */
-void handler_e3d8(void) {}
+void handler_e3d8(void)
+{
+    uint8_t flags;
+
+    /* Check USB state flags */
+    flags = G_USB_STATE_0B41;
+    if (flags != 0) {
+        /* Call helper_e3b7 with param = 3 */
+        helper_e3b7(3);
+    }
+
+    /* Read state and call helper_3578 */
+    flags = G_STATE_CHECK_0AEE;
+    helper_3578(flags);
+
+    /* Call USB buffer handler (dispatch_039a) */
+    dispatch_039a();
+
+    /* Clear system flags and set interface ready */
+    G_SYS_FLAGS_07E8 = 0;
+    G_INTERFACE_READY_0B2F = 1;
+}
 
 /*
  * helper_dd42 - State update based on param and 0x0af1 flag
@@ -694,6 +720,19 @@ void nvme_util_clear_completion(void) {}
  *===========================================================================*/
 
 /*
+ * helper_e3b7 - Conditional register update based on param bits
+ * Address: 0xe3b7-0xe3d7 (33 bytes)
+ *
+ * Checks param bits and modifies registers accordingly.
+ * Bit 0: Clear bit 0 of register 0x92C4
+ * Bit 1: Call helper 0xbceb, clear r7, call 0xc2e6
+ */
+void helper_e3b7(uint8_t param)
+{
+    (void)param;  /* Stub - complex register manipulation */
+}
+
+/*
  * helper_e396 - Protocol initialization setup
  * Address: 0xe396-0xe3b6 (33 bytes)
  *
@@ -744,6 +783,17 @@ void startup_init(void) {}
 void sys_event_dispatch_05e8(void) {}
 void sys_init_helper_bbc7(void) {}
 void sys_timer_handler_e957(void) {}
+
+/*===========================================================================
+ * Main Event Handler Wrappers
+ *===========================================================================*/
+
+/* Note: The following handler functions are implemented in main.c:
+ * - event_state_handler (line 842) - calls dispatch_0494
+ * - error_state_config (line 907) - calls dispatch_0606
+ * - phy_register_config (line 970) - calls dispatch_0589
+ * - flash_command_handler (line 1025) - calls dispatch_0525
+ */
 
 /*===========================================================================
  * UART/Log Buffer Functions

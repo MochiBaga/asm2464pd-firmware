@@ -68,15 +68,19 @@ void reg_set_bit_0(uint16_t reg_addr);
 void reg_set_bit_0_cpu_exec(void);
 
 /* Main loop handler stubs */
-void handler_04d0(void);
+void timer_link_status_handler(void);   /* 0x04d0 -> 0xCE79 - Timer/link status */
 void phy_config_link_params(void);
-void handler_04b2(void);
-void handler_4fb6(void);
-void handler_0327(void);
-void handler_0494(void);
-void handler_0606(void);
-void handler_0589(void);
-void handler_0525(void);
+void reserved_stub_handler(void);       /* 0x04b2 -> 0xE971 - Reserved/unused */
+void main_polling_handler(void);        /* 0x4fb6 - Core polling and dispatch */
+void usb_power_init(void);              /* 0x0327 -> 0xB1CB - USB/power init */
+void event_state_handler(void);         /* 0x0494 -> Bank1:0xE56F - Event handling */
+void error_state_config(void);          /* 0x0606 -> Bank1:0xB230 - Error/state config */
+void phy_register_config(void);         /* 0x0589 -> 0xD894 - PHY register config */
+void flash_command_handler(void);       /* 0x0525 -> 0xBAA0 - Flash command processor */
+void usb_buffer_dispatch(void);         /* 0x039a -> 0xD810 - USB buffer dispatch */
+void system_interrupt_handler(void);    /* 0x0520 -> 0xB4BA - System interrupt handler */
+void pcie_nvme_event_handler(void);     /* 0x052f -> 0xAF5E - PCIe/NVMe event handler */
+void pcie_error_dispatch(void);         /* 0x0570 -> Bank1:0xE911 - PCIe error dispatch */
 
 /* External functions */
 extern void uart_init(void);
@@ -339,21 +343,21 @@ void main_loop(void)
         reg_set_bit_0_cpu_exec();
 
         /* Call dispatch stubs and handlers */
-        handler_04d0();
+        timer_link_status_handler();
         phy_config_link_params();
-        handler_04b2();
-        handler_4fb6();
-        handler_0327();
+        reserved_stub_handler();
+        main_polling_handler();
+        usb_power_init();
 
         /* Check event flags */
         events = G_EVENT_FLAGS;
         if (events & EVENT_FLAGS_ANY) {
             if (events & (EVENT_FLAG_ACTIVE | EVENT_FLAG_PENDING)) {
-                handler_0494();
+                event_state_handler();
             }
-            handler_0606();
-            handler_0589();
-            handler_0525();
+            error_state_config();
+            phy_register_config();
+            flash_command_handler();
         }
 
         /* Clear interrupt priority for EXT0 and EXT1 */
@@ -418,7 +422,7 @@ void main_loop(void)
  *   For bank 1 (DPX=1): file_offset = addr + 0x8000
  *
  * EXAMPLE:
- *   handler_0570 calls jump_bank_1(0xE911)
+ *   pcie_error_dispatch calls jump_bank_1(0xE911)
  *   -> DPX=1, execution jumps to 0xE911 in bank 1
  *   -> File offset = 0xE911 + 0x8000 = 0x16911
  */
@@ -517,7 +521,7 @@ void reg_set_bit_0_cpu_exec(void)
  *===========================================================================*/
 
 /*
- * Handler at 0x04d0 - Timer/Link status handler
+ * timer_link_status_handler - Timer/Link status handler
  * Address: 0x04d0-0x04d4 (5 bytes) -> dispatches to 0xCE79
  *
  * Function at 0xCE79 (94 bytes):
@@ -549,7 +553,7 @@ void reg_set_bit_0_cpu_exec(void)
  *   cecb: lcall 0xdd42
  *   cece: ljmp 0xd996
  */
-void handler_04d0(void)
+void timer_link_status_handler(void)
 {
     uint8_t status;
     uint8_t val;
@@ -636,7 +640,7 @@ void handler_04d0(void)
 /* phy_config_link_params() moved to drivers/phy.c */
 
 /*
- * Handler at 0x04b2 - Placeholder/Reserved handler
+ * reserved_stub_handler - Placeholder/Reserved handler
  * Address: 0x04b2-0x04b6 (5 bytes) -> dispatches to 0xE971
  *
  * Function at 0xE971 is a stub that just returns immediately (ret).
@@ -649,14 +653,14 @@ void handler_04d0(void)
  *   e973: ret
  *   ... (NOPs follow)
  */
-void handler_04b2(void)
+void reserved_stub_handler(void)
 {
     /* Stub function - reserved for future functionality */
     /* Original firmware at 0xE971 just returns immediately */
 }
 
 /*
- * Handler at 0x4fb6 - Core polling and dispatch handler
+ * main_polling_handler - Core polling and dispatch handler
  * Address: 0x4fb6-0x50da (292 bytes)
  *
  * This is the main polling handler called from the main loop.
@@ -689,7 +693,7 @@ void handler_04b2(void)
  *   4fec: lcall 0x0435        ; dispatch stub
  *   4fef: ljmp 0x0340         ; final dispatch (tail call)
  */
-void handler_4fb6(void)
+void main_polling_handler(void)
 {
     /* Call dispatch stubs - these dispatch to various bank 0/1 handlers */
     /* 0x5305 -> dispatches to some handler */
@@ -719,96 +723,9 @@ void handler_4fb6(void)
     /* 0x0340 -> dispatches to 0xBF8E (bank 0) - final tail call */
 }
 
-/*
- * Handler at 0x0327 - USB/Power Initialization
- * Address: 0x0327-0x032a (5 bytes) -> dispatches to 0xB1CB
- *
- * Function at 0xB1CB (142 bytes):
- * Initializes USB and power management registers:
- * - Sets power control registers (0x92C0 - set bit 7)
- * - Configures USB peripheral registers (0x91D1, 0x9300-0x9305)
- * - Sets up USB interrupt flags (0x9091, 0x9093)
- * - Configures USB control registers (0x91C1, 0x9002, 0x9005)
- * - Sets up NVMe command register (0xC42C)
- * - Calls delay helpers and configuration routines
- *
- * Original disassembly:
- *   b1cb: mov dptr, #0x92c0    ; Power control
- *   b1ce: movx a, @dptr
- *   b1cf: anl a, #0x7f         ; clear bit 7
- *   b1d1: orl a, #0x80         ; set bit 7
- *   b1d3: movx @dptr, a
- *   b1d4: mov dptr, #0x91d1
- *   b1d7: mov a, #0x0f
- *   b1d9: movx @dptr, a
- *   ... (continues with USB/power init)
- */
-void handler_0327(void)
-{
-    uint8_t val;
-
-    /* Set bit 7 of power control register 0x92C0 */
-    val = REG_POWER_ENABLE;
-    val = (val & ~POWER_ENABLE_MAIN) | POWER_ENABLE_MAIN;
-    REG_POWER_ENABLE = val;
-
-    /* Configure USB PHY control register */
-    REG_USB_PHY_CTRL_91D1 = 0x0F;
-
-    /* Configure buffer config registers */
-    REG_BUF_CFG_9300 = 0x0C;
-    REG_BUF_CFG_9301 = 0xC0;
-    REG_BUF_CFG_9302 = 0xBF;  /* 0xC0 - 1 = 0xBF */
-
-    /* Configure USB interrupt flags register */
-    REG_INT_FLAGS_EX0 = 0x1F;
-
-    /* Configure USB endpoint config */
-    REG_USB_EP_CFG1 = 0x0F;
-
-    /* Configure USB PHY control register */
-    REG_USB_PHY_CTRL_91C1 = 0xF0;
-
-    /* Configure buffer config registers */
-    REG_BUF_CFG_9303 = 0x33;
-    REG_BUF_CFG_9304 = 0x3F;
-    REG_BUF_CFG_9305 = 0x40;  /* 0x3F + 1 = 0x40 */
-
-    /* Configure USB control register */
-    REG_USB_CONFIG = 0xE0;
-
-    /* Configure USB EP0 length high register */
-    REG_USB_EP0_LEN_H = 0xF0;
-
-    /* Configure USB mode register */
-    REG_USB_MODE = 0x01;
-
-    /* Clear bit 0 of USB EP control register */
-    REG_USB_EP_CTRL_905E = REG_USB_EP_CTRL_905E & 0xFE;
-
-    /* Trigger USB MSC operation */
-    REG_USB_MSC_CTRL = 0x01;
-
-    /* Clear bit 0 of USB MSC status register */
-    REG_USB_MSC_STATUS = REG_USB_MSC_STATUS & 0xFE;
-
-    /* Call helper functions at 0xD07F, 0xE214 for additional setup */
-    /* These would be implemented as separate functions */
-
-    /* Clear bit 5 of USB PHY control 3 register */
-    REG_USB_PHY_CTRL_91C3 = REG_USB_PHY_CTRL_91C3 & 0xDF;
-
-    /* Configure USB PHY control 0: set bit 0, then clear bit 0 */
-    val = REG_USB_PHY_CTRL_91C0;
-    val = (val & 0xFE) | 0x01;
-    REG_USB_PHY_CTRL_91C0 = val;
-    REG_USB_PHY_CTRL_91C0 = REG_USB_PHY_CTRL_91C0 & 0xFE;
-
-    /* Additional timing delay with R4:R5=0x018F, R7=0x04 would follow */
-}
 
 /*
- * Handler at 0x0494 - Event handler
+ * event_state_handler - Event handler
  * Address: 0x0494-0x0498 (5 bytes) -> dispatches to bank 1 0xE56F
  *
  * Function at 0xE56F (file offset 0x1656F):
@@ -839,7 +756,7 @@ void handler_0327(void)
  *   e59b: movx @dptr, a         ; write 0x84 to 0x097A
  *   e59c: ret
  */
-void handler_0494(void)
+void event_state_handler(void)
 {
     uint8_t val;
     uint8_t r7;
@@ -877,7 +794,7 @@ void handler_0494(void)
 }
 
 /*
- * Handler at 0x0606 - Error/State handler
+ * error_state_config - Error/State handler
  * Address: 0x0606-0x060a (5 bytes) -> dispatches to bank 1 0xB230
  *
  * Function at 0xB230 (file offset 0x13230):
@@ -904,7 +821,7 @@ void handler_0494(void)
  *   b240: movx @dptr, a
  *   ... (continues with state configuration)
  */
-void handler_0606(void)
+void error_state_config(void)
 {
     uint8_t val;
 
@@ -937,7 +854,7 @@ void handler_0606(void)
 }
 
 /*
- * Handler at 0x0589 - PHY/Register Configuration
+ * phy_register_config - PHY/Register Configuration
  * Address: 0x0589-0x058d (5 bytes) -> dispatches to bank 0 0xD894
  *
  * Function at 0xD894:
@@ -967,7 +884,7 @@ void handler_0606(void)
  *   d8a5: lcall 0xb031           ; helper
  *   ... (continues with register configuration)
  */
-void handler_0589(void)
+void phy_register_config(void)
 {
     uint8_t val;
 
@@ -993,7 +910,7 @@ void handler_0589(void)
 }
 
 /*
- * Handler at 0x0525 - Flash Command Handler
+ * flash_command_handler - Flash Command Handler
  * Address: 0x0525-0x0529 (5 bytes) -> dispatches to bank 0 0xBAA0
  *
  * Function at 0xBAA0:
@@ -1022,7 +939,7 @@ void handler_0589(void)
  *   babc: cjne a, #0x3a, 0xbada   ; check for command 0x3A
  *   ... (command dispatch logic)
  */
-void handler_0525(void)
+void flash_command_handler(void)
 {
     uint8_t val;
     uint8_t cmd;
@@ -1062,7 +979,7 @@ void handler_0525(void)
 }
 
 /*
- * Handler at 0x039a - Buffer dispatch handler
+ * usb_buffer_dispatch - USB Buffer dispatch handler
  * Address: 0x039a-0x039e (5 bytes) -> dispatches to bank 0 0xD810
  *
  * Function at 0xD810:
@@ -1087,7 +1004,7 @@ void handler_0525(void)
  *   d81a: jb 0xe0.0, 0xd851      ; if bit 0 set, return
  *   ... (complex state checking)
  */
-void handler_039a(void)
+void usb_buffer_dispatch(void)
 {
     uint8_t val;
 
@@ -1138,7 +1055,7 @@ void handler_039a(void)
 }
 
 /*
- * Handler at 0x0520 - System Interrupt Handler
+ * system_interrupt_handler - System Interrupt Handler
  * Address: 0x0520-0x0524 (5 bytes) -> dispatches to bank 0 0xB4BA
  *
  * Function at 0xB4BA:
@@ -1163,7 +1080,7 @@ void handler_039a(void)
  *   b4c9: movx @dptr, a          ; write 0x02
  *   ... (continues with state machine)
  */
-void handler_0520(void)
+void system_interrupt_handler(void)
 {
     uint8_t val;
     uint8_t state;
@@ -1206,7 +1123,7 @@ void handler_0520(void)
 }
 
 /*
- * Handler at 0x052f - PCIe/NVMe Event Handler
+ * pcie_nvme_event_handler - PCIe/NVMe Event Handler
  * Address: 0x052f-0x0533 (5 bytes) -> dispatches to bank 0 0xAF5E
  *
  * Function at 0xAF5E:
@@ -1234,7 +1151,7 @@ void handler_0520(void)
  *   af6d: lcall 0x538d
  *   ... (continues with NVMe event processing)
  */
-void handler_052f(void)
+void pcie_nvme_event_handler(void)
 {
     uint8_t val;
 
@@ -1274,7 +1191,7 @@ void handler_052f(void)
 }
 
 /*
- * Handler at 0x0570
+ * pcie_error_dispatch - PCIe Error Dispatch
  * Address: 0x0570-0x0574 (5 bytes)
  *
  * Dispatches to bank 1 code at 0xE911 (file offset 0x16911)
@@ -1284,10 +1201,10 @@ void handler_052f(void)
  *   0570: mov dptr, #0xe911
  *   0573: ajmp 0x0311
  */
-extern void error_handler_e911(void);  /* Bank 1: file 0x16911 */
-void handler_0570(void)
+extern void error_handler_pcie_nvme(void);  /* Bank 1: file 0x16911 */
+void pcie_error_dispatch(void)
 {
-    error_handler_e911();
+    error_handler_pcie_nvme();
 }
 
 /*
@@ -1301,10 +1218,10 @@ void handler_0570(void)
  *   061a: mov dptr, #0xa066
  *   061d: ajmp 0x0311
  */
-extern void error_handler_a066(void);  /* Bank 1: file 0x12066 */
+extern void error_handler_pcie_bit5(void);  /* Bank 1: file 0x12066 */
 void handler_061a(void)
 {
-    error_handler_a066();
+    error_handler_pcie_bit5();
 }
 
 /*
@@ -1333,10 +1250,10 @@ void handler_0593(void)
  *   0642: mov dptr, #0xef4e
  *   0645: ajmp 0x0311
  */
-extern void error_handler_ef4e(void);  /* Bank 1: file 0x16F4E */
+extern void error_handler_system_unused(void);  /* Bank 1: file 0x16F4E */
 void handler_0642(void)
 {
-    error_handler_ef4e();
+    error_handler_system_unused();
 }
 
 /*===========================================================================
@@ -1542,20 +1459,20 @@ void ext1_isr(void) __interrupt(INT_EXT1) __using(1)
     /* Check system interrupt status bit 0 */
     status = REG_INT_SYSTEM;
     if (status & 0x01) {
-        handler_0520();
+        system_interrupt_handler();
     }
 
     /* Check CPU execution status 2 bit 2 */
     status = REG_CPU_EXEC_STATUS_2;
     if (status & 0x04) {
         REG_CPU_EXEC_STATUS_2 = 0x04;  /* Clear interrupt */
-        handler_039a();
+        usb_buffer_dispatch();
     }
 
     /* Check PCIe/NVMe status bit 6 */
     status = REG_INT_PCIE_NVME;
     if (status & INT_PCIE_NVME_STATUS) {
-        handler_052f();
+        pcie_nvme_event_handler();
     }
 
     /* Check event flags */
@@ -1580,7 +1497,7 @@ void ext1_isr(void) __interrupt(INT_EXT1) __using(1)
         /* Check for additional PCIe events (inside event flags block) */
         status = REG_INT_PCIE_NVME & INT_PCIE_NVME_EVENTS;
         if (status != 0) {
-            handler_0570();
+            pcie_error_dispatch();
         }
     }
 
@@ -1609,4 +1526,185 @@ void timer1_isr(void) __interrupt(INT_TIMER1) __using(1)
 void serial_isr(void) __interrupt(INT_SERIAL) __using(1)
 {
     /* Placeholder - likely unused */
+}
+
+/*===========================================================================
+ * BANK 1 SYSTEM INITIALIZATION
+ *
+ * This function initializes system configuration from flash storage.
+ * It resides in Bank 1 (code offset 0x10000+) and is called during boot.
+ *===========================================================================*/
+
+/* External helpers for UART/debug output */
+extern uint8_t uart_read_byte_dace(uint8_t offset);  /* 0xdace - Read from UART buffer */
+extern void uart_write_byte_daeb(void);              /* 0xdaeb - Write to UART buffer */
+extern uint8_t uart_check_status_daf5(void);         /* 0xdaf5 - Check UART status */
+extern uint8_t uart_read_status_dae2(void);          /* 0xdae2 - Read UART status */
+extern void uart_write_daff(void);                   /* 0xdaff - UART write */
+extern uint8_t uart_read_dacc(void);                 /* 0xdacc - UART read */
+
+/* External helpers for system setup */
+extern void sys_event_dispatch_05e8(void);           /* 0x05e8 - Event dispatcher */
+extern void sys_init_helper_bbc7(void);              /* 0xbbc7 - System init helper */
+extern void sys_timer_handler_e957(void);            /* 0xe957 - Timer/watchdog handler */
+
+/*
+ * system_init_from_flash - Initialize system from flash configuration
+ * Bank 1 Address: 0x8d77-0x8fe0+ (~617 bytes) [actual addr: 0x10d77]
+ *
+ * Complex initialization function that reads configuration from flash buffer
+ * (0x70xx), validates checksum, and sets up system parameters.
+ *
+ * Key operations:
+ *   1. Initialize default mode flags (0x09F4-0x09F8)
+ *   2. Set retry counter (IDATA[0x22])
+ *   3. Loop up to 6 times checking flash header
+ *   4. Validate header marker at 0x707E (must be 0xA5)
+ *   5. Compute checksum over 0x7004-0x707E
+ *   6. If valid, parse configuration:
+ *      - Vendor strings from 0x7004
+ *      - Serial strings from 0x702C
+ *      - Configuration bytes from 0x7054
+ *      - Device IDs from 0x705C-0x707F
+ *   7. Set event flags based on mode configuration
+ *   8. Call system init helpers
+ */
+void system_init_from_flash(void)
+{
+    uint8_t retry_count;
+    uint8_t header_marker;
+    uint8_t checksum;
+    uint8_t computed_checksum;
+    uint8_t i;
+    uint8_t mode_val;
+    uint8_t tmp;
+
+    /* Initialize default mode flags */
+    XDATA8(0x09F4) = 3;  /* Mode configuration 1 */
+    XDATA8(0x09F5) = 1;  /* Mode configuration 2 */
+    XDATA8(0x09F6) = 1;  /* Mode configuration 3 */
+    XDATA8(0x09F7) = 3;  /* Mode configuration 4 */
+    XDATA8(0x09F8) = 1;  /* Mode configuration 5 */
+    XDATA8(0x0A56) = 0;  /* Flash config valid flag */
+    retry_count = 0;     /* IDATA[0x22] = 0 */
+
+    /* Flash read/validation retry loop */
+    while (retry_count <= 5) {
+        /* Set flash read trigger */
+        XDATA8(0x0213) = 1;
+
+        /* Call timer/watchdog handler */
+        sys_timer_handler_e957();
+
+        if (retry_count != 0) {
+            /* Check header marker at 0x707E */
+            header_marker = XDATA8(0x707E);
+            if (header_marker == 0xA5) {
+                /* Compute checksum from 0x7004 to 0x707E */
+                computed_checksum = 0;
+                for (i = 4; i < 0x7F; i++) {
+                    computed_checksum += uart_read_byte_dace(0);
+                }
+
+                /* Get stored checksum from 0x707F */
+                checksum = XDATA8(0x707F);
+
+                /* Validate checksum */
+                if (checksum == computed_checksum) {
+                    /* Checksum valid - mark flash config as valid */
+                    XDATA8(0x0A56) = 1;
+
+                    /* Parse vendor strings from 0x7004 if valid */
+                    if (XDATA8(0x7004) != 0xFF) {
+                        /* Copy vendor string data */
+                        for (i = 0; XDATA8(0x7004 + i) != 0xFF && i < 0x28; i++) {
+                            uart_write_byte_daeb();
+                        }
+                    }
+
+                    /* Parse serial strings from 0x702C if valid */
+                    if (XDATA8(0x702C) != 0xFF) {
+                        for (i = 0; XDATA8(0x702C + i) != 0xFF && i < 0x28; i++) {
+                            uart_write_daff();
+                        }
+                    }
+
+                    /* Parse configuration bytes */
+                    for (i = 0; i < 6; i++) {
+                        tmp = uart_read_byte_dace(0x54);
+                        if (tmp == 0xFF) break;
+                        XDATA8(0x0A3C + i) = uart_read_byte_dace(0x54);
+                        if (i == 5) {
+                            /* Mask lower nibble of 0x0A41 */
+                            XDATA8(0x0A41) = XDATA8(0x0A41) & 0x0F;
+                        }
+                    }
+
+                    /* Parse device IDs from 0x705C-0x705D */
+                    if (XDATA8(0x705C) != 0xFF || XDATA8(0x705D) != 0xFF) {
+                        XDATA8(0x0A42) = XDATA8(0x705C);
+                        XDATA8(0x0A43) = XDATA8(0x705D);
+                    }
+
+                    /* Parse additional device info from 0x705E-0x705F */
+                    if (XDATA8(0x705E) == 0xFF && XDATA8(0x705F) == 0xFF) {
+                        /* Use defaults from 0x0A57-0x0A58 */
+                        XDATA8(0x0A44) = XDATA8(0x0A57);
+                        XDATA8(0x0A45) = XDATA8(0x0A58);
+                    } else {
+                        XDATA8(0x0A44) = XDATA8(0x705E);
+                        XDATA8(0x0A45) = XDATA8(0x705F);
+                    }
+
+                    /* Parse mode configuration from 0x7059-0x705A */
+                    tmp = XDATA8(0x7059);
+                    XDATA8(0x09F4) = (tmp >> 4) & 0x03;  /* Bits 5:4 */
+                    XDATA8(0x09F5) = (tmp >> 6) & 0x01;  /* Bit 6 */
+                    XDATA8(0x09F6) = tmp >> 7;          /* Bit 7 */
+
+                    tmp = XDATA8(0x705A);
+                    XDATA8(0x09F7) = tmp & 0x03;        /* Bits 1:0 */
+                    XDATA8(0x09F8) = (tmp >> 2) & 0x01; /* Bit 2 */
+
+                    /* Set initialization flag */
+                    XDATA8(0x07F7) = XDATA8(0x07F7) | 0x04;
+
+                    goto set_event_flags;
+                }
+            }
+        }
+
+        retry_count++;
+    }
+
+set_event_flags:
+    /* Set event flags based on mode configuration */
+    mode_val = XDATA8(0x09F4);
+    if (mode_val == 3) {
+        G_EVENT_FLAGS = 0x87;
+        XDATA8(0x09FB) = 3;
+    } else if (mode_val == 2) {
+        G_EVENT_FLAGS = 0x06;
+        XDATA8(0x09FB) = 1;
+    } else {
+        if (mode_val == 1) {
+            G_EVENT_FLAGS = 0x85;
+        } else {
+            G_EVENT_FLAGS = 0xC1;
+        }
+        XDATA8(0x09FB) = 2;
+    }
+
+    /* Check flash ready status bit 5 */
+    if (((REG_FLASH_READY_STATUS >> 5) & 0x01) != 1) {
+        G_EVENT_FLAGS = 0x04;
+    }
+
+    /* Call system init helper */
+    sys_init_helper_bbc7();
+
+    /* If flash config is valid, call event dispatcher */
+    if (XDATA8(0x0A56) == 1) {
+        sys_event_dispatch_05e8();
+    }
 }

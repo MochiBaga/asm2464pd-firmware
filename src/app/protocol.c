@@ -2630,3 +2630,92 @@ void FUN_CODE_2db7(void)
     usb_set_transfer_flag();
 }
 
+/*===========================================================================
+ * BANK 1 EVENT HANDLERS
+ *
+ * These functions handle events and status updates. They reside in Bank 1
+ * (code offset 0x10000+) and are called via the bank switching mechanism
+ * (jump_bank_1 at 0x0311).
+ *===========================================================================*/
+
+/*
+ * event_state_machine_e56f - Event state machine for 0x81 events
+ * Bank 1 Address: 0xE56F (file offset 0x1656F)
+ * Size: ~174 bytes (0x1656F-0x1661C)
+ *
+ * Called when events & 0x81 is set. This is a complex event state machine
+ * with multiple execution paths:
+ *   - Checks bit 3 of XDATA[DPTR], optionally calls 0xE6F0 with R7=1
+ *   - Reads state from 0x09EF, 0x0991, 0x098E
+ *   - May jump to 0xEE11 (bank 1) for further processing
+ *   - Writes 0x84 to 0x097A on some paths
+ *   - Uses lookup table at 0x5C9D for dispatch
+ *
+ * Key registers accessed:
+ *   - 0x097A: State/control register (writes 0x84)
+ *   - 0x09EF: Event flags
+ *   - 0x0991: State variable
+ *   - 0x098E: Mode indicator
+ *   - 0x0214: Return value storage
+ *
+ * Calls to: 0xE6F0, 0xABC9, 0x43D3, 0xAA71, 0x544C, 0xAA1D,
+ *           0xAA13, 0xAA4E, 0x425F
+ */
+void event_state_machine_e56f(void)
+{
+    /* Complex event state machine - stub pending full RE */
+}
+
+/*
+ * event_queue_process_e762 - Process event queue entries
+ * Bank 1 Address: 0xE762 (file offset 0x16762)
+ *
+ * Handles events by managing state counters at 0x0AA2-0x0AA5.
+ * Part of the event queue management system.
+ *
+ * Key operations:
+ *   - Reads from 0x0AA3/0x0AA2 (state counters)
+ *   - Computes R6:R7 = R6:R7 + state counter
+ *   - Calls helper 0xEA19 to process event
+ *   - If result != 0, returns 1
+ *   - Otherwise increments 0x0AA5 and loops back
+ *
+ * Returns: 0 if no events, 1 if event processed
+ */
+void event_queue_process_e762(void)
+{
+    uint8_t val_aa3, val_aa2;
+    uint8_t count;
+
+    /* Read state counters */
+    val_aa3 = G_STATE_COUNTER_HI;
+    val_aa2 = *(__xdata uint8_t *)0x0AA2;
+
+    /* Event processing loop - simplified */
+    count = *(__xdata uint8_t *)0x0AA5;
+    if (count < 0x20) {
+        /* Increment event counter */
+        *(__xdata uint8_t *)0x0AA5 = count + 1;
+    }
+}
+
+/*
+ * status_update_handler_e677 - Handle status updates
+ * Bank 1 Address: 0xE677 (file offset 0x16677)
+ *
+ * Handles status updates by checking mode and performing
+ * register operations via helper functions at 0xC244, 0xC247, etc.
+ *
+ * Key operations based on R7 parameter:
+ *   - If R7 == 4: calls 0xC244, clears A, jumps to 0x6692
+ *   - Otherwise: accesses 0x09E5, calls 0xC247, calls 0x0BC8
+ *   - Processes status at 0x09E8
+ *   - Calls 0x0BE6 for register write
+ *
+ * This handler is part of the bank 1 status management system.
+ */
+void status_update_handler_e677(void)
+{
+    /* Status handler - stub pending full RE */
+}
+

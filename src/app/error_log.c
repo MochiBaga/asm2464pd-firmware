@@ -289,3 +289,140 @@ void error_log_process(void)
         (*(__idata uint8_t *)IDATA_LOG_INDEX)++;
     }
 }
+
+/*===========================================================================
+ * ERROR FLAG MANAGEMENT (from Bank 1)
+ *
+ * These functions handle error flag clearing and error condition handling.
+ * They reside in Bank 1 (code offset 0x10000+) and are called via
+ * the bank switching mechanism (jump_bank_1 at 0x0311).
+ *===========================================================================*/
+
+/*
+ * error_clear_system_flags - Clear error flags in E760/E761 registers
+ * Bank 1 Address: 0xE920 (file offset 0x16920)
+ * Size: 50 bytes (0x16920-0x16951)
+ *
+ * Clears and sets specific error/event flag bits in the 0xE760-0xE763
+ * register region, handling error acknowledgment.
+ *
+ * Original operations:
+ *   1. Call DMA/PCIe status polling helper (0xd1a8 with DPTR=0xC808)
+ *   2. Write 0xFF to 0xE761 (error mask)
+ *   3. Set bit 2 in 0xE760, clear bit 2 in 0xE761
+ *   4. Set bit 3 in 0xE760, clear bit 3 in 0xE761
+ *   5. Write 0x04 then 0x08 to 0xE763 (command/ack)
+ */
+void error_clear_system_flags(void)
+{
+    uint8_t val;
+
+    /* TODO: Original calls helper at 0xd1a8 with DPTR=0xC808 for
+     * DMA/PCIe status polling with timeout. */
+
+    /* Write 0xFF to error mask register */
+    REG_SYS_CTRL_E761 = 0xFF;
+
+    /* Set bit 2 in system control 60, clear bit 2 in system control 61 */
+    val = REG_SYS_CTRL_E760;
+    val = (val & 0xFB) | 0x04;
+    REG_SYS_CTRL_E760 = val;
+
+    val = REG_SYS_CTRL_E761;
+    val = val & 0xFB;
+    REG_SYS_CTRL_E761 = val;
+
+    /* Set bit 3 in system control 60, clear bit 3 in system control 61 */
+    val = REG_SYS_CTRL_E760;
+    val = (val & 0xF7) | 0x08;
+    REG_SYS_CTRL_E760 = val;
+
+    val = REG_SYS_CTRL_E761;
+    val = val & 0xF7;
+    REG_SYS_CTRL_E761 = val;
+
+    /* Write 0x04 then 0x08 to system control 63 (command/ack register) */
+    REG_SYS_CTRL_E763 = 0x04;
+    REG_SYS_CTRL_E763 = 0x08;
+}
+
+/*
+ * error_handler_pcie_nvme - PCIe/NVMe error handler (mid-function entry point)
+ * Bank 1 Address: 0xE911 (file offset 0x16911)
+ * Size: 15 bytes (0x16911-0x1691f)
+ *
+ * Called when PCIe/NVMe status & 0x0F != 0.
+ *
+ * This is a MID-FUNCTION ENTRY POINT using register-based calling convention:
+ *   - A = XDATA8(0xC80A) & 0x0F (error status bits)
+ *   - R7 = pre-set value from caller
+ *   - DPTR = target register address
+ *
+ * Operations:
+ *   1. Decrements R7 and ORs with accumulator
+ *   2. Writes merged value to [DPTR]
+ *   3. Calls error_log_and_process (0xC343)
+ *   4. Sets bit 7 (error flag) and calls error_status_update (0xC32D)
+ *   5. Writes final value to [DPTR]
+ *
+ * NOTE: Cannot be directly translated to C as it requires register-based
+ * calling convention.
+ */
+void error_handler_pcie_nvme(void)
+{
+    /* Stub - requires 8051 register calling convention */
+}
+
+/*
+ * error_handler_recovery - Error recovery handler
+ * Bank 1 Address: 0xB230 (file offset 0x13230)
+ * Size: ~104 bytes (0x13230-0x13297+)
+ *
+ * Complex error handler that manipulates hardware registers and calls
+ * various helper functions for error recovery.
+ *
+ * Key operations:
+ *   1. Bit manipulation: (A & 0xEF) | 0x10
+ *   2. Call helpers at 0x96B7, 0x980D
+ *   3. Clear bits 0,1 in 0xE7FC
+ *   4. Setup IDATA parameters at 0xD1
+ *   5. Call helpers at 0x968E, 0x99E0
+ *   6. Clear bit 4 in 0xCCD8
+ *   7. Toggle bit 4 in 0xC801
+ */
+void error_handler_recovery(void)
+{
+    /* Complex error handler - stub pending helper function RE */
+}
+
+/*
+ * error_handler_pcie_bit5 - Error handler for PCIe status bit 5
+ * Bank 1 Address: 0xA066 (file offset 0x12066)
+ * Size: ~115 bytes (0x12066-0x120D8+)
+ *
+ * Called when event flags & 0x83 and PCIe status bit 5 set.
+ *
+ * Key operations:
+ *   1. Arithmetic with R0, R1 from caller context
+ *   2. Call 0x96C7 for status update
+ *   3. Clear bit 1 and call 0x0BE6
+ *   4. Call 0xDEA1 for error processing
+ *   5. Check 0x9780 status, branch on bit 1
+ *   6. Optional error recovery path
+ */
+void error_handler_pcie_bit5(void)
+{
+    /* Complex error handler - stub pending helper function RE */
+}
+
+/*
+ * error_handler_system_unused - System error handler (UNUSED)
+ * Bank 1 Address: 0xEF4E (file offset 0x16F4E)
+ *
+ * Called when system status bit 4 is set.
+ * NOTE: This address contains all NOPs in the original firmware.
+ */
+void error_handler_system_unused(void)
+{
+    /* Empty - original firmware has NOPs at this address */
+}

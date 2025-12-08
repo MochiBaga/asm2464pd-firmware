@@ -2089,3 +2089,49 @@ void pcie_addr_store_83b9(uint8_t p1, uint8_t p2, uint8_t p3, uint8_t p4)
     G_PCIE_ADDR_2 = new_p3;
     G_PCIE_ADDR_3 = new_p4;
 }
+
+/*===========================================================================
+ * BANK 1 PCIE HANDLERS
+ *
+ * These functions handle PCIe-related operations in Bank 1. Called via
+ * the bank switching mechanism (jump_bank_1 at 0x0311).
+ *===========================================================================*/
+
+/*
+ * pcie_state_clear_ed02 - Clear PCIe state and check transfer status
+ * Bank 1 Address: 0xED02 (file offset 0x16D02)
+ * Size: ~38 bytes (0x16D02-0x16D27)
+ *
+ * Called by dispatch stub handler_063d. This handler:
+ *   1. Calls 0x05C5 helper for PCIe setup
+ *   2. Clears XDATA[0x023F] (transfer state)
+ *   3. Checks XDATA[0x0775], clears if non-zero
+ *   4. Checks XDATA[0x0719] for value 2
+ *   5. Returns different values in R7 based on result
+ *
+ * Return values (via R7):
+ *   0 - State was non-zero and cleared
+ *   1 - State at 0x0719 != 2
+ *   2 - State at 0x0719 == 2 (cleared)
+ */
+void pcie_state_clear_ed02(void)
+{
+    /* Call setup helper at 0x05C5 */
+    /* TODO: Implement call to 0x05C5 when available */
+
+    /* Clear transfer state at 0x023F */
+    G_BANK1_STATE_023F = 0;
+}
+
+/*
+ * pcie_handler_unused_eef9 - PCIe handler (UNUSED)
+ * Bank 1 Address: 0xEEF9 (file offset 0x16EF9)
+ *
+ * Called by handler_063d.
+ * NOTE: This address contains all NOPs in the original firmware.
+ * This is likely unused/padding space.
+ */
+void pcie_handler_unused_eef9(void)
+{
+    /* Empty - original firmware has NOPs at this address */
+}
