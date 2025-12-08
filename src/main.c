@@ -1208,7 +1208,7 @@ void pcie_error_dispatch(void)
 }
 
 /*
- * Handler at 0x061a
+ * pcie_event_bit5_handler - PCIe Event Handler (bit 5)
  * Address: 0x061a-0x061e (5 bytes)
  *
  * Dispatches to bank 1 code at 0xA066 (file offset 0x12066)
@@ -1219,28 +1219,29 @@ void pcie_error_dispatch(void)
  *   061d: ajmp 0x0311
  */
 extern void error_handler_pcie_bit5(void);  /* Bank 1: file 0x12066 */
-void handler_061a(void)
+void pcie_event_bit5_handler(void)
 {
     error_handler_pcie_bit5();
 }
 
 /*
- * Handler at 0x0593
+ * pcie_timer_bit4_handler - PCIe Timer Handler (bit 4)
  * Address: 0x0593-0x0597 (5 bytes)
  *
  * Called from ext1_isr when event flags & 0x83 and PCIe/NVMe status bit 4 set.
+ * Dispatches to 0xC105 in bank 0.
  *
  * Original disassembly:
  *   0593: mov dptr, #0xc105
  *   0596: ajmp 0x0300
  */
-void handler_0593(void)
+void pcie_timer_bit4_handler(void)
 {
     jump_bank_0(0xC105);
 }
 
 /*
- * Handler at 0x0642
+ * system_timer_handler - System Timer Handler
  * Address: 0x0642-0x0646 (5 bytes)
  *
  * Dispatches to bank 1 code at 0xEF4E (file offset 0x16F4E)
@@ -1250,10 +1251,10 @@ void handler_0593(void)
  *   0642: mov dptr, #0xef4e
  *   0645: ajmp 0x0311
  */
-extern void error_handler_system_unused(void);  /* Bank 1: file 0x16F4E */
-void handler_0642(void)
+extern void error_handler_system_timer(void);  /* Bank 1: file 0x16F4E */
+void system_timer_handler(void)
 {
-    error_handler_system_unused();
+    error_handler_system_timer();
 }
 
 /*===========================================================================
@@ -1481,11 +1482,11 @@ void ext1_isr(void) __interrupt(INT_EXT1) __using(1)
         status = REG_INT_PCIE_NVME;
 
         if (status & INT_PCIE_NVME_EVENT) {
-            handler_061a();
+            pcie_event_bit5_handler();
         }
 
         if (status & INT_PCIE_NVME_TIMER) {
-            handler_0593();
+            pcie_timer_bit4_handler();
         }
 
         /* Check NVMe event status */
@@ -1504,7 +1505,7 @@ void ext1_isr(void) __interrupt(INT_EXT1) __using(1)
     /* Check system status bit 4 */
     status = REG_INT_SYSTEM;
     if (status & INT_SYSTEM_TIMER) {
-        handler_0642();
+        system_timer_handler();
     }
 }
 

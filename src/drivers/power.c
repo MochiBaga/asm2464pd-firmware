@@ -364,9 +364,9 @@ void power_disable_clocks(void)
 }
 
 /* Forward declarations for helper functions */
-extern void handler_d07f(uint8_t param);
-extern void handler_e214(void);
-extern void handler_e8ef(uint8_t param);
+extern void usb_mode_config_d07f(uint8_t param);
+extern void nvme_queue_config_e214(void);
+extern void power_init_complete_e8ef(uint8_t param);
 
 /*
  * power_clear_init_flag - Clear power init flag
@@ -459,8 +459,8 @@ void usb_power_init(void)
     REG_USB_MSC_STATUS = val & 0xFE;
 
     /* Call initialization handlers */
-    handler_d07f(0);
-    handler_e214();
+    usb_mode_config_d07f(0);
+    nvme_queue_config_e214();
 
     /* Configure USB PHY control 3 - clear bit 5 */
     val = REG_USB_PHY_CTRL_91C3;
@@ -485,7 +485,7 @@ void usb_power_init(void)
     } while ((val & 0x02) == 0);
 
     /* Call completion handler */
-    handler_e8ef(status & 0x10);
+    power_init_complete_e8ef(status & 0x10);
 
     /* Final state handling based on PHY status */
     val = REG_USB_PHY_CTRL_91C0;

@@ -152,7 +152,7 @@ extern uint32_t idata_load_dword(__idata uint8_t *ptr);
 extern uint32_t idata_load_dword_alt(__idata uint8_t *ptr);
 
 /* External handler from main.c */
-extern void handler_039a(void);
+extern void usb_buffer_dispatch(void);
 
 /* External from state_helpers.c */
 extern void nvme_func_04da(uint8_t param);
@@ -170,7 +170,7 @@ extern void helper_523c(uint8_t r3, uint8_t r5, uint8_t r7);  /* 0x523c */
 extern void handler_3adb(uint8_t param);  /* 0x3adb */
 
 /* External from state_helpers.c */
-extern void handler_2608(void);  /* 0x2608 */
+extern void dma_queue_state_handler(void);  /* 0x2608 */
 
 /* Forward declaration - USB master handler (0x10e0)
  * Called at end of endpoint dispatch loop */
@@ -361,7 +361,7 @@ static void usb_ep_init_handler(void)
     G_STATE_FLAG_06E6 = 0;
 
     /* Jump to 0x039a which dispatches to 0xD810 (buffer handler) */
-    handler_039a();
+    usb_buffer_dispatch();
 }
 
 /*
@@ -1356,8 +1356,8 @@ void usb_master_handler(void)
             /* Clear 0x0464, write 0x08 to 0xCEF3 */
             G_SYS_STATUS_PRIMARY = 0x00;
             REG_CPU_LINK_CEF3 = 0x08;
-            /* Call handler_2608 - state handler */
-            handler_2608();
+            /* Call dma_queue_state_handler - state handler */
+            dma_queue_state_handler();
         } else {
             /* Check 0xCEF2 bit 7 */
             status = REG_CPU_LINK_CEF2;

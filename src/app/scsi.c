@@ -78,7 +78,7 @@ extern void transfer_func_16b0(uint8_t param);
 extern void helper_16e9(uint8_t param);
 extern void helper_16eb(uint8_t param);
 extern void nvme_util_advance_queue(void);
-extern void handler_2608(void);
+extern void dma_queue_state_handler(void);
 extern void nvme_util_clear_completion(void);
 extern void nvme_util_check_command_ready(void);
 extern void nvme_load_transfer_data(void);
@@ -688,7 +688,7 @@ void scsi_nvme_queue_process(void)
             status = REG_CPU_LINK_CEF3;
             if ((status >> 3) & 0x01) {
                 REG_CPU_LINK_CEF3 = 8;
-                handler_2608();
+                dma_queue_state_handler();
             }
 
             status = REG_NVME_LINK_STATUS;

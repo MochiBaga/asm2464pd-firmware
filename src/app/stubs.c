@@ -698,14 +698,19 @@ void handler_e529(uint8_t param)
  * Address: 0xe90b-0xe911 (7 bytes)
  *
  * Disassembly:
- *   e90b: mov dptr, #0xcc81  ; REG_PCIE_CTRL_LO
+ *   e90b: mov dptr, #0xcc81  ; REG_CPU_STATUS_CC81
  *   e90e: mov a, #0x04       ; Value = 4
  *   e910: movx @dptr, a      ; Write
- *   e911: ljmp 0xbe8b        ; Jump to FUN_CODE_be8b
+ *   e911: ljmp 0xbe8b        ; Tail call to FUN_CODE_be8b
  *
- * Writes 0x04 to PCIe control register then jumps to be8b.
+ * Writes 0x04 to CC81 register then tail-calls FUN_CODE_be8b.
  */
-void handler_e90b(void) {}
+extern void FUN_CODE_be8b(void);
+void handler_e90b(void)
+{
+    REG_CPU_STATUS_CC81 = 0x04;
+    FUN_CODE_be8b();
+}
 
 /*===========================================================================
  * NVMe Utility Functions
@@ -983,8 +988,9 @@ void FUN_CODE_be8b(void) {}
 /* 0xdd0e: Simple stub */
 void FUN_CODE_dd0e(void) {}
 
-/* 0xdd12: Stub with params */
+/* 0xdd12: Stub with params - also called from cmd.c */
 void FUN_CODE_dd12(uint8_t p1, uint8_t p2) { (void)p1; (void)p2; }
+void helper_dd12(uint8_t r7, uint8_t r5) { (void)r7; (void)r5; }
 
 /*
  * FUN_CODE_df79 - Protocol state dispatcher
@@ -995,8 +1001,9 @@ void FUN_CODE_dd12(uint8_t p1, uint8_t p2) { (void)p1; (void)p2; }
  */
 void FUN_CODE_df79(void) {}
 
-/* 0xe120: Stub with params */
+/* 0xe120: Stub with params - also called from cmd.c */
 void FUN_CODE_e120(uint8_t p1, uint8_t p2) { (void)p1; (void)p2; }
+void helper_e120(uint8_t param) { (void)param; }
 
 /*
  * FUN_CODE_e1c6 - Wait loop with status check
@@ -1007,8 +1014,9 @@ void FUN_CODE_e120(uint8_t p1, uint8_t p2) { (void)p1; (void)p2; }
  */
 void FUN_CODE_e1c6(void) {}
 
-/* 0xe73a: PCIe/DMA related - stub */
+/* 0xe73a: PCIe/DMA related - stub - also called from cmd.c */
 void FUN_CODE_e73a(void) {}
+void helper_e73a(void) {}
 
 /* 0xe7ae: PCIe/DMA related - stub */
 void FUN_CODE_e7ae(void) {}

@@ -416,13 +416,13 @@ void error_handler_pcie_bit5(void)
 }
 
 /*
- * error_handler_system_unused - System error handler (UNUSED)
+ * error_handler_system_timer - System timer error handler
  * Bank 1 Address: 0xEF4E (file offset 0x16F4E)
  *
  * Called when system status bit 4 is set.
  * NOTE: This address contains all NOPs in the original firmware.
  */
-void error_handler_system_unused(void)
+void error_handler_system_timer(void)
 {
     /* Empty - original firmware has NOPs at this address */
 }

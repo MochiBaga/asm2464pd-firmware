@@ -2,8 +2,44 @@
 
 ## Progress Summary
 - Total functions in ghidra.c: ~720
-- Functions implemented: ~341 (47%)
-- Functions remaining: ~379 (53%)
+- Functions implemented: ~360 (50%)
+- Functions remaining: ~360 (50%)
+
+## Recent Completions
+
+### Code Organization (bank1.c removed)
+All functions from bank1.c have been moved to appropriate files:
+- [x] Error handlers → `src/app/error_log.c`
+  - `error_clear_system_flags` (0xE920, was `error_clear_e760_flags`)
+  - `error_handler_pcie_nvme` (0xE911, was `error_handler_e911`)
+  - `error_handler_recovery` (0xB230, was `error_handler_b230`)
+  - `error_handler_pcie_bit5` (0xA066, was `error_handler_a066`)
+  - `error_handler_system_unused` (0xEF4E, was `error_handler_ef4e`)
+- [x] Event handlers → `src/app/protocol.c`
+  - `event_state_machine_e56f` (0xE56F, was `event_handler_e56f`)
+  - `event_queue_process_e762` (0xE762, was `handler_e762`)
+  - `status_update_handler_e677` (0xE677, was `handler_e677`)
+- [x] PCIe handlers → `src/drivers/pcie.c`
+  - `pcie_state_clear_ed02` (0xED02, was `handler_ed02`)
+  - `pcie_handler_unused_eef9` (0xEEF9, was `handler_eef9`)
+- [x] System init → `src/main.c`
+  - `system_init_from_flash` (0x8D77, was `system_init_from_flash_8d77`)
+
+### SCSI Function Renames (src/app/scsi.c)
+- [x] `scsi_state_handler_40d9` → `scsi_state_dispatch`
+- [x] `scsi_action_handler_419d` → `scsi_setup_action`
+- [x] `scsi_mode_setup_425f` → `scsi_init_transfer_mode`
+- [x] `scsi_dma_handler_43d3` → `scsi_dma_dispatch`
+- [x] `scsi_cbw_validate_51ef` → `scsi_cbw_validate`
+- [x] `scsi_csw_handler_4904` → `scsi_csw_build`
+- [x] `scsi_queue_handler_480c` → `scsi_nvme_queue_process`
+- [x] Plus ~20 more SCSI function renames
+
+### Register/Global Cleanup
+- [x] Moved all local register definitions from scsi.c to registers.h
+- [x] Moved all local global definitions from scsi.c to globals.h
+- [x] Added USB FIFO status bitfields
+- [x] Added SCSI DMA register definitions
 
 ---
 
@@ -237,8 +273,8 @@ SCSI command handling and USB Mass Storage.
 Functions in code bank 1 (addresses 0x8000-0xFFFF when bank switched).
 
 ### Low Bank 1 (0x8000-0x9000)
-- [ ] `0x839c` - Bank 1 function
-- [ ] `0x83b9` - Bank 1 function
+- [x] `0x839c` - pcie_addr_store_839c (in pcie.c)
+- [x] `0x83b9` - pcie_addr_store_83b9 (in pcie.c)
 - [ ] `0x873a` - Bank 1 function
 - [ ] `0x8743` - Bank 1 function
 - [ ] `0x874c` - Bank 1 function
@@ -255,7 +291,7 @@ Functions in code bank 1 (addresses 0x8000-0xFFFF when bank switched).
 - [ ] `0x8a7e` - Bank 1 function
 - [ ] `0x8a89` - Bank 1 function
 - [ ] `0x8d6e` - Bank 1 function
-- [ ] `0x8d77` - Bank 1 function (debug output)
+- [x] `0x8d77` - system_init_from_flash (moved to main.c)
 
 ---
 
@@ -711,7 +747,7 @@ Interrupt handlers and high-priority events (Bank 1).
 - [ ] `0xe50d` - NVMe event handler
 - [ ] `0xe5cb` - NVMe event
 - [ ] `0xe5fe` - NVMe event
-- [ ] `0xe677` - NVMe event handler
+- [x] `0xe677` - status_update_handler_e677 (moved to protocol.c)
 - [ ] `0xe68f` - NVMe event
 - [ ] `0xe6a7` - NVMe event
 - [ ] `0xe6d2` - NVMe event
@@ -720,8 +756,9 @@ Interrupt handlers and high-priority events (Bank 1).
 - [ ] `0xe726` - NVMe event
 - [ ] `0xe730` - NVMe event
 - [ ] `0xe73a` - NVMe event
+- [x] `0xe56f` - event_state_machine_e56f (moved to protocol.c)
 - [ ] `0xe74e` - Bank 1 event handler
-- [ ] `0xe762` - NVMe event handler
+- [x] `0xe762` - event_queue_process_e762 (moved to protocol.c)
 - [ ] `0xe775` - NVMe event
 - [ ] `0xe77a` - NVMe event handler
 - [ ] `0xe788` - NVMe event
@@ -743,15 +780,18 @@ Interrupt handlers and high-priority events (Bank 1).
 - [ ] `0xe8e4` - Power init handler
 - [ ] `0xe8f9` - NVMe event
 - [ ] `0xe902` - NVMe event handler
-- [ ] `0xe914` - Error handler
-- [ ] `0xe916` - Error handler
+- [x] `0xe911` - error_handler_pcie_nvme (moved to error_log.c)
+- [x] `0xe920` - error_clear_system_flags (moved to error_log.c)
 - [ ] `0xe91d` - Error handler
 - [ ] `0xe933` - Error handler
 - [ ] `0xe957` - Error handler
 - [ ] `0xe95f` - Error handler
 - [ ] `0xe974` - Error handler
 - [ ] `0xea7c` - Error handler
+- [x] `0xed02` - pcie_state_clear_ed02 (moved to pcie.c)
 - [ ] `0xed23` - Bank 1 handler
+- [x] `0xeef9` - pcie_handler_unused_eef9 (moved to pcie.c)
+- [x] `0xef4e` - error_handler_system_unused (moved to error_log.c)
 
 ---
 
@@ -778,6 +818,12 @@ The ASM2464PD uses 8051 bank switching for extended code space:
 - Bank 1: 0x8000-0xFFFF is mapped to code addresses 0x10000-0x17FFF
 
 Functions in Bank 1 are called via dispatch stubs at 0x0300-0x0650.
+
+**Note:** bank1.c has been removed. Bank 1 functions are now organized by functionality:
+- Error handlers in `src/app/error_log.c`
+- Event handlers in `src/app/protocol.c`
+- PCIe handlers in `src/drivers/pcie.c`
+- System init in `src/main.c`
 
 ### Register Map
 Key register regions:

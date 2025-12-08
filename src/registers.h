@@ -325,7 +325,8 @@
 //=============================================================================
 // Interrupt Controller (0xC800-0xC80F)
 //=============================================================================
-#define REG_INT_CTRL_C801       XDATA_REG8(0xC801)
+#define REG_SYS_CTRL_C801       XDATA_REG8(0xC801)
+#define REG_INT_CTRL_C801       REG_SYS_CTRL_C801  // Alias
 #define REG_INT_USB_MASTER      XDATA_REG8(0xC802)
 #define REG_INT_AUX_C805        XDATA_REG8(0xC805)
 #define REG_INT_SYSTEM          XDATA_REG8(0xC806)
@@ -432,7 +433,13 @@
 #define REG_CPU_CTRL_CC3E       XDATA_REG8(0xCC3E)
 #define REG_CPU_CTRL_CC3F       XDATA_REG8(0xCC3F)
 #define REG_CPU_STATUS_CC81     XDATA_REG8(0xCC81)
+#define REG_DMA_CMD_CC88        XDATA_REG8(0xCC88)
+#define REG_DMA_CMD_CC89        XDATA_REG8(0xCC89)
+#define REG_DMA_CMD_CC8A        XDATA_REG8(0xCC8A)
 #define REG_CPU_STATUS_CC91     XDATA_REG8(0xCC91)
+#define REG_DMA_CMD_CC99        XDATA_REG8(0xCC99)  /* DMA command config */
+#define REG_DMA_CMD_CC9A        XDATA_REG8(0xCC9A)  /* DMA command param lo */
+#define REG_DMA_CMD_CC9B        XDATA_REG8(0xCC9B)  /* DMA command param hi */
 #define REG_CPU_STATUS_CC98     XDATA_REG8(0xCC98)
 #define REG_CPU_DMA_CCD8        XDATA_REG8(0xCCD8)
 #define REG_CPU_DMA_CCDA        XDATA_REG8(0xCCDA)
@@ -546,11 +553,13 @@
 //=============================================================================
 #define REG_CMD_STATUS_E402     XDATA_REG8(0xE402)
 #define REG_CMD_CTRL_E403       XDATA_REG8(0xE403)
+#define REG_CMD_CFG_E405        XDATA_REG8(0xE405)
 #define REG_CMD_CONFIG          XDATA_REG8(0xE40B)
 #define REG_CMD_CTRL_E40F       XDATA_REG8(0xE40F)
 #define REG_CMD_CTRL_E410       XDATA_REG8(0xE410)
 #define REG_CMD_BUSY_STATUS     XDATA_REG8(0xE41C)
 #define REG_CMD_TRIGGER         XDATA_REG8(0xE420)
+#define REG_CMD_MODE_E421       XDATA_REG8(0xE421)
 #define REG_CMD_PARAM           XDATA_REG8(0xE422)
 #define REG_CMD_STATUS          XDATA_REG8(0xE423)
 #define REG_CMD_ISSUE           XDATA_REG8(0xE424)

@@ -2189,7 +2189,7 @@ extern void FUN_CODE_5038(void);
 extern void FUN_CODE_504f(void);
 extern void FUN_CODE_0511(uint8_t p1, uint8_t p2, uint8_t p3);
 extern void FUN_CODE_050c(uint8_t param);
-extern void handler_2608(void);
+extern void dma_queue_state_handler(void);
 extern void usb_get_xfer_status(void);
 extern void startup_init(void);
 
@@ -2304,7 +2304,7 @@ void FUN_CODE_2a10(uint8_t param_1)
             /* If no error, update link and call handler */
             if (G_STATE_FLAG_06E6 == 0) {
                 REG_CPU_LINK_CEF3 = 0x08;
-                handler_2608();
+                dma_queue_state_handler();
             }
         }
 

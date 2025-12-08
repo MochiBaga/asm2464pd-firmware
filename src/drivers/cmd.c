@@ -474,3 +474,448 @@ void cmd_setup_with_params(uint8_t issue_val, uint8_t tag_val)
     REG_CMD_TAG = tag_val;
     G_CMD_STATUS = 0x06;
 }
+
+/*
+ * cmd_inc_dptr_write - Increment DPTR and write A
+ * Address: 0x955d-0x9565 (9 bytes)
+ *
+ * Increments DPTR, writes A, then writes 0x01 to 0xCC89.
+ *
+ * Original disassembly:
+ *   955d: inc dptr            ; Increment DPTR
+ *   955e: movx @dptr, a       ; Write A to [DPTR]
+ *   955f: mov dptr, #0xcc89   ; REG_CC89
+ *   9562: mov a, #0x01
+ *   9564: movx @dptr, a       ; Write 0x01
+ *   9565: ret
+ */
+void cmd_write_cc89_01(void)
+{
+    REG_DMA_CMD_CC89 = 0x01;
+}
+
+/*
+ * cmd_calc_slot_addr - Calculate command slot address
+ * Address: 0x9566-0x9583 (30 bytes)
+ *
+ * Computes address = 0xE442 + (G_CMD_SLOT_C1 * 0x20)
+ * Stores high byte to 0x07BF, low byte to 0x07C0.
+ * Returns R6:A as 16-bit address.
+ *
+ * Original disassembly:
+ *   9566: mov dptr, #0x07c1   ; G_CMD_SLOT_C1
+ *   9569: movx a, @dptr
+ *   956a: mov 0xf0, #0x20     ; B = 0x20 (slot size)
+ *   956d: mul ab              ; A = low(slot * 32), B = high
+ *   956e: add a, #0x42        ; A += 0x42
+ *   9570: mov r6, a           ; Save low byte
+ *   9571: mov a, 0xf0         ; Get high byte
+ *   9573: addc a, #0xe4       ; Add base high byte + carry
+ *   9575: mov dptr, #0x07bf   ; G_CMD_ADDR_HI
+ *   9578: movx @dptr, a       ; Store high byte
+ *   9579: inc dptr            ; 0x07C0
+ *   957a: xch a, r6           ; Swap to get low byte
+ *   957b: movx @dptr, a       ; Store low byte
+ *   957c: mov dptr, #0x07bf   ; Read back
+ *   957f: movx a, @dptr       ; A = high byte
+ *   9580: mov r6, a           ; R6 = high
+ *   9581: inc dptr
+ *   9582: movx a, @dptr       ; A = low byte
+ *   9583: ret
+ */
+uint16_t cmd_calc_slot_addr(void)
+{
+    uint8_t slot = G_CMD_SLOT_C1;
+    uint16_t addr = 0xE442 + ((uint16_t)slot * 0x20);
+    G_CMD_ADDR_HI = (uint8_t)(addr >> 8);
+    G_CMD_ADDR_LO = (uint8_t)(addr & 0xFF);
+    return addr;
+}
+
+/*
+ * cmd_config_e40b - Configure command register 0xE40B
+ * Address: 0x9584-0x959f (28 bytes)
+ *
+ * Writes 0x02 to 0xCC89, then sets bits 1, 2, 3 in 0xE40B.
+ *
+ * Original disassembly:
+ *   9584: mov dptr, #0xcc89
+ *   9587: mov a, #0x02
+ *   9589: movx @dptr, a       ; Write 0x02 to CC89
+ *   958a: mov dptr, #0xe40b   ; REG_CMD_CFG_E40B
+ *   958d: movx a, @dptr
+ *   958e: anl a, #0xfd        ; Clear bit 1
+ *   9590: orl a, #0x02        ; Set bit 1
+ *   9592: movx @dptr, a
+ *   9593: movx a, @dptr
+ *   9594: anl a, #0xfb        ; Clear bit 2
+ *   9596: orl a, #0x04        ; Set bit 2
+ *   9598: movx @dptr, a
+ *   9599: movx a, @dptr
+ *   959a: anl a, #0xf7        ; Clear bit 3
+ *   959c: orl a, #0x08        ; Set bit 3
+ *   959e: movx @dptr, a
+ *   959f: ret
+ */
+void cmd_config_e40b(void)
+{
+    uint8_t val;
+
+    /* Write 0x02 to CC89 */
+    REG_DMA_CMD_CC89 = 0x02;
+
+    /* Set bit 1 in E40B */
+    val = REG_CMD_CONFIG;
+    val = (val & 0xFD) | 0x02;
+    REG_CMD_CONFIG = val;
+
+    /* Set bit 2 */
+    val = REG_CMD_CONFIG;
+    val = (val & 0xFB) | 0x04;
+    REG_CMD_CONFIG = val;
+
+    /* Set bit 3 */
+    val = REG_CMD_CONFIG;
+    val = (val & 0xF7) | 0x08;
+    REG_CMD_CONFIG = val;
+}
+
+/*
+ * cmd_call_e120 - Call helper and setup issue
+ * Address: 0x95a0-0x95b5 (22 bytes)
+ *
+ * Sets R5=2, calls 0xE120, then writes R2 to 0xE424, R7 (from 0x03) to 0xE425,
+ * and sets G_CMD_STATUS to 0x06.
+ *
+ * Original disassembly:
+ *   95a0: mov r5, #0x02
+ *   95a2: lcall 0xe120        ; Call helper
+ *   95a5: mov r7, 0x03        ; R7 = IDATA[0x03]
+ *   95a7: mov a, r2
+ *   95a8: mov dptr, #0xe424
+ *   95ab: movx @dptr, a       ; Write R2 to issue
+ *   95ac: inc dptr
+ *   95ad: mov a, r7
+ *   95ae: movx @dptr, a       ; Write R7 to tag
+ *   95af: mov dptr, #0x07c4
+ *   95b2: mov a, #0x06
+ *   95b4: movx @dptr, a
+ *   95b5: ret
+ */
+extern void helper_e120(uint8_t param);  /* External helper */
+void cmd_call_e120_setup(void)
+{
+    /* Call helper with param 2 - would set up R2 return value */
+    helper_e120(0x02);
+
+    /* Write issue and tag from helper result */
+    /* R2 would contain issue value after helper call */
+    /* For now, stub - full implementation requires helper_e120 */
+    G_CMD_STATUS = 0x06;
+}
+
+/*
+ * cmd_clear_cc9a_setup - Clear CC9A and setup CC99
+ * Address: 0x95b6-0x95c8 (19 bytes)
+ *
+ * Writes 0 to 0xCC9A, 0x50 to 0xCC9B, 0x04 then 0x02 to 0xCC99.
+ *
+ * Original disassembly:
+ *   95b6: mov dptr, #0xcc9a
+ *   95b9: clr a
+ *   95ba: movx @dptr, a       ; CC9A = 0
+ *   95bb: inc dptr
+ *   95bc: mov a, #0x50
+ *   95be: movx @dptr, a       ; CC9B = 0x50
+ *   95bf: mov dptr, #0xcc99
+ *   95c2: mov a, #0x04
+ *   95c4: movx @dptr, a       ; CC99 = 0x04
+ *   95c5: mov a, #0x02
+ *   95c7: movx @dptr, a       ; CC99 = 0x02
+ *   95c8: ret
+ */
+void cmd_clear_cc9a_setup(void)
+{
+    REG_DMA_CMD_CC9A = 0x00;
+    REG_DMA_CMD_CC9B = 0x50;
+    REG_DMA_CMD_CC99 = 0x04;
+    REG_DMA_CMD_CC99 = 0x02;
+}
+
+/*
+ * cmd_calc_dptr_offset - Calculate DPTR with offset
+ * Address: 0x95c9-0x95d9 (17 bytes)
+ *
+ * Writes A to [DPTR], then computes new DPTR = R2:R3 + (R5 * 4).
+ *
+ * Original disassembly:
+ *   95c9: movx @dptr, a       ; Write A
+ *   95ca: mov a, r5
+ *   95cb: mov 0xf0, #0x04     ; B = 4
+ *   95ce: mul ab              ; A = R5 * 4
+ *   95cf: mov r7, a           ; R7 = result
+ *   95d0: mov a, r3
+ *   95d1: add a, r7           ; Low = R3 + offset
+ *   95d2: mov 0x82, a         ; DPL
+ *   95d4: mov a, r2
+ *   95d5: addc a, 0xf0        ; High = R2 + B + carry
+ *   95d7: mov 0x83, a         ; DPH
+ *   95d9: ret
+ */
+uint16_t cmd_calc_dptr_offset(uint8_t r2, uint8_t r3, uint8_t r5)
+{
+    uint16_t offset = (uint16_t)r5 * 4;
+    uint16_t addr = ((uint16_t)r2 << 8) | r3;
+    return addr + offset;
+}
+
+/*
+ * cmd_call_e73a_setup - Call helper and set status
+ * Address: 0x95da-0x95ea (17 bytes)
+ *
+ * Calls 0xE73A, sets R7=3, R5=0, calls 0xDD12, then sets G_CMD_STATUS=0x02.
+ *
+ * Original disassembly:
+ *   95da: lcall 0xe73a        ; Call helper
+ *   95dd: mov r7, #0x03
+ *   95df: clr a
+ *   95e0: mov r5, a           ; R5 = 0
+ *   95e1: lcall 0xdd12        ; Call helper
+ *   95e4: mov dptr, #0x07c4
+ *   95e7: mov a, #0x02
+ *   95e9: movx @dptr, a
+ *   95ea: ret
+ */
+extern void helper_e73a(void);
+extern void helper_dd12(uint8_t r7, uint8_t r5);
+void cmd_call_e73a_setup(void)
+{
+    helper_e73a();
+    helper_dd12(0x03, 0x00);
+    G_CMD_STATUS = 0x02;
+}
+
+/*
+ * cmd_extract_bit5 - Extract bit 5 from memory
+ * Address: 0x95eb-0x95f8 (14 bytes)
+ *
+ * Sets DPTR from R7:R6, increments, reads, extracts bit 5.
+ *
+ * Original disassembly:
+ *   95eb: mov r7, a           ; R7 = A
+ *   95ec: mov 0x82, a         ; DPL = A
+ *   95ee: mov 0x83, r6        ; DPH = R6
+ *   95f0: inc dptr
+ *   95f1: movx a, @dptr       ; Read [DPTR+1]
+ *   95f2: swap a              ; Bits 4-7 -> 0-3
+ *   95f3: rrc a               ; Rotate right 3 times
+ *   95f4: rrc a
+ *   95f5: rrc a
+ *   95f6: anl a, #0x01        ; Keep only bit 0
+ *   95f8: ret
+ */
+uint8_t cmd_extract_bit5(uint8_t hi, uint8_t lo)
+{
+    __xdata uint8_t *ptr = (__xdata uint8_t *)(((uint16_t)hi << 8) | lo);
+    uint8_t val = ptr[1];  /* Read [DPTR+1] */
+    return (val >> 5) & 0x01;  /* Extract bit 5 */
+}
+
+/*
+ * cmd_clear_5_bytes - Clear 5 bytes starting at DPTR
+ * Address: 0x95f9-0x9604 (12 bytes)
+ *
+ * Clears 5 consecutive bytes starting at current DPTR.
+ *
+ * Original disassembly:
+ *   95f9: clr a
+ *   95fa: movx @dptr, a
+ *   95fb: inc dptr
+ *   95fc: movx @dptr, a
+ *   95fd: inc dptr
+ *   95fe: movx @dptr, a
+ *   95ff: inc dptr
+ *   9600: movx @dptr, a
+ *   9601: inc dptr
+ *   9602: movx @dptr, a
+ *   9603: inc dptr
+ *   9604: ret
+ */
+void cmd_clear_5_bytes(__xdata uint8_t *ptr)
+{
+    ptr[0] = 0;
+    ptr[1] = 0;
+    ptr[2] = 0;
+    ptr[3] = 0;
+    ptr[4] = 0;
+}
+
+/*
+ * cmd_set_c801_bit4 - Set bit 4 in 0xC801
+ * Address: 0x9617-0x9620 (10 bytes)
+ *
+ * Reads 0xC801, clears bit 4, sets bit 4, writes back.
+ *
+ * Original disassembly:
+ *   9617: mov dptr, #0xc801
+ *   961a: movx a, @dptr
+ *   961b: anl a, #0xef        ; Clear bit 4
+ *   961d: orl a, #0x10        ; Set bit 4
+ *   961f: movx @dptr, a
+ *   9620: ret
+ */
+void cmd_set_c801_bit4(void)
+{
+    uint8_t val = REG_INT_CTRL_C801;
+    val = (val & 0xEF) | 0x10;
+    REG_INT_CTRL_C801 = val;
+}
+
+/*
+ * cmd_clear_cc88_cc8a - Clear bits in CC88 and CC8A
+ * Address: 0x9621-0x962d (13 bytes)
+ *
+ * Clears bits 0-2 in 0xCC88, clears 0xCC8A.
+ *
+ * Original disassembly:
+ *   9621: mov dptr, #0xcc88
+ *   9624: movx a, @dptr
+ *   9625: anl a, #0xf8        ; Clear bits 0-2
+ *   9627: movx @dptr, a
+ *   9628: mov dptr, #0xcc8a
+ *   962b: clr a
+ *   962c: movx @dptr, a       ; CC8A = 0
+ *   962d: ret
+ */
+void cmd_clear_cc88_cc8a(void)
+{
+    uint8_t val = REG_DMA_CMD_CC88;
+    val &= 0xF8;
+    REG_DMA_CMD_CC88 = val;
+    REG_DMA_CMD_CC8A = 0;
+}
+
+/*
+ * cmd_check_op_counter - Check if op counter equals 5
+ * Address: 0x962e-0x9634 (7 bytes)
+ *
+ * Reads G_CMD_OP_COUNTER, XORs with 5 (returns 0 if equal).
+ *
+ * Original disassembly:
+ *   962e: mov dptr, #0x07bd   ; G_CMD_OP_COUNTER
+ *   9631: movx a, @dptr
+ *   9632: xrl a, #0x05        ; A = counter ^ 5
+ *   9634: ret                 ; Z flag set if counter == 5
+ */
+uint8_t cmd_check_op_counter(void)
+{
+    return G_CMD_OP_COUNTER ^ 0x05;  /* Returns 0 if counter == 5 */
+}
+
+/*
+ * cmd_config_e405_e421 - Configure E405 and E421 registers
+ * Address: 0x9635-0x9646 (18 bytes)
+ *
+ * Clears bits 0-2 in 0xE405, then writes (R5 << 4) & 0x70 to 0xE421.
+ *
+ * Original disassembly:
+ *   9635: mov dptr, #0xe405
+ *   9638: movx a, @dptr
+ *   9639: anl a, #0xf8        ; Clear bits 0-2
+ *   963b: movx @dptr, a
+ *   963c: mov r6, 0x05        ; R6 = IDATA[0x05]
+ *   963e: mov a, r6
+ *   963f: swap a              ; Bits 0-3 -> 4-7
+ *   9640: anl a, #0x70        ; Keep bits 4-6
+ *   9642: mov dptr, #0xe421
+ *   9645: movx @dptr, a
+ *   9646: ret
+ */
+void cmd_config_e405_e421(uint8_t param)
+{
+    uint8_t val;
+
+    /* Clear bits 0-2 in E405 */
+    val = REG_CMD_CFG_E405;
+    val &= 0xF8;
+    REG_CMD_CFG_E405 = val;
+
+    /* Write (param << 4) & 0x70 to E421 */
+    val = (param << 4) & 0x70;
+    REG_CMD_MODE_E421 = val;
+}
+
+/*
+ * cmd_clear_e4xx_bit4 - Clear bit 4 in register and bits 0-2
+ * Address: 0x9647-0x964e (8 bytes)
+ *
+ * Reads from DPTR, clears bit 4, writes back, reads again, clears bits 0-2.
+ *
+ * Original disassembly:
+ *   9647: movx a, @dptr
+ *   9648: anl a, #0xef        ; Clear bit 4
+ *   964a: movx @dptr, a
+ *   964b: movx a, @dptr
+ *   964c: anl a, #0xf8        ; Clear bits 0-2
+ *   964e: ret                 ; Returns in A
+ */
+uint8_t cmd_clear_bits(__xdata uint8_t *reg)
+{
+    uint8_t val = *reg;
+    val &= 0xEF;  /* Clear bit 4 */
+    *reg = val;
+    val = *reg;
+    val &= 0xF8;  /* Clear bits 0-2 */
+    return val;
+}
+
+/*
+ * cmd_write_cc89_02 - Write 0x02 to CC89
+ * Address: 0x964f-0x9655 (7 bytes)
+ *
+ * Original disassembly:
+ *   964f: mov dptr, #0xcc89
+ *   9652: mov a, #0x02
+ *   9654: movx @dptr, a
+ *   9655: ret
+ */
+void cmd_write_cc89_02(void)
+{
+    REG_DMA_CMD_CC89 = 0x02;
+}
+
+/*
+ * cmd_extract_bits67 - Extract bits 6-7 and shift to 0-1
+ * Address: 0x9656-0x965c (7 bytes)
+ *
+ * Takes A, swaps nibbles, rotates right twice, masks to 2 bits.
+ *
+ * Original disassembly:
+ *   9656: swap a
+ *   9657: rrc a
+ *   9658: rrc a
+ *   9659: anl a, #0x03
+ *   965b: movx @dptr, a
+ *   965c: ret
+ */
+uint8_t cmd_extract_bits67(uint8_t val)
+{
+    return (val >> 6) & 0x03;
+}
+
+/*
+ * cmd_setup_delay - Setup delay with params and call DD12
+ * Address: 0x9664-0x966a (7 bytes)
+ *
+ * Sets R5=0, R7=0x10, jumps to 0xDD12.
+ *
+ * Original disassembly:
+ *   9664: clr a
+ *   9665: mov r5, a           ; R5 = 0
+ *   9666: mov r7, #0x10
+ *   9668: ljmp 0xdd12         ; Tail call
+ */
+void cmd_setup_delay(void)
+{
+    helper_dd12(0x10, 0x00);
+}

@@ -302,6 +302,9 @@ __idata __at(0x72) extern uint8_t I_BUF_CTRL_GLOBAL; /* Buffer control global */
 //=============================================================================
 #define G_CMD_SLOT_INDEX        XDATA_VAR8(0x07B7)  /* Command slot index (3-bit) */
 #define G_CMD_OP_COUNTER        XDATA_VAR8(0x07BD)  /* Command operation counter */
+#define G_CMD_ADDR_HI           XDATA_VAR8(0x07BF)  /* Computed slot address high */
+#define G_CMD_ADDR_LO           XDATA_VAR8(0x07C0)  /* Computed slot address low */
+#define G_CMD_SLOT_C1           XDATA_VAR8(0x07C1)  /* Slot index for address calc */
 #define G_CMD_STATE             XDATA_VAR8(0x07C3)  /* Command state (3-bit) */
 #define G_CMD_STATUS            XDATA_VAR8(0x07C4)  /* Command status byte */
 #define G_CMD_MODE              XDATA_VAR8(0x07CA)  /* Command mode (1=mode1, 2=mode2, 3=mode3) */

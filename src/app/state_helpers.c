@@ -879,7 +879,7 @@ void xdata_load_dword_noarg(void)
  *   Sets DAT_EXTMEM_9018 = (param == 0) ? 3 : 2
  *   Sets REG_USB_DATA_L = (param == 0) ? 0xfe : 0
  */
-void handler_d07f(uint8_t param)
+void usb_mode_config_d07f(uint8_t param)
 {
     uint8_t mode_val;
     uint8_t data_val;
@@ -936,7 +936,7 @@ void handler_d07f(uint8_t param)
  *   REG_NVME_QUEUE_CFG &= 0xf7 (clear bit 3)
  *   Calls FUN_CODE_bba8, FUN_CODE_bbaf, FUN_CODE_bb7e, etc.
  */
-void handler_e214(void)
+void nvme_queue_config_e214(void)
 {
     uint8_t val;
 
@@ -965,7 +965,7 @@ void handler_e214(void)
  *
  * From ghidra: Complex state handling based on param value.
  */
-void handler_e8ef(uint8_t param)
+void power_init_complete_e8ef(uint8_t param)
 {
     (void)param;
     /* e8ef: Write 4 then 2 to 0xCC11 */
@@ -1117,7 +1117,7 @@ extern void helper_0421(uint8_t param);
  * - 0x55: Loop counter
  * - 0x56: Computed queue position
  */
-void handler_2608(void)
+void dma_queue_state_handler(void)
 {
     __idata uint8_t *i_entry_idx = (__idata uint8_t *)0x53;
     __idata uint8_t *i_queue_lo = (__idata uint8_t *)0x51;
