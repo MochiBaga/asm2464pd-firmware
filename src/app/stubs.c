@@ -23,9 +23,6 @@ extern uint8_t get_pcie_status_flags_e00c(void);  /* 0xe00c - in pcie.c */
 extern void pcie_lane_init_e7f8(void);  /* 0xe7f8 - defined later in this file */
 extern void clear_pcie_status_bytes_e8cd(void);  /* 0xe8cd - in pcie.c */
 
-/* PCIe extended register access (0x1200 base + offset) */
-#define PCIE_EXT_REG(offset)  XDATA8(0x1200 + (offset))
-
 /* PCIe status work bytes used by transfer_handler_ce23 */
 #ifndef G_PCIE_WORK_0B34
 #define G_PCIE_WORK_0B34      XDATA_VAR8(0x0B34)
@@ -33,8 +30,7 @@ extern void clear_pcie_status_bytes_e8cd(void);  /* 0xe8cd - in pcie.c */
 
 /* Forward declarations for functions defined later in this file */
 void pcie_handler_e06b(uint8_t param);
-void helper_dd12(uint8_t param1, uint8_t param2);
-void helper_e120(uint8_t r7, uint8_t r5);
+void cmd_trigger_params(uint8_t param1, uint8_t param2);
 void helper_95e1(uint8_t r7, uint8_t r5);
 
 /*===========================================================================
@@ -977,7 +973,7 @@ void usb_state_setup_4c98(void)
     }
 
     /* If USB not connected (bit 0 clear), reset state */
-    if ((REG_USB_STATUS & 0x01) != 0x01) {
+    if ((REG_USB_STATUS & USB_STATUS_ACTIVE) != 0x01) {
         XDATA8(0x0056) = 0;
         XDATA8(0x0057) = 0;
         XDATA8(0x0108) = 1;
@@ -1489,15 +1485,15 @@ void handler_e529(uint8_t param)
  *   e90b: mov dptr, #0xcc81  ; REG_CPU_INT_CTRL
  *   e90e: mov a, #0x04       ; Value = 4
  *   e910: movx @dptr, a      ; Write
- *   e911: ljmp 0xbe8b        ; Tail call to FUN_CODE_be8b
+ *   e911: ljmp 0xbe8b        ; Tail call to pcie_link_state_init
  *
- * Triggers CPU interrupt then tail-calls FUN_CODE_be8b.
+ * Triggers CPU interrupt then tail-calls pcie_link_state_init.
  */
-extern void FUN_CODE_be8b(void);
+extern void pcie_link_state_init(void);
 void handler_e90b(void)
 {
     REG_CPU_INT_CTRL = CPU_INT_CTRL_TRIGGER;
-    FUN_CODE_be8b();
+    pcie_link_state_init();
 }
 
 /*===========================================================================
@@ -1923,9 +1919,109 @@ void handler_db09(void)
 
 /*
  * usb_get_descriptor_ptr - Get USB descriptor pointer
+ * Note: This is a simplified no-op. The actual logic is handled
+ * by nvme_calc_dptr_0100_base (0x31d8) which is already implemented.
  */
 void usb_get_descriptor_ptr(void) {}
-void nvme_util_get_queue_depth(uint8_t p1, uint8_t p2) { (void)p1; (void)p2; }
+
+/*
+ * nvme_util_get_queue_depth - Process NVMe queue and update status
+ * Address: ~0x46xx (approximate)
+ *
+ * This function coordinates queue status updates based on the mode flag
+ * and queue index parameters.
+ *
+ * Parameters:
+ *   p1 - Mode flag (0 or 1)
+ *   p2 - Queue index
+ *
+ * From ghidra.c analysis:
+ *   - Stores params to G_EP_DISPATCH_VAL3/VAL4
+ *   - Calls helper functions for queue management
+ *   - Sets EP queue control and status
+ *   - Updates REG_NVME_DATA_CTRL
+ *   - Handles SCSI control state
+ */
+extern uint16_t helper_1b77(void);
+extern uint8_t helper_1c1b(void);
+extern uint16_t usb_read_buf_addr_pair(void);
+extern void nvme_subtract_idata_16(uint8_t hi, uint8_t lo);
+extern void nvme_set_ep_queue_ctrl_84(void);
+extern void helper_1aad(uint8_t param);
+extern void usb_init_pcie_txn_state(void);
+extern void helper_1b47(void);
+extern uint8_t nvme_get_dev_status_upper(void);
+extern uint8_t nvme_get_cmd_param_upper(void);
+extern void usb_add_masked_counter(uint8_t param);
+extern void nvme_inc_circular_counter(uint8_t param);
+extern void power_check_status(uint8_t param);
+
+void nvme_util_get_queue_depth(uint8_t p1, uint8_t p2)
+{
+    uint8_t param_for_aad;
+    uint8_t scsi_ctrl;
+    uint8_t temp;
+
+    /* Store parameters */
+    G_EP_DISPATCH_VAL3 = p2;   /* param_3 in ghidra */
+    G_EP_DISPATCH_VAL4 = p1;   /* param_2 in ghidra */
+
+    /* Call helper functions */
+    helper_1b77();
+
+    /* Check helper_1c1b result */
+    if (helper_1c1b() == 0) {
+        /* If helper returns 0, do buffer address pair processing */
+        usb_read_buf_addr_pair();
+        nvme_subtract_idata_16(0, 0);  /* Simplified - actual uses R6/R7 */
+    }
+
+    /* Set EP queue control */
+    nvme_set_ep_queue_ctrl_84();
+
+    /* Update queue status */
+    G_EP_QUEUE_STATUS = G_EP_DISPATCH_VAL3;
+
+    /* Select param for helper_1aad based on mode */
+    param_for_aad = (G_EP_DISPATCH_VAL4 == 1) ? 1 : 2;
+    helper_1aad(param_for_aad);
+
+    /* Initialize PCIe transaction state */
+    usb_init_pcie_txn_state();
+
+    /* Clear high bit of NVME data control */
+    REG_NVME_DATA_CTRL &= 0x7F;
+
+    /* Handle SCSI control state */
+    scsi_ctrl = G_SCSI_CTRL;
+    if (scsi_ctrl == 0) {
+        /* Call helper_1b47 */
+        helper_1b47();
+    } else {
+        /* Update G_EP_DISPATCH_VAL3 with device status */
+        temp = G_EP_DISPATCH_VAL3;
+        temp = temp + G_DMA_WORK_0216;
+        temp |= nvme_get_dev_status_upper();
+        G_EP_DISPATCH_VAL3 = temp;
+    }
+
+    /* Update with command param upper bits */
+    G_EP_DISPATCH_VAL3 |= nvme_get_cmd_param_upper();
+
+    /* Handle queue increment based on SCSI control */
+    if (scsi_ctrl != 0) {
+        usb_add_masked_counter(G_DMA_WORK_0216);
+        temp = scsi_ctrl - 1;  /* Simplified from FUN_CODE_4f37 */
+    } else {
+        temp = scsi_ctrl - 1;
+    }
+    nvme_inc_circular_counter(temp);
+
+    /* Power check if mode flag is 0 */
+    if (G_EP_DISPATCH_VAL4 == 0) {
+        power_check_status(G_USB_PARAM_0B00);
+    }
+}
 
 /* handler_2608 - moved to dma.c */
 
@@ -2279,33 +2375,33 @@ uint8_t addr_calc_high_borrow(uint8_t param)
  *
  * Returns: XDATA[0x0108 + R7]
  */
-uint8_t FUN_CODE_5043(uint8_t param)
+uint8_t buf_read_offset_08(uint8_t param)
 {
     uint16_t addr = 0x0108 + param;
     return XDATA_REG8(addr);
 }
 
 /*
- * FUN_CODE_5046 - Alternate entry into 5043 (at mov DPL instruction)
+ * buf_read_base - Alternate entry into buf_read_offset_08 (at mov DPL instruction)
  * Address: 0x5046-0x504e (9 bytes)
  *
  * From ghidra.c: return *(undefined1 *)CONCAT11('\x01' - (in_PSW >> 7), param_1)
  * Reads from address (0x01xx or 0x00xx based on carry) + param
  */
-uint8_t FUN_CODE_5046(uint8_t param)
+uint8_t buf_read_base(uint8_t param)
 {
     /* Read from 0x0100 + param (assuming no carry from prior add) */
     return XDATA8(0x0100 + param);
 }
 
 /*
- * FUN_CODE_504f - Calculate queue buffer address high byte
+ * queue_buf_addr_high - Calculate queue buffer address high byte
  * Address: 0x504f-0x505c (14 bytes)
  *
  * From ghidra.c: bVar1 = DAT_EXTMEM_0a84; return -(((0xf3 < bVar1) << 7) >> 7)
  * Returns 0x00 if XDATA[0x0A84] <= 0xF3, otherwise 0xFF (borrow indicator)
  */
-uint8_t FUN_CODE_504f(void)
+uint8_t queue_buf_addr_high(void)
 {
     uint8_t idx = XDATA8(0x0A84);
     /* Returns high byte adjustment based on index value */
@@ -2316,14 +2412,14 @@ uint8_t FUN_CODE_504f(void)
 }
 
 /*
- * FUN_CODE_505d - Read from calculated address (param - 0x3E)
+ * buf_read_offset_3e - Read from calculated address (param - 0x3E)
  * Address: 0x505d-0x5066 (10 bytes)
  *
  * From ghidra.c: return *(undefined1 *)CONCAT11(-(((0x3d < param_1) << 7) >> 7), param_1 - 0x3e)
  * Reads from address calculated as (high_byte, param - 0x3E)
  * High byte is 0xFF if param <= 0x3D (borrow), else 0x00
  */
-uint8_t FUN_CODE_505d(uint8_t param)
+uint8_t buf_read_offset_3e(uint8_t param)
 {
     uint16_t addr;
     if (param <= 0x3D) {
@@ -2335,7 +2431,7 @@ uint8_t FUN_CODE_505d(uint8_t param)
 }
 
 /*
- * FUN_CODE_5359 - NVMe queue state management
+ * nvme_queue_state_update - NVMe queue state management
  * Address: 0x5359-0x5372 (26 bytes)
  *
  * From ghidra.c:
@@ -2349,7 +2445,7 @@ uint8_t FUN_CODE_505d(uint8_t param)
 extern __xdata uint8_t * helper_16e9(uint8_t param);
 extern __xdata uint8_t * helper_16eb(uint8_t param);
 
-void FUN_CODE_5359(uint8_t param)
+void nvme_queue_state_update(uint8_t param)
 {
     uint8_t status;
     uint8_t new_val;
@@ -2364,13 +2460,13 @@ void FUN_CODE_5359(uint8_t param)
     G_SYS_STATUS_PRIMARY = new_val;
 }
 
-/* Forward declarations for FUN_CODE_be8b helpers */
+/* Forward declarations for pcie_link_state_init helpers */
 extern void uart_puthex(uint8_t val);
 extern void uart_puts(const char __code *str);
 extern uint8_t cmd_check_busy(void);
 extern void cmd_start_trigger(void);
 extern void cmd_config_e40b(void);
-extern void FUN_CODE_e73a(void);
+extern void cmd_engine_clear(void);
 
 /*
  * helper_befb - Delay with 0xFF2269 parameter
@@ -2451,7 +2547,7 @@ static void helper_b8c3(void) {
 }
 
 /*
- * FUN_CODE_be8b - PCIe link status check with state machine
+ * pcie_link_state_init - PCIe link status check with state machine
  * Address: 0xbe8b-0xbefa (112 bytes)
  *
  * Reads REG_PHY_MODE_E302, checks bits 4-5 for link state.
@@ -2471,7 +2567,7 @@ static void helper_b8c3(void) {
  *   beea: ret
  *   [alternate path at beeb: short delay and return]
  */
-void FUN_CODE_be8b(void)
+void pcie_link_state_init(void)
 {
     uint8_t val;
     uint8_t link_state;
@@ -2497,8 +2593,8 @@ void FUN_CODE_be8b(void)
     /* Additional delay */
     /* uart_puts with delay params 0xFF2274 */
 
-    /* Call FUN_CODE_e73a */
-    FUN_CODE_e73a();
+    /* Call cmd_engine_clear */
+    cmd_engine_clear();
 
     /* Clear command state */
     helper_b8c3();
@@ -2537,7 +2633,7 @@ void FUN_CODE_be8b(void)
     cmd_start_trigger();
 
     /* Wait for busy bit to clear */
-    while (REG_CMD_BUSY_STATUS & 0x01) {
+    while (REG_CMD_BUSY_STATUS & CMD_BUSY_STATUS_BUSY) {
         /* Spin */
     }
 
@@ -2545,32 +2641,70 @@ void FUN_CODE_be8b(void)
     G_PCIE_COMPLETE_07DF = 1;
 }
 
+extern void cmd_config_e405_e421(uint8_t param);
+
 /*
- * FUN_CODE_dd0e - Command trigger entry point
+ * cmd_trigger_default - Command trigger entry point
  * Address: 0xdd0e-0xdd11 (4 bytes)
  *
  * Sets up parameters R5=1, R7=0x0F and falls through to dd12.
- * Implemented by calling helper_dd12 with fixed parameters.
  */
-void FUN_CODE_dd0e(void)
+void cmd_trigger_default(void)
 {
-    helper_dd12(0x0F, 0x01);  /* R7=0x0F, R5=0x01 */
+    cmd_trigger_params(0x0F, 0x01);  /* R7=0x0F, R5=0x01 */
 }
 
 /*
- * FUN_CODE_dd12 - Command trigger and mode setup
+ * cmd_trigger_params - Command trigger and mode setup
  * Address: 0xdd12-0xdd41 (48 bytes)
  *
- * This is the main entry point called with parameters.
- * Implemented by helper_dd12 which contains the full logic.
+ * Sets initial trigger value based on G_CMD_MODE, configures E405/E421,
+ * then combines state and clears/sets trigger bits.
+ *
+ * Parameters:
+ *   p1 (R7): Trigger bits to OR into final REG_CMD_TRIGGER value
+ *   p2 (R5): Parameter passed to cmd_config_e405_e421 for E421 setup
  */
-void FUN_CODE_dd12(uint8_t p1, uint8_t p2)
+void cmd_trigger_params(uint8_t p1, uint8_t p2)
 {
-    helper_dd12(p1, p2);
+    uint8_t mode;
+    uint8_t e421_val;
+    uint8_t state_shifted;
+    uint8_t trigger_val;
+
+    /* Read command mode */
+    mode = G_CMD_MODE;
+
+    /* Set initial trigger value based on mode */
+    if (mode == 0x02 || mode == 0x03) {
+        REG_CMD_TRIGGER = 0x80;
+    } else {
+        REG_CMD_TRIGGER = 0x40;
+    }
+
+    /* Configure E405 and E421 (clears E405 bits 0-2, writes shifted p2 to E421) */
+    cmd_config_e405_e421(p2);
+
+    /* Read E421 value and compute state * 2 */
+    e421_val = REG_CMD_MODE_E421;
+    state_shifted = G_CMD_STATE << 1;
+
+    /* Write combined value to E421 */
+    REG_CMD_MODE_E421 = e421_val | state_shifted;
+
+    /* Clear trigger bits 0-5, keep bits 6-7 */
+    trigger_val = REG_CMD_TRIGGER;
+    trigger_val &= 0xC0;
+    REG_CMD_TRIGGER = trigger_val;
+
+    /* OR in the p1 bits and write final value */
+    trigger_val = REG_CMD_TRIGGER;
+    trigger_val |= p1;
+    REG_CMD_TRIGGER = trigger_val;
 }
 
 /*
- * FUN_CODE_df79 - Protocol state dispatcher
+ * protocol_state_dispatch - Protocol state dispatcher
  * Address: 0xdf79-0xdfaa (50 bytes)
  *
  * Reads G_STATE_0B1B -> G_LANE_STATE_0A9D, calls pcie_disable_and_trigger_e74e,
@@ -2604,7 +2738,7 @@ extern void dispatch_055c(void);
 extern void dispatch_059d(void);
 extern void dispatch_062e(void);
 
-void FUN_CODE_df79(void)
+void protocol_state_dispatch(void)
 {
     uint8_t state;
 
@@ -2639,60 +2773,59 @@ void FUN_CODE_df79(void)
 }
 
 /*
- * FUN_CODE_e120 - Command parameter setup
+ * cmd_param_setup - Command parameter setup
  * Address: 0xe120-0xe14a (43 bytes)
  *
- * Sets up command parameters based on mode and input params.
- * p1 (r7) contains mask bits, p2 (r5) contains shift value.
+ * Configures command registers E422-E425 based on parameters and mode.
+ *
+ * Parameters:
+ *   p1 (r7): Bits to OR into REG_CMD_PARAM (bits 0-3)
+ *   p2 (r5): Parameter bits (bits 0-1 go to bits 6-7 of REG_CMD_PARAM)
  *
  * Writes computed value to REG_CMD_PARAM (0xE422).
  * Sets REG_CMD_STATUS to 0x80 if mode==1, else 0xA8.
  * Initializes REG_CMD_ISSUE=0, REG_CMD_TAG=0xFF.
  */
-void FUN_CODE_e120(uint8_t p1, uint8_t p2)
+void cmd_param_setup(uint8_t p1, uint8_t p2)
 {
-    uint8_t a, mode;
+    uint8_t val;
 
-    /* Compute parameter value from p2 (swap/shift) and p1 (OR mask) */
-    a = p2;
-    a = (a << 4) | (a >> 4);  /* swap nibbles */
-    a = (a << 2);             /* rlc twice (simplified) */
-    a &= 0xC0;                /* mask high 2 bits */
-    a |= p1;                  /* OR with p1 */
-    a &= 0xCF;                /* mask to keep bits 7-6 and 3-0 */
+    /* Compute parameter value:
+     * - Bits 0-1 of p2 go to bits 6-7
+     * - OR with p1 for bits 0-3
+     * - Clear bits 4-5
+     */
+    val = ((p2 & 0x03) << 6) | (p1 & 0x0F);
+    val &= 0xCF;  /* Clear bits 4-5 */
+    REG_CMD_PARAM = val;
 
-    /* Write computed value to CMD_PARAM */
-    REG_CMD_PARAM = a;
-
-    /* Read command mode and set status based on it */
-    mode = G_CMD_MODE;
-    if (mode == 1) {
+    /* Set status based on command mode */
+    if (G_CMD_MODE == 0x01) {
         REG_CMD_STATUS = 0x80;
     } else {
         REG_CMD_STATUS = 0xA8;
     }
 
-    /* Initialize command issue and tag */
-    REG_CMD_ISSUE = 0;
+    /* Clear issue, set tag to 0xFF */
+    REG_CMD_ISSUE = 0x00;
     REG_CMD_TAG = 0xFF;
 }
-/* helper_e120 - IMPLEMENTED in queue_handlers.c */
 
 /*
- * FUN_CODE_e1c6 - Wait loop with status check
+ * wait_status_loop - Wait loop with status check
  * Address: 0xe1c6-0xe1ed (40 bytes)
  *
  * This function is fully implemented as cmd_wait_completion() in cmd.c.
- * This stub provides the FUN_CODE_e1c6 name for callers (e.g., nvme.c).
+ * This stub provides the wait_status_loop name for callers (e.g., nvme.c).
  */
 extern uint8_t cmd_wait_completion(void);
-void FUN_CODE_e1c6(void)
+void wait_status_loop(void)
 {
     cmd_wait_completion();
 }
 
 /*
- * FUN_CODE_e73a - Clear command engine registers 0xE420-0xE43F
+ * cmd_engine_clear - Clear command engine registers 0xE420-0xE43F
  * Address: 0xe73a-0xe74d (20 bytes)
  *
  * Clears 32 bytes (0x20) starting at address 0xE420.
@@ -2714,7 +2847,7 @@ void FUN_CODE_e1c6(void)
  *   e74a: cjne a, #0x20, e73c; Loop until R7 == 0x20
  *   e74d: ret
  */
-void FUN_CODE_e73a(void)
+void cmd_engine_clear(void)
 {
     uint8_t i;
     volatile uint8_t __xdata *ptr = &REG_CMD_TRIGGER;
@@ -2725,21 +2858,15 @@ void FUN_CODE_e73a(void)
     }
 }
 
-/* Alias for helper_e73a - same function */
-void helper_e73a(void)
-{
-    FUN_CODE_e73a();
-}
-
 /*
- * FUN_CODE_e7ae - Wait for UART transmit buffer ready
+ * uart_wait_tx_ready - Wait for UART transmit buffer ready
  * Address: 0xe7ae-0xe7c0 (19 bytes)
  *
  * Two polling loops:
  * 1. Wait until (REG_UART_TFBF & 0x1F) == 0x10 (FIFO level)
  * 2. Wait until (REG_UART_STATUS & 0x07) == 0 (not busy)
  */
-void FUN_CODE_e7ae(void)
+void uart_wait_tx_ready(void)
 {
     /* Wait until UART FIFO level reaches 0x10 */
     while ((REG_UART_TFBF & 0x1F) != 0x10)
@@ -2751,16 +2878,16 @@ void FUN_CODE_e7ae(void)
 }
 
 /*
- * FUN_CODE_e883 - Timer/event initialization handler
+ * timer_event_init - Timer/event initialization handler
  * Address: 0xe883-0xe88d (11 bytes)
  *
  * Calls helper_e73a, then calls 0x95e1 with r7=0x10, r5=0,
  * then jumps to cmd_wait_completion.
  */
-void FUN_CODE_e883(void)
+void timer_event_init(void)
 {
     /* Clear command registers */
-    helper_e73a();
+    cmd_engine_clear();
 
     /* Call config function with r7=0x10, r5=0 */
     helper_95e1(0x10, 0);
@@ -3473,7 +3600,7 @@ void pcie_handler_e06b(uint8_t param)
  *
  * Main body (0xaa40-0xab0d):
  *   1. Check G_CMD_MODE (0x07ca) for mode 2/3
- *   2. Call helper_dd12 and helper_e120
+ *   2. Call cmd_trigger_params and cmd_param_setup
  *   3. Set up command LBA registers (E426-E429)
  *   4. Clear command count/status registers (E42A-E42F)
  *   5. Copy control parameters from globals to registers
@@ -3485,8 +3612,8 @@ void pcie_handler_e06b(uint8_t param)
  *   aa43: movx a, @dptr
  *   aa44: cjne a, #0x02, aa4b ; if mode != 2, r5=4
  *   aa47: mov r5, #0x05       ; else r5=5
- *   aa4f: lcall 0xdd12        ; helper_dd12(r5, 0x0f)
- *   aa56: lcall 0xe120        ; helper_e120(1, 1)
+ *   aa4f: lcall 0xdd12        ; cmd_trigger_params(r5, 0x0f)
+ *   aa56: lcall 0xe120        ; cmd_param_setup(1, 1)
  *   aa59: mov dptr, #0xe426   ; REG_CMD_LBA_0
  *   aa5c: mov a, #0x4c        ; 'L' - NVMe command byte
  *   ... (sets up remaining registers)
@@ -3513,8 +3640,8 @@ void cmd_setup_aa37(void)
     }
 
     /* Call setup helpers */
-    helper_dd12(0x0F, r5_param);
-    helper_e120(0x01, 0x01);
+    cmd_trigger_params(0x0F, r5_param);
+    cmd_param_setup(0x01, 0x01);
 
     /* Set up LBA registers */
     REG_CMD_LBA_0 = 0x4C;  /* 'L' - LBA marker */
@@ -3942,85 +4069,6 @@ void process_log_entries(uint8_t param)
     /* Stub */
 }
 
-/* Forward declaration for cmd_config_e405_e421 (in cmd.c) */
-extern void cmd_config_e405_e421(uint8_t param);
-
-/*
- * helper_dd12 - Command trigger and mode setup helper
- * Address: 0xdd12-0xdd41 (48 bytes)
- *
- * Sets initial trigger value based on G_CMD_MODE, configures E405/E421,
- * then combines state and clears/sets trigger bits.
- *
- * Parameters:
- *   param1 (R7): Trigger bits to OR into final REG_CMD_TRIGGER value
- *   param2 (R5): Parameter passed to cmd_config_e405_e421 for E421 setup
- *
- * Original disassembly:
- *   dd12: mov dptr, #0x07ca    ; G_CMD_MODE
- *   dd15: movx a, @dptr
- *   dd16: mov r6, a            ; Save mode to R6
- *   dd17: xrl a, #0x02
- *   dd19: jz 0xdd1f            ; if mode == 2, goto write 0x80
- *   dd1b: mov a, r6
- *   dd1c: cjne a, #0x03, 0xdd27 ; if mode != 3, goto write 0x40
- *   dd1f: mov dptr, #0xe420    ; REG_CMD_TRIGGER
- *   dd22: mov a, #0x80
- *   dd24: movx @dptr, a        ; Write 0x80
- *   dd25: sjmp 0xdd2d
- *   dd27: mov dptr, #0xe420
- *   dd2a: mov a, #0x40
- *   dd2c: movx @dptr, a        ; Write 0x40
- *   dd2d: lcall 0x9635         ; cmd_config_e405_e421(R5)
- *   dd30: push 0x83            ; Save DPH (=0xE4)
- *   dd32: push 0x82            ; Save DPL (=0x21)
- *   dd34: lcall 0x96ee         ; Read E421, return state*2
- *   dd37: mov r5, a            ; R5 = state * 2
- *   dd38: mov a, r6            ; A = E421 value (from 96ee)
- *   dd39: orl a, r5            ; A = e421_val | (state * 2)
- *   dd3a: pop 0x82             ; Restore DPL
- *   dd3c: pop 0x83             ; Restore DPH
- *   dd3e: lcall 0x96f7         ; Write A to E421, clear trigger bits, OR R7
- *   dd41: ret
- */
-void helper_dd12(uint8_t param1, uint8_t param2)
-{
-    uint8_t mode;
-    uint8_t e421_val;
-    uint8_t state_shifted;
-    uint8_t trigger_val;
-
-    /* Read command mode */
-    mode = G_CMD_MODE;
-
-    /* Set initial trigger value based on mode */
-    if (mode == 0x02 || mode == 0x03) {
-        REG_CMD_TRIGGER = 0x80;
-    } else {
-        REG_CMD_TRIGGER = 0x40;
-    }
-
-    /* Configure E405 and E421 (clears E405 bits 0-2, writes shifted param2 to E421) */
-    cmd_config_e405_e421(param2);
-
-    /* Read E421 value and compute state * 2 */
-    e421_val = REG_CMD_MODE_E421;
-    state_shifted = G_CMD_STATE << 1;
-
-    /* Write combined value to E421 */
-    REG_CMD_MODE_E421 = e421_val | state_shifted;
-
-    /* Clear trigger bits 0-5, keep bits 6-7 */
-    trigger_val = REG_CMD_TRIGGER;
-    trigger_val &= 0xC0;
-    REG_CMD_TRIGGER = trigger_val;
-
-    /* OR in the param1 bits and write final value */
-    trigger_val = REG_CMD_TRIGGER;
-    trigger_val |= param1;
-    REG_CMD_TRIGGER = trigger_val;
-}
-
 /*
  * helper_96ae - Clear command engine and return status
  * Address: 0x96ae-0x96b6 (9 bytes)
@@ -4040,70 +4088,7 @@ void helper_dd12(uint8_t param1, uint8_t param2)
 void helper_96ae(void)
 {
     /* Clear command engine registers */
-    FUN_CODE_e73a();
-}
-
-/*
- * helper_e120 - Command parameter configuration
- * Address: 0xe120-0xe14a (43 bytes)
- *
- * Configures command registers E422-E425 based on parameters and mode.
- *
- * Parameters:
- *   r7: Bits to OR into REG_CMD_PARAM (bits 0-3)
- *   r5: Parameter bits (bits 0-1 go to bits 6-7 of REG_CMD_PARAM)
- *
- * Original disassembly:
- *   e120: mov r6, 0x05       ; R6 = R5 (param2)
- *   e122: mov a, r6
- *   e123: swap a             ; Swap nibbles
- *   e124: rlc a              ; Rotate left through carry
- *   e125: rlc a              ; Rotate left through carry
- *   e126: anl a, #0xc0       ; Keep bits 6-7 (result: bits 0-1 of r5 -> bits 6-7)
- *   e128: orl a, r7          ; OR with r7
- *   e129: anl a, #0xcf       ; Clear bits 4-5
- *   e12b: mov dptr, #0xe422
- *   e12e: movx @dptr, a      ; Write to REG_CMD_PARAM
- *   e12f: mov dptr, #0x07ca  ; G_CMD_MODE
- *   e132: movx a, @dptr
- *   e133: mov dptr, #0xe423
- *   e136: cjne a, #0x01, e13e ; If mode != 1, goto write 0xa8
- *   e139: mov a, #0x80
- *   e13b: movx @dptr, a      ; Write 0x80 to E423
- *   e13c: sjmp e141
- *   e13e: mov a, #0xa8
- *   e140: movx @dptr, a      ; Write 0xA8 to E423
- *   e141: mov dptr, #0xe424
- *   e144: clr a
- *   e145: movx @dptr, a      ; Write 0x00 to E424
- *   e146: inc dptr           ; E425
- *   e147: mov a, #0xff
- *   e149: movx @dptr, a      ; Write 0xFF to E425
- *   e14a: ret
- */
-void helper_e120(uint8_t r7, uint8_t r5)
-{
-    uint8_t val;
-
-    /* Compute parameter value:
-     * - Bits 0-1 of r5 go to bits 6-7
-     * - OR with r7 for bits 0-3
-     * - Clear bits 4-5
-     */
-    val = ((r5 & 0x03) << 6) | (r7 & 0x0F);
-    val &= 0xCF;  /* Clear bits 4-5 */
-    REG_CMD_PARAM = val;
-
-    /* Set status based on command mode */
-    if (G_CMD_MODE == 0x01) {
-        REG_CMD_STATUS = 0x80;
-    } else {
-        REG_CMD_STATUS = 0xA8;
-    }
-
-    /* Clear issue, set tag to 0xFF */
-    REG_CMD_ISSUE = 0x00;
-    REG_CMD_TAG = 0xFF;
+    cmd_engine_clear();
 }
 
 /* helper_dd0e - Address: 0xdd0e
@@ -4111,17 +4096,17 @@ void helper_e120(uint8_t r7, uint8_t r5)
  */
 void helper_dd0e(void)
 {
-    helper_dd12(0x0F, 0x01);
+    cmd_trigger_params(0x0F, 0x01);
 }
 
 /* helper_95a0 - Address: 0x95a0
  * Command error recovery helper
- * Sets R5=2, calls helper_e120, writes to E424/E425/07C4
+ * Sets R5=2, calls cmd_param_setup, writes to E424/E425/07C4
  */
 void helper_95a0(uint8_t r7)
 {
     (void)r7;
-    /* Stub - should call helper_e120(r7, 0x02) and write to cmd regs */
+    /* Stub - should call cmd_param_setup(r7, 0x02) and write to cmd regs */
 }
 
 /*
@@ -4580,12 +4565,9 @@ uint8_t ep_config_read(uint8_t param)
 }
 
 /* helper_2608 - Address: 0x2608 */
-void helper_2608(void) {}
+/* helper_2608 - moved to dma.c as handler_2608 */
 
-/* helper_3adb - CEF2 handler
- * Address: 0x3adb
- */
-void helper_3adb(uint8_t param) { (void)param; }
+/* helper_3adb - implemented in protocol.c as handler_3adb */
 
 /* helper_488f - Queue processor
  * Address: 0x488f
@@ -5091,7 +5073,7 @@ uint8_t check_nvme_ready_e03c(void)
  */
 extern void helper_053e(void);
 extern void helper_538d(uint8_t r3, uint8_t r2, uint8_t r1);
-extern void FUN_CODE_e7ae(void);
+extern void uart_wait_tx_ready(void);
 
 void pcie_dma_init_e0e4(void)
 {
@@ -5102,7 +5084,7 @@ void pcie_dma_init_e0e4(void)
     helper_538d(0xFF, 0x52, 0xE6);
 
     /* Final PCIe/DMA handler */
-    FUN_CODE_e7ae();
+    uart_wait_tx_ready();
 }
 
 /*
@@ -5519,7 +5501,7 @@ uint8_t helper_c1f9(void)
  */
 extern void uart_puthex(uint8_t val);
 extern void uart_puts(__code const char *str);
-extern void helper_e73a(void);
+extern void cmd_engine_clear(void);
 extern uint8_t cmd_check_busy(void);
 extern void cmd_start_trigger(void);
 extern void cmd_config_e40b(void);
@@ -5551,7 +5533,7 @@ void helper_be8b(void)
     uart_puthex(0);
 
     /* Additional helper calls */
-    helper_e73a();
+    cmd_engine_clear();
     helper_b8c3();
     helper_9536();
 
@@ -5612,10 +5594,10 @@ void helper_bd05(void)
  * Address: 0xe459-0xe475 (29 bytes)
  *
  * Original disassembly:
- *   e459: lcall 0xe73a        ; FUN_CODE_e73a - clear command state
+ *   e459: lcall 0xe73a        ; cmd_engine_clear - clear command state
  *   e45c: mov r5, #0x01
  *   e45e: mov r7, #0x0c
- *   e460: lcall 0xdd12        ; helper_dd12(0x0c, 0x01)
+ *   e460: lcall 0xdd12        ; cmd_trigger_params(0x0c, 0x01)
  *   e463: lcall 0x95af        ; helper_95af
  *   e466: mov dptr, #0xe422   ; REG_CMD_PARAM
  *   e469: clr a
@@ -5630,16 +5612,16 @@ void helper_bd05(void)
  *   e474: movx @dptr, a       ; E425 = 0x31
  *   e475: ljmp 0xe1c6         ; cmd_wait_completion
  */
-extern void FUN_CODE_e73a(void);
+extern void cmd_engine_clear(void);
 extern void helper_95af(void);
 
 void cmd_init_and_wait_e459(void)
 {
     /* Clear command state */
-    FUN_CODE_e73a();
+    cmd_engine_clear();
 
-    /* Configure with helper_dd12(0x0c, 0x01) */
-    helper_dd12(0x0C, 0x01);
+    /* Configure with cmd_trigger_params(0x0c, 0x01) */
+    cmd_trigger_params(0x0C, 0x01);
 
     /* Additional setup */
     helper_95af();

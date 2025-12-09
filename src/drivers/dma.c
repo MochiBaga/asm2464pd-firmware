@@ -499,7 +499,7 @@ uint8_t scsi_get_tag_count_status(void)
 {
     uint8_t count;
 
-    count = REG_SCSI_DMA_TAG_COUNT & 0x1F;
+    count = REG_SCSI_DMA_TAG_COUNT & SCSI_DMA_TAG_MASK;
     I_WORK_40 = count;
 
     /* Return 1 if count >= 16, 0 otherwise */
@@ -578,7 +578,7 @@ uint8_t scsi_get_queue_status(void)
 {
     uint8_t status;
 
-    status = REG_SCSI_DMA_QUEUE_STAT & 0x0F;
+    status = REG_SCSI_DMA_QUEUE_STAT & SCSI_DMA_QUEUE_MASK;
     I_WORK_40 = status;
 
     /* Return 1 if status >= 8, 0 otherwise */
@@ -1526,7 +1526,7 @@ loop_start:
     REG_DMA_QUEUE_IDX = I_WORK_56;
 
     /* 0x2633: Read queue flags, mask bit 0 */
-    flags_lo = REG_PCIE_QUEUE_FLAGS_LO & 0x01;
+    flags_lo = REG_PCIE_QUEUE_FLAGS_LO & PCIE_QUEUE_FLAG_VALID;
     r7 = flags_lo;
 
     /* 0x263e: Compare with buffer state */

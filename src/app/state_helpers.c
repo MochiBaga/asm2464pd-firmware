@@ -1716,7 +1716,7 @@ void state_transfer_calc_120d(void)
     G_XFER_DIV_0476 = quotient;
 
     /* Check REG_USB_STATUS (0x9000) bit 0 */
-    if ((REG_USB_STATUS & 0x01) == 0) {
+    if ((REG_USB_STATUS & USB_STATUS_ACTIVE) == 0) {
         return;  /* Bit 0 not set, nothing to do */
     }
 
@@ -2533,8 +2533,8 @@ extern void usb_set_transfer_active_flag(void);  /* 0x312a */
 extern void nvme_read_status(void);              /* 0x31ce */
 extern void usb_ep_loop_180d(uint8_t param);     /* 0x180d */
 extern void usb_ep_loop_3419(void);              /* 0x3419 */
-extern void helper_2608(void);                   /* 0x2608 - link event handler */
-extern void helper_3adb(uint8_t param);          /* 0x3adb - CEF2 handler */
+extern void handler_2608(void);                  /* 0x2608 - link event handler (dma.c) */
+extern void handler_3adb(uint8_t param);         /* 0x3adb - CEF2 handler (protocol.c) */
 extern void helper_488f(void);                   /* 0x488f - queue processor */
 extern void helper_3e81(void);                   /* 0x3e81 - USB status handler */
 extern void helper_4784(void);                   /* 0x4784 - link status handler */
@@ -2608,14 +2608,14 @@ void usb_state_handler_isr_1006(void)
             /* Clear G_SYS_STATUS_PRIMARY, write 0x08 to CEF3, call helper */
             G_SYS_STATUS_PRIMARY = 0;
             REG_CPU_LINK_CEF3 = 0x08;
-            helper_2608();
+            handler_2608();
         } else {
             /* Check REG_CPU_LINK_CEF2 bit 7 */
             val = REG_CPU_LINK_CEF2;
             if (val & 0x80) {  /* Bit 7: Link ready */
-                /* Write 0x80 to CEF2, call helper_3adb(0) */
+                /* Write 0x80 to CEF2, call handler_3adb(0) */
                 REG_CPU_LINK_CEF2 = 0x80;
-                helper_3adb(0);
+                handler_3adb(0);
             }
         }
     }

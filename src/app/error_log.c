@@ -30,7 +30,7 @@
  * [x] error_log_calc_entry_addr (0xC47F)
  * [x] error_log_get_array_ptr (0xC445)
  * [x] error_log_get_array_ptr_2 (0xC496)
- * [ ] error_log_process (0xC2F4) - complex loop, partial implementation
+ * [x] error_log_process (0xC2F4)
  *
  */
 
@@ -38,6 +38,9 @@
 #include "sfr.h"
 #include "registers.h"
 #include "globals.h"
+
+/* External function declarations */
+extern void dma_transfer_state_dispatch(uint8_t param);  /* protocol.c - 0x23f7 */
 
 /* IDATA locations used by error logging */
 #define IDATA_LOG_INDEX     0x51    /* Current log entry index */
@@ -272,9 +275,8 @@ void error_log_process(void)
                     /* Store to log entry value */
                     G_LOG_ENTRY_VALUE = temp;
 
-                    /* Call complex helper at 0x23F7 with R7=0x09 */
-                    /* This helper does extensive state machine processing */
-                    /* For now, we skip the call as it requires full implementation */
+                    /* Call state machine dispatch with param 0x09 */
+                    dma_transfer_state_dispatch(0x09);
                 }
             }
 

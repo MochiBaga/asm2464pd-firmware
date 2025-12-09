@@ -28,19 +28,17 @@
  * The PCIe extended registers at 0x12xx are mapped to XDATA 0xB2xx.
  *===========================================================================*/
 
-/* PCIe extended register base - mapped from bank 0x02:0x12xx to 0xB2xx */
-#define PCIE_EXT_REG(offset) XDATA_REG8(0xB200 + (offset))
-
-/* Common PCIe extended register offsets used by these functions */
-#define PCIE_EXT_REG_34   PCIE_EXT_REG(0x34)  /* Link state */
-#define PCIE_EXT_REG_35   PCIE_EXT_REG(0x35)  /* Link config */
-#define PCIE_EXT_REG_36   PCIE_EXT_REG(0x36)  /* Link param */
-#define PCIE_EXT_REG_37   PCIE_EXT_REG(0x37)  /* Link status */
-#define PCIE_EXT_REG_3C   PCIE_EXT_REG(0x3C)  /* Lane config 0 */
-#define PCIE_EXT_REG_3D   PCIE_EXT_REG(0x3D)  /* Lane config 1 */
-#define PCIE_EXT_REG_3E   PCIE_EXT_REG(0x3E)  /* Lane config 2 */
-#define PCIE_EXT_REG_40   PCIE_EXT_REG(0x40)  /* Status read */
-#define PCIE_EXT_REG_4E   PCIE_EXT_REG(0x4E)  /* Status extended */
+/* PCIe extended registers used here are defined in registers.h:
+ *   REG_PCIE_LINK_STATE_EXT      (0xB234) - Link state machine state
+ *   REG_PCIE_LINK_CFG        (0xB235) - Link configuration
+ *   REG_PCIE_LINK_PARAM      (0xB236) - Link parameter
+ *   REG_PCIE_LINK_STATUS_EXT (0xB237) - Extended link status
+ *   REG_PCIE_EXT_CFG_0       (0xB23C) - Extended config 0 (lane config)
+ *   REG_PCIE_EXT_CFG_1       (0xB23D) - Extended config 1 (lane config)
+ *   REG_PCIE_EXT_CFG_2       (0xB23E) - Extended config 2 (lane config)
+ *   REG_PCIE_EXT_STATUS_RD   (0xB240) - Extended status read
+ *   REG_PCIE_EXT_STATUS_ALT  (0xB24E) - Extended status alternate
+ */
 
 /*===========================================================================
  * Power State Helper Functions (0xaa00-0xaa35)
@@ -88,7 +86,7 @@ uint8_t power_state_helper_aa02(void)
     uint8_t val;
 
     /* Check bit 7 of USB interrupt mask */
-    if (REG_USB_INT_MASK_9090 & 0x80) {
+    if (REG_USB_INT_MASK_9090 & USB_INT_MASK_GLOBAL) {
         /* Clear bit 0 of power control */
         val = REG_POWER_CTRL_92C8;
         val &= 0xFE;
@@ -120,7 +118,7 @@ uint8_t power_state_helper_aa13(void)
     uint8_t val;
 
     /* Check bit 7 of USB interrupt mask */
-    if (REG_USB_INT_MASK_9090 & 0x80) {
+    if (REG_USB_INT_MASK_9090 & USB_INT_MASK_GLOBAL) {
         /* Clear bit 1 of power control */
         val = REG_POWER_CTRL_92C8;
         val &= 0xFD;
@@ -167,7 +165,7 @@ uint8_t power_state_helper_aa1d(void)
 uint8_t power_state_helper_aa26(void)
 {
     /* Check bit 7 of USB interrupt mask */
-    if (REG_USB_INT_MASK_9090 & 0x80) {
+    if (REG_USB_INT_MASK_9090 & USB_INT_MASK_GLOBAL) {
         return 0x04;
     }
 
@@ -180,8 +178,8 @@ uint8_t power_state_helper_aa26(void)
 
 /* Forward declarations */
 extern void helper_96ae(void);
-extern void helper_dd12(uint8_t r7, uint8_t r5);
-extern void helper_e120(uint8_t r7, uint8_t r5);
+extern void cmd_trigger_params(uint8_t r7, uint8_t r5);
+extern void cmd_param_setup(uint8_t r7, uint8_t r5);
 extern void helper_dd0e(void);
 extern void helper_95a0(uint8_t r7);
 
@@ -238,8 +236,8 @@ void nvme_cmd_state_handler_aa36(void)
     param = (mode == 2) ? 0x05 : 0x04;
 
     /* Configure command engine */
-    helper_dd12(0x0F, param);
-    helper_e120(0x01, 0x01);
+    cmd_trigger_params(0x0F, param);
+    cmd_param_setup(0x01, 0x01);
 
     /* Write LBA registers */
     REG_CMD_LBA_0 = 0x4C;      /* 0xE426 = 'L' */
@@ -381,21 +379,21 @@ void pcie_link_config_a2c2(void)
     uint8_t val;
 
     /* Configure register 0x35 */
-    val = PCIE_EXT_REG_35;
+    val = REG_PCIE_LINK_CFG;
     val = (val & 0xC0) | 0x01;
-    PCIE_EXT_REG_35 = val;
+    REG_PCIE_LINK_CFG = val;
 
-    val = PCIE_EXT_REG_35;
+    val = REG_PCIE_LINK_CFG;
     val = (val & 0x3F) | 0x40;
-    PCIE_EXT_REG_35 = val;
+    REG_PCIE_LINK_CFG = val;
 
     /* Write 0xD2 to register 0x36 */
-    PCIE_EXT_REG_36 = 0xD2;
+    REG_PCIE_LINK_PARAM = 0xD2;
 
     /* Configure register 0x37 */
-    val = PCIE_EXT_REG_37;
+    val = REG_PCIE_LINK_STATUS_EXT;
     val &= 0xE0;
-    PCIE_EXT_REG_37 = val;
+    REG_PCIE_LINK_STATUS_EXT = val;
 }
 
 /*
@@ -419,12 +417,12 @@ void pcie_set_state_a2df(uint8_t state)
     uint8_t val;
 
     /* Write state to register 0x36 */
-    PCIE_EXT_REG_36 = state;
+    REG_PCIE_LINK_PARAM = state;
 
     /* Read-modify-write register 0x37: keep only bits 5-7 */
-    val = PCIE_EXT_REG_37;
+    val = REG_PCIE_LINK_STATUS_EXT;
     val &= 0xE0;
-    PCIE_EXT_REG_37 = val;
+    REG_PCIE_LINK_STATUS_EXT = val;
 }
 
 /*
@@ -449,11 +447,11 @@ void pcie_set_state_a2df(uint8_t state)
 void pcie_lane_write_cc_a2eb(void)
 {
     /* Write 0xCC to registers 0x3C and 0x3D */
-    PCIE_EXT_REG_3C = 0xCC;
-    PCIE_EXT_REG_3D = 0xCC;
+    REG_PCIE_EXT_CFG_0 = 0xCC;
+    REG_PCIE_EXT_CFG_1 = 0xCC;
 
     /* Write 0x08 to register 0x3E */
-    PCIE_EXT_REG_3E = 0x08;
+    REG_PCIE_EXT_CFG_2 = 0x08;
 
     /* Call delay/init helper - implemented elsewhere */
     /* helper_e7fb(); */
@@ -468,7 +466,7 @@ void pcie_lane_write_cc_a2eb(void)
  */
 uint8_t pcie_read_link_state_a2ff(void)
 {
-    return PCIE_EXT_REG_34;
+    return REG_PCIE_LINK_STATE_EXT;
 }
 
 /*
@@ -496,12 +494,12 @@ void pcie_setup_lane_a308(uint8_t link_state)
 
     /* Modify register 0x34 */
     val = (link_state & 0xF0) | 0x0F;
-    PCIE_EXT_REG_34 = val;
+    REG_PCIE_LINK_STATE_EXT = val;
 
     /* Modify register 0x35 */
-    val = PCIE_EXT_REG_35;
+    val = REG_PCIE_LINK_CFG;
     val = (val & 0x3F) | 0x80;
-    PCIE_EXT_REG_35 = val;
+    REG_PCIE_LINK_CFG = val;
 }
 
 /*
@@ -517,9 +515,9 @@ void pcie_setup_lane_a310(uint8_t lane)
     (void)lane;  /* Lane param may be used for multi-lane setup */
 
     /* Modify register 0x35: set bit 7 */
-    val = PCIE_EXT_REG_35;
+    val = REG_PCIE_LINK_CFG;
     val = (val & 0x3F) | 0x80;
-    PCIE_EXT_REG_35 = val;
+    REG_PCIE_LINK_CFG = val;
 }
 
 /*
@@ -534,17 +532,17 @@ void pcie_lane_setup_a31c(uint8_t val)
     uint8_t reg_val;
 
     /* Write value to current register (assumed R1 is set by caller) */
-    PCIE_EXT_REG_35 = val;
+    REG_PCIE_LINK_CFG = val;
 
     /* Read-modify-write: (val & 0xC0) | 0x04 */
-    reg_val = PCIE_EXT_REG_36;
+    reg_val = REG_PCIE_LINK_PARAM;
     reg_val = (reg_val & 0xC0) | 0x04;
-    PCIE_EXT_REG_36 = reg_val;
+    REG_PCIE_LINK_PARAM = reg_val;
 
     /* Read-modify-write: (val & 0x3F) | 0x40 */
-    reg_val = PCIE_EXT_REG_36;
+    reg_val = REG_PCIE_LINK_PARAM;
     reg_val = (reg_val & 0x3F) | 0x40;
-    PCIE_EXT_REG_36 = reg_val;
+    REG_PCIE_LINK_PARAM = reg_val;
 }
 
 /*
@@ -555,7 +553,7 @@ void pcie_lane_setup_a31c(uint8_t val)
  */
 uint8_t pcie_read_status_a334(void)
 {
-    return PCIE_EXT_REG_35;
+    return REG_PCIE_LINK_CFG;
 }
 
 /*
@@ -582,7 +580,7 @@ void pcie_setup_all_lanes_a344(uint8_t val)
 
     /* Modify with full lane mask */
     reg_val = (val & 0xF0) | 0x0F;
-    PCIE_EXT_REG_34 = reg_val;
+    REG_PCIE_LINK_STATE_EXT = reg_val;
 }
 
 /*
@@ -594,10 +592,10 @@ void pcie_setup_all_lanes_a344(uint8_t val)
 uint8_t pcie_get_status_a348(uint8_t val)
 {
     /* Write modified value to register 0x34 */
-    PCIE_EXT_REG_34 = (val & 0xF0) | 0x0F;
+    REG_PCIE_LINK_STATE_EXT = (val & 0xF0) | 0x0F;
 
     /* Read register 0x35 */
-    return PCIE_EXT_REG_35;
+    return REG_PCIE_LINK_CFG;
 }
 
 /*
@@ -608,7 +606,7 @@ uint8_t pcie_get_status_a348(uint8_t val)
  */
 uint8_t pcie_get_status_a34f(void)
 {
-    return PCIE_EXT_REG_4E;
+    return REG_PCIE_EXT_STATUS_ALT;
 }
 
 /*
@@ -622,11 +620,11 @@ uint8_t pcie_modify_and_read_a358(void)
     uint8_t val;
 
     /* Read-modify-write with clear bit 1, set bit 1 (effectively just read) */
-    val = PCIE_EXT_REG_4E;
+    val = REG_PCIE_EXT_STATUS_ALT;
     val = (val & 0xFD) | 0x02;
-    PCIE_EXT_REG_4E = val;
+    REG_PCIE_EXT_STATUS_ALT = val;
 
-    return PCIE_EXT_REG_4E;
+    return REG_PCIE_EXT_STATUS_ALT;
 }
 
 /*
@@ -639,9 +637,9 @@ uint8_t pcie_modify_and_read_a35f(void)
 {
     uint8_t val;
 
-    val = PCIE_EXT_REG_4E;
+    val = REG_PCIE_EXT_STATUS_ALT;
     val = (val & 0xFD) | 0x02;
-    PCIE_EXT_REG_4E = val;
+    REG_PCIE_EXT_STATUS_ALT = val;
 
     return val;
 }
@@ -654,8 +652,8 @@ uint8_t pcie_modify_and_read_a35f(void)
  */
 void pcie_write_66_a365(void)
 {
-    PCIE_EXT_REG_3C = 0x66;
-    PCIE_EXT_REG_3D = 0x66;
+    REG_PCIE_EXT_CFG_0 = 0x66;
+    REG_PCIE_EXT_CFG_1 = 0x66;
 }
 
 /*
@@ -664,7 +662,7 @@ void pcie_write_66_a365(void)
  */
 uint8_t pcie_get_status_a372(void)
 {
-    return PCIE_EXT_REG_40;
+    return REG_PCIE_EXT_STATUS_RD;
 }
 
 /*
@@ -738,7 +736,7 @@ void pcie_reg_set_bit4_a3db(uint8_t val)
     /* Write to PCIe extended register via banked access */
     /* The register offset is set up by the caller in R1 */
     /* For now, we assume this writes to the current PCIE_EXT_REG context */
-    PCIE_EXT_REG_35 = result;  /* Most common target based on call context */
+    REG_PCIE_LINK_CFG = result;  /* Most common target based on call context */
 }
 
 /*===========================================================================
@@ -1186,7 +1184,7 @@ void queue_setup_abc9(void)
     /* Queue initialization */
 }
 
-/* Note: helper_96ae, helper_dd12, helper_e120, helper_545c, helper_cb05
+/* Note: helper_96ae, cmd_trigger_params, cmd_param_setup, helper_545c, helper_cb05
  * are defined in stubs.c */
 
 /*===========================================================================
@@ -1202,7 +1200,7 @@ void queue_setup_abc9(void)
  */
 uint8_t pcie_read_reg_34_a2ff(void)
 {
-    return PCIE_EXT_REG_34;
+    return REG_PCIE_LINK_STATE_EXT;
 }
 
 /*
@@ -1217,14 +1215,14 @@ void pcie_write_and_read_a308(void)
     uint8_t val;
 
     /* Read register 0x34, modify, write back */
-    val = PCIE_EXT_REG_34;
+    val = REG_PCIE_LINK_STATE_EXT;
     val = (val & 0xF0) | 0x0F;
-    PCIE_EXT_REG_34 = val;
+    REG_PCIE_LINK_STATE_EXT = val;
 
     /* Read register 0x35, modify, write back */
-    val = PCIE_EXT_REG_35;
+    val = REG_PCIE_LINK_CFG;
     val = (val & 0x3F) | 0x80;
-    PCIE_EXT_REG_35 = val;
+    REG_PCIE_LINK_CFG = val;
 }
 
 /*===========================================================================

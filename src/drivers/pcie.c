@@ -2048,9 +2048,9 @@ void pcie_tlp_handler_b28c(void)
                 /* Clear 0x07e9 */
                 G_TLP_STATE_07E9 = 0;
                 /* Check USB status bit 0 */
-                if (REG_USB_STATUS & 0x01) {
+                if (REG_USB_STATUS & USB_STATUS_ACTIVE) {
                     /* Check 0xc471 bit 0 */
-                    if (REG_NVME_QUEUE_BUSY & 0x01) {
+                    if (REG_NVME_QUEUE_BUSY & NVME_QUEUE_BUSY_BIT) {
                         usb_buffer_handler();
                         break;
                     }
@@ -2061,7 +2061,7 @@ void pcie_tlp_handler_b28c(void)
                     }
                 } else {
                     /* Check 0x9101 bit 6 */
-                    if (REG_USB_PERIPH_STATUS & 0x40) {
+                    if (REG_USB_PERIPH_STATUS & USB_PERIPH_SUSPENDED) {
                         usb_buffer_handler();
                         break;
                     }
@@ -2227,7 +2227,7 @@ uint8_t pcie_tlp_handler_b402(void)
 
     /* b4ba-b570: Process CC status registers - simplified */
     /* Check CC23 (Timer3 CSR) bit 1 */
-    if (REG_TIMER3_CSR & 0x02) {
+    if (REG_TIMER3_CSR & TIMER_CSR_EXPIRED) {
         REG_TIMER3_CSR = 0x02;
     }
 
@@ -2237,23 +2237,23 @@ uint8_t pcie_tlp_handler_b402(void)
     }
 
     /* Check CPU DMA interrupt bit */
-    if (REG_CPU_DMA_INT & 0x02) {
+    if (REG_CPU_DMA_INT & CPU_DMA_INT_ACK) {
         REG_CPU_DMA_INT = 0x02;
         G_CMD_PENDING_07BB = 1;
     }
 
     /* Check transfer DMA config bit */
-    if (REG_XFER_DMA_CFG & 0x02) {
+    if (REG_XFER_DMA_CFG & XFER_DMA_CFG_ACK) {
         REG_XFER_DMA_CFG = 0x02;
     }
 
     /* Check transfer2 DMA status bit */
-    if (REG_XFER2_DMA_STATUS & 0x02) {
+    if (REG_XFER2_DMA_STATUS & XFER2_DMA_STATUS_ACK) {
         REG_XFER2_DMA_STATUS = 0x02;
     }
 
     /* Check CPU extended status bit */
-    if (REG_CPU_EXT_STATUS & 0x02) {
+    if (REG_CPU_EXT_STATUS & CPU_EXT_STATUS_ACK) {
         REG_CPU_EXT_STATUS = 0x02;
     }
 
@@ -2429,7 +2429,7 @@ void nvme_queue_b838(void)
 uint8_t tlp_write_flash_cmd(uint8_t cmd)
 {
     REG_FLASH_CMD = cmd;
-    return REG_FLASH_ADDR_LEN & 0xFC;
+    return REG_FLASH_ADDR_LEN & FLASH_ADDR_LEN_MASK;
 }
 
 /*

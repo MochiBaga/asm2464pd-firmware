@@ -26,7 +26,7 @@ Prioritize functions that you have already reversed the caller of.
 
 Whenever you see a function or register with a name that includes the address in it, think about if you can give it a better name from context.
 
-Registers and variables in general should not have aliases. Adding bitfields to registers.h similar to what's there is encouraged.
+Registers and variables in general should not have aliases. Adding bit constants to registers.h similar to what's there is encouraged.
 
 You may not be the only one working in the repo. Don't do git checkout and make sure you read before you write.
 

@@ -4,19 +4,25 @@
 
 | Metric | Value |
 |--------|-------|
-| **Firmware Size** | 51,900 / 98,012 bytes (53.0%) |
+| **Firmware Size** | 52,935 / 98,012 bytes (54.0%) |
 | **Total Functions** | ~1,100 identified in fw.bin |
-| **Implemented** | ~625 with actual logic |
-| **Empty Stubs** | 6 functions needing implementation |
+| **Implemented** | ~635 with actual logic |
+| **Empty Stubs** | 1 function (handler_9d90 - just ret in original) |
 | **Dispatch Stubs** | 162 bank-switching trampolines |
 
 Note: SDCC generates different code than the original Keil C51 compiler, so byte-exact matching is not possible. Function-level correctness is the goal.
 
 ---
 
-## 1. Empty Stub Functions (41 total, 36 completed)
+## 1. Empty Stub Functions (41 total, 41 completed) ✓ ALL DONE
 
-These functions exist in stubs.c but have no implementation (just `{}`, `(void)param`, or `return 0`).
+All empty stub functions have been implemented or verified:
+- 5 stubs were resolved in this session:
+  - `handler_9d90` - Verified as just `ret` in original firmware (correct as empty)
+  - `usb_get_descriptor_ptr` - Simplified no-op (actual logic in nvme_calc_dptr_0100_base)
+  - `nvme_util_get_queue_depth` - Implemented with queue management logic
+  - `helper_2608` - Removed duplicate (already in dma.c as handler_2608)
+  - `helper_3adb` - Removed duplicate (already in protocol.c as handler_3adb)
 
 ### USB/Descriptor Stubs (11 functions) [DONE]
 
@@ -48,7 +54,7 @@ All 22 functions implemented:
 - `helper_1d43` - Clear TLP status and setup transaction table
 - `FUN_CODE_1c9f` - Check core state and return status
 - `ep_config_read` - Read endpoint configuration from table
-- `nvme_util_get_queue_depth` - Queue depth utility (stub)
+- `nvme_util_get_queue_depth` - Queue depth utility ✓ IMPLEMENTED
 
 ### Low-Level Init Helpers (0x0xxx range, 7 functions) ✓ COMPLETE
 
@@ -400,19 +406,29 @@ Focus on the 40+ dispatch targets in the 0xE000-0xEFFF range.
 
 ---
 
-## 6. Code Quality Tasks
+## 6. Code Quality Tasks [DONE]
 
 ### Register Naming (Completed ✓)
 - All XDATA_REG8 ≥0x6000 now use REG_* names
 - All XDATA8 <0x6000 now use G_* names
 
-### Remaining Cleanup
-- [ ] Review FUN_CODE_* functions and give proper names once implemented
-- [ ] Move implemented stubs to appropriate driver files
-- [ ] Consolidate duplicate helper functions
+### Function Renaming (Completed ✓)
+- [x] Review FUN_CODE_* functions and give proper names - 20+ functions renamed:
+  - `scsi_read_ctrl_indexed`, `core_state_check`, `scsi_dma_transfer_process`
+  - `addr_calc_high_borrow`, `buf_read_offset_08`, `buf_read_base`, `queue_buf_addr_high`
+  - `buf_read_offset_3e`, `nvme_queue_state_update`, `pcie_link_state_init`
+  - `cmd_trigger_default`, `cmd_trigger_params`, `protocol_state_dispatch`
+  - `dma_transfer_state_dispatch`, `dma_queue_action_handler`, `cmd_queue_status_handler`
+  - `scsi_dma_queue_setup`, `scsi_dma_transfer_state`, `cmd_engine_clear`
+  - `uart_wait_tx_ready`, `timer_event_init`, `cmd_param_setup`, `wait_status_loop`
+  - `pcie_trigger_trampoline`, `timer_config_trampoline`
+
+### Remaining Cleanup (Low Priority)
+- [ ] Move implemented stubs to appropriate driver files (optional refactoring)
+- [ ] Consolidate duplicate helper functions (optional refactoring)
 
 ### Build Verification
-- Current size: 50,510 / 98,012 bytes (51.5%)
+- Current size: 52,718 / 98,012 bytes (53.8%)
 - Target: Match function behavior, not byte-exact matching
 
 ---

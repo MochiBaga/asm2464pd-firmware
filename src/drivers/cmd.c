@@ -377,7 +377,7 @@ uint8_t cmd_wait_completion(void)
     cmd_start_trigger();
 
     /* Wait for trigger bit to clear */
-    while (REG_CMD_BUSY_STATUS & 0x01) {
+    while (REG_CMD_BUSY_STATUS & CMD_BUSY_STATUS_BUSY) {
         /* Spin */
     }
 
@@ -650,15 +650,15 @@ void cmd_config_e40b(void)
  *   95b4: movx @dptr, a
  *   95b5: ret
  */
-extern void helper_e120(uint8_t r7, uint8_t r5);  /* External helper */
+extern void cmd_param_setup(uint8_t r7, uint8_t r5);  /* Command parameter setup at 0xe120 */
 void cmd_call_e120_setup(void)
 {
-    /* Call helper with R5=2 - would set up R2 return value */
-    helper_e120(0x00, 0x02);  /* Only R5 is used in this context */
+    /* Call cmd_param_setup with R5=2 - would set up R2 return value */
+    cmd_param_setup(0x00, 0x02);  /* Only R5 is used in this context */
 
     /* Write issue and tag from helper result */
     /* R2 would contain issue value after helper call */
-    /* For now, stub - full implementation requires helper_e120 */
+    /* For now, stub - full implementation requires cmd_param_setup */
     G_CMD_STATUS = 0x06;
 }
 
@@ -734,12 +734,12 @@ uint16_t cmd_calc_dptr_offset(uint8_t r2, uint8_t r3, uint8_t r5)
  *   95e9: movx @dptr, a
  *   95ea: ret
  */
-extern void helper_e73a(void);
-extern void helper_dd12(uint8_t r7, uint8_t r5);
+extern void cmd_engine_clear(void);
+extern void cmd_trigger_params(uint8_t r7, uint8_t r5);
 void cmd_call_e73a_setup(void)
 {
-    helper_e73a();
-    helper_dd12(0x03, 0x00);
+    cmd_engine_clear();
+    cmd_trigger_params(0x03, 0x00);
     G_CMD_STATUS = 0x02;
 }
 
@@ -965,7 +965,7 @@ uint8_t cmd_extract_bits67(uint8_t val)
  */
 void cmd_setup_delay(void)
 {
-    helper_dd12(0x10, 0x00);
+    cmd_trigger_params(0x10, 0x00);
 }
 
 /*
@@ -1063,7 +1063,7 @@ uint16_t cmd_set_dptr_inc2(uint8_t hi, uint8_t lo)
  */
 uint8_t cmd_call_e73a_with_params(void)
 {
-    helper_e73a();
+    cmd_engine_clear();
     return 0;  /* Return value from R3 */
 }
 
@@ -1336,7 +1336,7 @@ void cmd_set_trigger_bit6(void)
  */
 void cmd_call_dd12_config(void)
 {
-    helper_dd12(0x0F, 0x02);
+    cmd_trigger_params(0x0F, 0x02);
 }
 
 /*

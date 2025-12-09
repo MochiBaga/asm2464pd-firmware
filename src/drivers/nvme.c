@@ -2301,10 +2301,10 @@ void nvme_queue_helper(void)
 #define G_WORK_E409             XDATA_VAR8(0xE409)
 
 /* External function declarations */
-extern void FUN_CODE_e120(uint8_t param1, uint8_t param2);
-extern void FUN_CODE_e73a(void);
-extern void FUN_CODE_dd12(uint8_t param1, uint8_t param2);
-extern void FUN_CODE_e1c6(void);
+extern void cmd_param_setup(uint8_t param1, uint8_t param2);
+extern void cmd_engine_clear(void);
+extern void cmd_trigger_params(uint8_t param1, uint8_t param2);
+extern void wait_status_loop(void);
 
 /*
  * nvme_cmd_store_and_trigger - Store parameter and trigger command
@@ -2354,7 +2354,7 @@ uint8_t nvme_cmd_read_offset(__xdata uint8_t *ptr)
  */
 void nvme_cmd_issue_with_setup(uint8_t param)
 {
-    FUN_CODE_e120(2, 0);
+    cmd_param_setup(2, 0);
     REG_CMD_ISSUE = param;
     REG_CMD_TAG = *(__idata uint8_t *)0x03;  /* BANK0_R3 */
     G_CMD_STATE_07C4 = 6;
@@ -2366,7 +2366,7 @@ void nvme_cmd_issue_with_setup(uint8_t param)
  */
 void nvme_cmd_issue_alternate(uint8_t param)
 {
-    FUN_CODE_e120(0, 0);
+    cmd_param_setup(0, 0);
     REG_CMD_ISSUE = param;
     REG_CMD_TAG = *(__idata uint8_t *)0x03;
     G_CMD_STATE_07C4 = 6;
@@ -2590,7 +2590,7 @@ void nvme_set_flash_counter_5(void)
  */
 void nvme_cmd_dd12_0x10(void)
 {
-    FUN_CODE_dd12(0, 0x10);
+    cmd_trigger_params(0, 0x10);
 }
 
 /*
@@ -2647,7 +2647,7 @@ uint8_t nvme_lba_combine_07dc(__xdata uint8_t *ptr)
 uint8_t nvme_set_flash_counter_call_e1c6(uint8_t param1, uint8_t param2)
 {
     G_FLASH_OP_COUNTER = param1;
-    FUN_CODE_e1c6();
+    wait_status_loop();
     return param2;
 }
 
@@ -2675,7 +2675,7 @@ void nvme_nop_96a9(void)
  */
 uint8_t nvme_call_e73a(void)
 {
-    FUN_CODE_e73a();
+    cmd_engine_clear();
     return *(__idata uint8_t *)0x07;  /* BANK0_R7 */
 }
 
@@ -2820,9 +2820,9 @@ void nvme_set_bit6_ptr(__xdata uint8_t *ptr)
  */
 uint8_t nvme_queue_get_e710_masked(void)
 {
-    extern void FUN_CODE_e7ae(void);
+    extern void uart_wait_tx_ready(void);
     uint8_t val;
-    FUN_CODE_e7ae();
+    uart_wait_tx_ready();
     val = *(__xdata uint8_t *)0xE710;
     return val & 0xE0;
 }
@@ -3114,8 +3114,8 @@ void nvme_admin_set_state_07c4(void)
  */
 void nvme_admin_call_dd0e_95a0(void)
 {
-    extern void FUN_CODE_dd0e(void);
-    FUN_CODE_dd0e();
+    extern void cmd_trigger_default(void);
+    cmd_trigger_default();
     nvme_cmd_issue_with_setup(1);
 }
 
@@ -3254,9 +3254,9 @@ void nvme_pcie_handler_b8b9(void)
     extern void handler_e529(uint8_t param);
     extern void handler_d676(void);
     extern void handler_e90b(void);
-    extern void FUN_CODE_be8b(void);
-    extern void FUN_CODE_e883(void);
-    extern void FUN_CODE_df79(void);
+    extern void pcie_link_state_init(void);
+    extern void timer_event_init(void);
+    extern void protocol_state_dispatch(void);
 
     uint8_t val;
 
@@ -3296,11 +3296,11 @@ void nvme_pcie_handler_b8b9(void)
         uint8_t cmd = G_FLASH_CMD_TYPE;
         if (cmd == 2) {
             handler_e529(0x3C);
-            FUN_CODE_be8b();
+            pcie_link_state_init();
         } else if (cmd == 3) {
             handler_e529(0xFF);
         } else {
-            FUN_CODE_e883();
+            timer_event_init();
             G_WORK_CC99 = 2;
         }
     }
@@ -3316,7 +3316,7 @@ void nvme_pcie_handler_b8b9(void)
     val = G_WORK_CCCF9;
     if ((val >> 1) & 1) {
         G_WORK_CCCF9 = 2;
-        FUN_CODE_df79();
+        protocol_state_dispatch();
     }
 }
 

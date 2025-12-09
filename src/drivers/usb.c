@@ -4584,8 +4584,8 @@ void usb_descriptor_helper_a637(void)
  *      - Increment G_SYS_FLAGS_07E8
  *      - If G_USB_STATE_0B41 != 0, call nvme_func_04da(1)
  *   5. Read REG_NVME_CMD_STATUS_C47A to I_WORK_38
- *   6. Write to REG_SCSI_DMA_CTRL_CE88
- *   7. Poll REG_SCSI_DMA_STATUS_CE89 bit 0 until set
+ *   6. Write to REG_XFER_CTRL_CE88
+ *   7. Poll REG_XFER_READY bit 0 until set
  *   8. Increment and check G_USB_CTRL_000A
  *   9. Modify REG_USB_CTRL_924C based on count
  *   10. Read G_ENDPOINT_STATE_0051 and call helper_31e0

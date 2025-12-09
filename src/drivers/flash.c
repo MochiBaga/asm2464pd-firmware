@@ -252,7 +252,7 @@ void flash_poll_busy(void)
 uint8_t flash_set_cmd(uint8_t cmd)
 {
     REG_FLASH_CMD = cmd;
-    return REG_FLASH_ADDR_LEN & 0xFC;
+    return REG_FLASH_ADDR_LEN & FLASH_ADDR_LEN_MASK;
 }
 
 /*

@@ -782,7 +782,7 @@ loop_end:
             I_STATE_6A = 0x00;
 
             /* Check REG_USB_STATUS (0x9000) bit 0 (0x3111-0x3122) */
-            if (REG_USB_STATUS & 0x01) {
+            if (REG_USB_STATUS & USB_STATUS_ACTIVE) {
                 usb_ep_loop_180d(0x00);  /* 0x180d with R7=0 */
             } else {
                 usb_ep_loop_3419();       /* 0x3419 */

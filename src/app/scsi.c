@@ -993,8 +993,8 @@ void scsi_cbw_parse(void)
     I_TRANSFER_6E = REG_USB_CBW_XFER_LEN_0;
 
     /* Extract direction and LUN */
-    G_XFER_STATE_0AF3 = REG_USB_CBW_FLAGS & 0x80;
-    G_XFER_LUN_0AF4 = REG_USB_CBW_LUN & 0x0F;
+    G_XFER_STATE_0AF3 = REG_USB_CBW_FLAGS & CBW_FLAGS_DIRECTION;
+    G_XFER_LUN_0AF4 = REG_USB_CBW_LUN & CBW_LUN_MASK;
 
     /* Process command */
     scsi_cmd_process();
@@ -1621,10 +1621,10 @@ void scsi_nvme_completion_read(void)
     I_TRANSFER_6E = REG_USB_CBW_XFER_LEN_0;     /* 0x9123 */
 
     /* Extract direction flag (bit 7 of 0x9127) */
-    G_XFER_STATE_0AF3 = REG_USB_CBW_FLAGS & 0x80;  /* 0x9127 */
+    G_XFER_STATE_0AF3 = REG_USB_CBW_FLAGS & CBW_FLAGS_DIRECTION;  /* 0x9127 */
 
     /* Extract LUN (lower 4 bits of 0x9128) */
-    G_XFER_LUN_0AF4 = REG_USB_CBW_LUN & 0x0F;   /* 0x9128 */
+    G_XFER_LUN_0AF4 = REG_USB_CBW_LUN & CBW_LUN_MASK;   /* 0x9128 */
 
     /* Jump to state handler */
     /* Original: ljmp 0x4d92 - we just return and let caller handle */
@@ -1859,7 +1859,7 @@ void scsi_state_switch_4784(void)
         cmd_type = G_IO_CMD_TYPE;
         if (cmd_type == 0x03 || cmd_type == 0x00) {
             if (cmd_type == 0x03) {
-                if ((REG_USB_STATUS & 0x01) == 0) {
+                if ((REG_USB_STATUS & USB_STATUS_ACTIVE) == 0) {
                     helper_3130();
                 }
             }
@@ -1873,7 +1873,7 @@ void scsi_state_switch_4784(void)
 
 check_usb_status:
     /* Check USB control register bit 0 */
-    if (REG_USB_STATUS & 0x01) {
+    if (REG_USB_STATUS & USB_STATUS_ACTIVE) {
         queue_idx_get_3291();
         helper_0206();
     } else {
@@ -1890,19 +1890,19 @@ check_usb_status:
  *
  * Extended CSW building with additional status checks.
  */
-extern void helper_2608(void);
+extern void handler_2608(void);  /* dma.c - 0x2608 */
 
 void scsi_csw_build_ext_488f(void)
 {
     uint8_t tmp;
 
     /* Check REG_NVME_LINK_STATUS (0xC520) bit 1 */
-    if (REG_NVME_LINK_STATUS & 0x02) {
+    if (REG_NVME_LINK_STATUS & NVME_LINK_STATUS_BIT1) {
         scsi_csw_build_ext_488f();  /* Recursive call at 0x488f */
     }
 
     /* Check REG_NVME_LINK_STATUS bit 7 */
-    if (REG_NVME_LINK_STATUS & 0x80) {
+    if (REG_NVME_LINK_STATUS & NVME_LINK_STATUS_BIT7) {
         tmp = REG_NVME_LINK_STATUS;
         REG_NVME_LINK_STATUS = tmp | 0x20;
     }
@@ -1915,16 +1915,16 @@ void scsi_csw_build_ext_488f(void)
     /* Check REG_CPU_LINK_CEF3 bit 3 */
     if (REG_CPU_LINK_CEF3 & 0x08) {
         REG_CPU_LINK_CEF3 = 0x08;  /* Clear bit by writing 1 */
-        helper_2608();
+        handler_2608();
     }
 
     /* Check bit 1 again */
-    if (REG_NVME_LINK_STATUS & 0x02) {
+    if (REG_NVME_LINK_STATUS & NVME_LINK_STATUS_BIT1) {
         scsi_csw_build_ext_488f();
     }
 
     /* Check bit 7 */
-    if (REG_NVME_LINK_STATUS & 0x80) {
+    if (REG_NVME_LINK_STATUS & NVME_LINK_STATUS_BIT7) {
         tmp = REG_NVME_LINK_STATUS;
         REG_NVME_LINK_STATUS = tmp | 0x20;
     }
