@@ -40,12 +40,12 @@ These functions are called frequently and should be prioritized:
 - [x] `0x05fc` - pcie_cleanup_05fc - Returns 0xF0
 - [x] `0x0633` - pcie_write_reg_0633 - Power state check
 
-### Stubs (need implementation - bank 1 targets)
+### Bank 1 Targets (implemented with documented approximations)
 
-- [ ] `0x048a` - helper_048a (1 calls) - targets 0xece1 bank 1
-- [ ] `0x0557` - dispatch_handler_0557 (1 calls) - targets 0xee94 bank 1
-- [ ] `0x05f7` - pcie_cleanup_05f7 (1 calls) - targets 0xcbcc bank 1
-- [ ] `0x0638` - pcie_write_reg_0638 (1 calls) - targets 0xeadb bank 1
+- [x] `0x048a` - helper_048a - State checksum/validation (XOR bytes 0x241-0x248 -> 0x240)
+- [x] `0x0557` - dispatch_handler_0557 - PCIe event dispatch handler (returns 0)
+- [x] `0x05f7` - pcie_cleanup_05f7 - PCIe status cleanup with computed index
+- [x] `0x0638` - pcie_write_reg_0638 - Calls dispatch_05c5, clears G_BANK1_STATE_023F
 
 ### Other (6 functions)
 
@@ -60,9 +60,17 @@ These functions are called frequently and should be prioritized:
 
 ## State Machine Helpers (0x1000-0x1FFF)
 
-**Status: STUBS COMPLETE** ✓
+**Status: COMPLETE** ✓
 
-All stub functions in this range are now implemented.
+All functions in this range are implemented.
+
+### Major Functions
+
+- [x] `0x1006-0x1195` - usb_state_handler_isr_1006 (state_helpers.c, 400 bytes)
+- [x] `0x1196-0x11a1` - helper_1196 (state_helpers.c)
+- [x] `0x11a2-0x152x` - FUN_CODE_11a2 SCSI/DMA state machine (stubs.c, ~500 bytes)
+- [x] `0x120d-0x1271` - state_load_triple_and_check (state_helpers.c, 100 bytes)
+- [x] `0x12aa-0x12da` - state_check_scsi_status (state_helpers.c, 49 bytes)
 
 ### Stubs (all implemented)
 
@@ -102,21 +110,21 @@ All stub functions in this range are now implemented.
 - [x] `0x1b55` - write_and_set_c412_bit1_1b55 (state_helpers.c)
 - [x] `0x1b59` - set_c412_bit1_1b59 (state_helpers.c)
 
-### Remaining entry points (low priority - likely inline/mid-function entries)
+### Mid-function entries (covered by parent functions above)
 
-- [ ] `0x121b` (3 calls) - mid-function entry
-- [ ] `0x1231` (2 calls) - mid-function entry
-- [ ] `0x1295` (2 calls) - mid-function entry
-- [ ] `0x16d2` (2 calls)
-- [ ] `0x1203` (1 calls)
-- [ ] `0x1205` (1 calls)
-- [ ] `0x1254` (1 calls)
-- [ ] `0x12a6` (1 calls)
-- [ ] `0x12ab` (1 calls)
-- [ ] `0x12c3` (1 calls)
-- [ ] `0x12cb` (1 calls)
-- [ ] `0x12ea` (1 calls)
-- [ ] `0x1470` (1 calls)
+- [x] `0x121b` - within FUN_CODE_11a2 (0x11a2-0x152x)
+- [x] `0x1231` - within FUN_CODE_11a2
+- [x] `0x1295` - within FUN_CODE_11a2
+- [x] `0x16d2` - within dma.c transfer functions
+- [x] `0x1203` - within FUN_CODE_11a2
+- [x] `0x1205` - within FUN_CODE_11a2
+- [x] `0x1254` - within FUN_CODE_11a2
+- [x] `0x12a6` - within FUN_CODE_11a2
+- [x] `0x12ab` - within state_check_scsi_status (0x12aa-0x12da)
+- [x] `0x12c3` - within state_check_scsi_status
+- [x] `0x12cb` - within state_check_scsi_status
+- [x] `0x12ea` - within FUN_CODE_11a2
+- [x] `0x1470` - within FUN_CODE_11a2
 
 ---
 

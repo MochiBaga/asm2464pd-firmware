@@ -3473,3 +3473,201 @@ uint8_t get_pcie_status_flags_e00c(void)
 
     return flags;
 }
+
+/* Extern declarations for phy/timer functions */
+extern void phy_link_training(void);
+extern void timer_wait(uint8_t timeout_lo, uint8_t timeout_hi, uint8_t mode);
+
+/*
+ * pcie_lane_config_helper - PCIe Lane Configuration State Machine
+ * Address: 0xdb2f-0xdb92 (100 bytes, Bank 0)
+ *
+ * Purpose: Configures PCIe lane state for link training with target lane count.
+ * This is CRITICAL for eGPU - it trains the PCIe link.
+ *
+ * Algorithm:
+ *   1. Store param in G_FLASH_ERROR_1, init G_STATE_COUNTER_0AAC = 1
+ *   2. Read current lane state from REG_PCIE_LINK_STATE low nibble
+ *   3. Store lane state in G_STATE_HELPER_0AAB
+ *   4. Loop up to 4 times (link training retries):
+ *      - If param < 0x0F, check if G_STATE_HELPER_0AAB == param
+ *      - Otherwise check if G_STATE_HELPER_0AAB == 0x0F
+ *      - Merge state values, write to B434, call phy_link_training, delay 200ms
+ *   5. Return after success or 4 iterations
+ */
+void pcie_lane_config_helper(uint8_t param)
+{
+    uint8_t lane_state, counter, temp;
+
+    G_FLASH_ERROR_1 = param;
+    G_STATE_COUNTER_0AAC = 1;
+
+    /* Read current lane state from B434 low nibble */
+    lane_state = REG_PCIE_LINK_STATE & 0x0F;
+    G_STATE_HELPER_0AAB = lane_state;
+    G_FLASH_RESET_0AAA = 0;
+
+    /* Loop up to 4 times for link training */
+    for (counter = 0; counter < 4; counter++) {
+        temp = G_FLASH_ERROR_1;
+
+        if (temp < 0x0F) {
+            /* Check if we've reached target lane config */
+            if (G_STATE_HELPER_0AAB == temp) {
+                return;  /* Success */
+            }
+            /* Merge lane state with counter */
+            temp = (temp | (G_STATE_COUNTER_0AAC ^ 0x0F)) & G_STATE_HELPER_0AAB;
+        } else {
+            /* Full lane mode - check for 0x0F */
+            if (G_STATE_HELPER_0AAB == 0x0F) {
+                return;  /* Success */
+            }
+            /* Set all lanes active */
+            temp = G_STATE_COUNTER_0AAC | G_STATE_HELPER_0AAB;
+        }
+
+        G_STATE_HELPER_0AAB = temp;
+
+        /* Update B434 with new lane state */
+        lane_state = REG_PCIE_LINK_STATE;
+        REG_PCIE_LINK_STATE = temp | (lane_state & 0xF0);
+
+        /* Call PHY link training (0xD702) */
+        phy_link_training();
+
+        /* Wait ~200ms for link to train (0xE80A with r4=0, r5=199, r7=2) */
+        timer_wait(0x00, 0xC7, 0x02);
+
+        /* Shift counter for next iteration */
+        G_STATE_COUNTER_0AAC = G_STATE_COUNTER_0AAC * 2;
+        G_FLASH_RESET_0AAA++;
+    }
+}
+
+/*
+ * helper_0412 - PCIe doorbell command trigger
+ * Address: 0xe617-0xe62e (24 bytes, Bank 0)
+ *
+ * Sends a command via PCIe doorbell:
+ *   1. Writes 4 to STATUS, param to CMD, reads G_SYS_STATUS
+ *   2. Writes 1 or 2 to TRIGGER based on status
+ *   3. Waits for busy flag to be set
+ *   4. Clears the status
+ */
+void helper_0412(uint8_t param)
+{
+    uint8_t status;
+
+    /* Step 1: Setup (equivalent to lcall 0xc45f) */
+    REG_PCIE_STATUS = 0x04;           /* Write 4 to 0xB296 */
+    REG_PCIE_DOORBELL_CMD = param;    /* Write param to 0xB251 */
+    status = G_SYS_STATUS_PRIMARY;    /* Read from 0x0464 */
+
+    /* Step 2: Write to trigger based on status */
+    if (status != 0) {
+        REG_PCIE_TRIGGER = 0x02;
+    } else {
+        REG_PCIE_TRIGGER = 0x01;
+    }
+
+    /* Step 3: Wait for busy flag (bit 2) */
+    while (!(REG_PCIE_STATUS & PCIE_STATUS_BUSY)) {
+        /* Spin wait */
+    }
+
+    /* Step 4: Clear status (equivalent to lcall 0xc48f) */
+    REG_PCIE_STATUS = 0x04;
+}
+
+/*
+ * pcie_tunnel_setup - USB4/PCIe Tunnel Path Setup
+ * Address: 0xcd66-0xcdc6 (97 bytes, Bank 0)
+ *
+ * Configures USB4 tunnel mode for PCIe passthrough:
+ *   1. Clears CPU mode bit 4 (exit NVMe mode)
+ *   2. Configures adapter registers
+ *   3. Bank-switched writes to USB4 tunnel path registers
+ *   4. Sets tunnel control and link state registers
+ */
+void pcie_tunnel_setup(void)
+{
+    uint8_t tmp;
+
+    /* Clear CPU mode bit 4 (exit NVMe mode) */
+    tmp = REG_CPU_MODE_NEXT;
+    tmp &= 0xEF;
+    REG_CPU_MODE_NEXT = tmp;
+
+    /* Configure adapter registers */
+    pcie_adapter_config();
+
+    /* Bank-switched writes to USB4 tunnel path registers
+     * Uses SFR 0x93 as bank select (bank=1 for USB4 path)
+     * Write 0x22 to 0x4084 and 0x5084 */
+    __asm
+        mov     0x93, #0x01     ; Set bank = 1
+        mov     dptr, #0x4084
+        mov     a, #0x22
+        movx    @dptr, a        ; bank1[0x4084] = 0x22
+        mov     dptr, #0x5084
+        movx    @dptr, a        ; bank1[0x5084] = 0x22
+        mov     0x93, #0x00     ; Clear bank select
+    __endasm;
+
+    /* Set bit 0 of REG_PCIE_TUNNEL_CTRL (0xB401) */
+    tmp = REG_PCIE_TUNNEL_CTRL;
+    tmp &= 0xFE;  /* Clear bit 0 first */
+    tmp |= 0x01;  /* Then set bit 0 */
+    REG_PCIE_TUNNEL_CTRL = tmp;
+
+    /* Set bit 0 of REG_TUNNEL_ADAPTER_MODE (0xB482) */
+    tmp = REG_TUNNEL_ADAPTER_MODE;
+    tmp &= 0xFE;
+    tmp |= 0x01;
+    REG_TUNNEL_ADAPTER_MODE = tmp;
+
+    /* Set high nibble of 0xB482 to 0xF0 (tunnel mode) */
+    tmp = REG_TUNNEL_ADAPTER_MODE;
+    tmp &= 0x0F;  /* Keep low nibble */
+    tmp |= TUNNEL_MODE_ENABLED;  /* Set high nibble to 0xF0 */
+    REG_TUNNEL_ADAPTER_MODE = tmp;
+
+    /* Clear bit 0 of REG_PCIE_TUNNEL_CTRL (0xB401) */
+    tmp = REG_PCIE_TUNNEL_CTRL;
+    tmp &= 0xFE;
+    REG_PCIE_TUNNEL_CTRL = tmp;
+
+    /* Set bit 0 of REG_TUNNEL_LINK_CTRL (0xB480) */
+    tmp = REG_TUNNEL_LINK_CTRL;
+    tmp &= 0xFE;
+    tmp |= 0x01;
+    REG_TUNNEL_LINK_CTRL = tmp;
+
+    /* Clear bit 0 of REG_TUNNEL_LINK_STATE (0xB430) */
+    tmp = REG_TUNNEL_LINK_STATE;
+    tmp &= 0xFE;
+    REG_TUNNEL_LINK_STATE = tmp;
+
+    /* Set bit 4 of REG_PCIE_TUNNEL_CFG (0xB298) */
+    tmp = REG_PCIE_TUNNEL_CFG;
+    tmp &= 0xEF;  /* Clear bit 4 first */
+    tmp |= 0x10;  /* Then set bit 4 */
+    REG_PCIE_TUNNEL_CFG = tmp;
+
+    /* Final bank-switched writes:
+     * Write 0x70 to 0x6043
+     * Set bit 7 of 0x6025 */
+    __asm
+        mov     0x93, #0x01     ; Set bank = 1
+        mov     dptr, #0x6043
+        mov     a, #0x70
+        movx    @dptr, a        ; bank1[0x6043] = 0x70
+        mov     dptr, #0x6025
+        movx    a, @dptr        ; Read bank1[0x6025]
+        anl     a, #0x7f        ; Clear bit 7
+        orl     a, #0x80        ; Set bit 7
+        movx    @dptr, a        ; Write back
+        mov     0x93, #0x00     ; Clear bank select
+    __endasm;
+}

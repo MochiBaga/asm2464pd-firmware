@@ -1124,75 +1124,7 @@ void sys_event_dispatch_05e8(void) {}
 void sys_init_helper_bbc7(void) {}
 void sys_timer_handler_e957(void) {}
 
-/*
- * pcie_lane_config_helper - PCIe lane configuration state machine
- * Address: 0xc089-0xc104 (124 bytes)
- *
- * Complex lane configuration state machine that iterates up to 4 times,
- * configuring link state registers (0xB434) and calling phy_link_training (0xd702).
- *
- * Algorithm:
- *   1. Store param to G_FLASH_ERROR_1 (0x0AA9)
- *   2. Set G_STATE_COUNTER_0AAC = 1
- *   3. Read B434 low nibble -> G_STATE_HELPER_0AAB
- *   4. Set G_FLASH_RESET_0AAA = 0
- *   5. Loop up to 4 times:
- *      - If param < 0x0F, check if G_STATE_HELPER_0AAB == param
- *      - Otherwise check if G_STATE_HELPER_0AAB == 0x0F
- *      - Merge state values, write to B434, call d702, delay 200ms
- *   6. Return loop count - 4
- *
- * This is CRITICAL for eGPU - it trains the PCIe link.
- */
-void pcie_lane_config_helper(uint8_t param)
-{
-    uint8_t lane_state, counter, temp;
-
-    G_FLASH_ERROR_1 = param;
-    G_STATE_COUNTER_0AAC = 1;
-
-    /* Read current lane state from B434 low nibble */
-    lane_state = REG_PCIE_LINK_STATE & 0x0F;
-    G_STATE_HELPER_0AAB = lane_state;
-    G_FLASH_RESET_0AAA = 0;
-
-    /* Loop up to 4 times for link training */
-    for (counter = 0; counter < 4; counter++) {
-        temp = G_FLASH_ERROR_1;
-
-        if (temp < 0x0F) {
-            /* Check if we've reached target lane config */
-            if (G_STATE_HELPER_0AAB == temp) {
-                return;  /* Success */
-            }
-            /* Merge lane state with counter */
-            temp = (temp | (G_STATE_COUNTER_0AAC ^ 0x0F)) & G_STATE_HELPER_0AAB;
-        } else {
-            /* Full lane mode - check for 0x0F */
-            if (G_STATE_HELPER_0AAB == 0x0F) {
-                return;  /* Success */
-            }
-            /* Set all lanes active */
-            temp = G_STATE_COUNTER_0AAC | G_STATE_HELPER_0AAB;
-        }
-
-        G_STATE_HELPER_0AAB = temp;
-
-        /* Update B434 with new lane state */
-        lane_state = REG_PCIE_LINK_STATE;
-        REG_PCIE_LINK_STATE = temp | (lane_state & 0xF0);
-
-        /* Call PHY link training (0xD702) */
-        phy_link_training();
-
-        /* Wait ~200ms for link to train (0xE80A with r4=0, r5=199, r7=2) */
-        timer_wait(0x00, 0xC7, 0x02);
-
-        /* Shift counter for next iteration */
-        G_STATE_COUNTER_0AAC = G_STATE_COUNTER_0AAC * 2;
-        G_FLASH_RESET_0AAA++;
-    }
-}
+/* pcie_lane_config_helper - moved to pcie.c */
 
 /*===========================================================================
  * Main Event Handler Wrappers
@@ -2545,54 +2477,7 @@ void helper_1660(uint8_t offset, uint8_t value)
     *(__xdata uint8_t *)addr = value;
 }
 
-/*
- * helper_0412 - PCIe doorbell trigger with status-based write
- * Address: 0x0412 -> targets 0xe617
- *
- * This function:
- *   1. Triggers PCIe status with command byte
- *   2. Writes 1 or 2 to trigger register based on system status
- *   3. Waits for busy flag to be set
- *   4. Clears the status
- *
- * Original disassembly at 0xe617:
- *   e617: lcall 0xc45f    ; Setup: write 4 to STATUS, param to CMD, get G_SYS_STATUS
- *   e61a: jz 0xe621       ; if status == 0, jump
- *   e61c: mov a, #0x02    ; status != 0: write 2
- *   e61e: movx @dptr, a
- *   e61f: sjmp 0xe624
- *   e621: mov a, #0x01    ; status == 0: write 1
- *   e623: movx @dptr, a
- *   e624: mov dptr, #0xb296
- *   e627: movx a, @dptr   ; read STATUS
- *   e628: jnb 0xe0.2, 0xe624  ; wait for bit 2 (busy)
- *   e62b: lcall 0xc48f    ; write 4 to STATUS
- *   e62e: ret
- */
-void helper_0412(uint8_t param)
-{
-    uint8_t status;
-
-    /* Step 1: Setup (equivalent to lcall 0xc45f) */
-    REG_PCIE_STATUS = 0x04;           /* Write 4 to 0xB296 */
-    REG_PCIE_DOORBELL_CMD = param;    /* Write param to 0xB251 */
-    status = G_SYS_STATUS_PRIMARY;    /* Read from 0x0464 */
-
-    /* Step 2: Write to trigger based on status */
-    if (status != 0) {
-        REG_PCIE_TRIGGER = 0x02;
-    } else {
-        REG_PCIE_TRIGGER = 0x01;
-    }
-
-    /* Step 3: Wait for busy flag (bit 2) */
-    while (!(REG_PCIE_STATUS & PCIE_STATUS_BUSY)) {
-        /* Spin wait */
-    }
-
-    /* Step 4: Clear status (equivalent to lcall 0xc48f) */
-    REG_PCIE_STATUS = 0x04;
-}
+/* helper_0412 - moved to pcie.c */
 
 /* helper_3291 - Implemented in protocol.c as queue_idx_get_3291 */
 
@@ -2987,11 +2872,61 @@ void helper_dbbb(void)
     /* Stub */
 }
 
-/* helper_048a - Address: 0x048a
- * Called when G_STATE_FLAG_0AF1 bit 2 is set */
+/*
+ * helper_048a - State checksum/validation helper
+ * Address: 0x048a -> targets 0xece1 (bank 1)
+ *
+ * IMPORTANT: This uses overlapping code entry - 0xece1 enters in the middle
+ * of another function's lcall instruction, creating alternate execution path.
+ *
+ * Original disassembly when entering at 0x16ce1:
+ *   ece1: jc 0x6cf0       ; if carry set, goto alternate path
+ *   ece3: mov a, r5       ; get loop counter
+ *   ece4: cjne a, #0x08, 0x6cd2  ; loop back if counter < 8
+ *   ece7: mov dptr, #0x0240
+ *   ecea: mov a, r7       ; get computed checksum
+ *   eceb: movx @dptr, a   ; write result to 0x0240
+ *   ecec: ret
+ *
+ * When carry set (path at 0x6cf0 / 0x16cf0):
+ *   ecf0: anl a, #0xf0    ; mask high nibble
+ *   ecf2: orl a, #0x08    ; set bit 3
+ *   ecf4: lcall 0xbfa7    ; call helper
+ *   ecf7: mov a, #0x1a
+ *   ecf9: lcall 0xbfb7    ; call another helper
+ *   ecfc: mov r1, #0x3f
+ *   ecfe: mov a, r7
+ *   ecff: lcall 0x0be6    ; banked_store_byte
+ *   ed02: lcall 0x05c5    ; dispatch_05c5
+ *   ed05: clr a
+ *   ed06: mov dptr, #0x023f
+ *   ed09: movx @dptr, a   ; clear G_BANK1_STATE_023F
+ *   ed0a: ret
+ *
+ * The loop at 0x6cd2 (0x16cd2) XORs bytes from 0x0241-0x0248 together.
+ * This appears to compute a checksum of state bytes.
+ *
+ * Called when G_STATE_FLAG_0AF1 bit 2 (0x04) is set.
+ */
 void helper_048a(void)
 {
-    /* Stub */
+    /* This function computes an XOR checksum of bytes at 0x0241-0x0248
+     * and stores the result at 0x0240.
+     *
+     * The overlapping code entry means the carry flag state at entry
+     * determines which path is taken. Without knowing the carry state
+     * from the C caller, we implement the common (no-carry) path.
+     */
+    uint8_t checksum = 0xFF;  /* Initial value as in original */
+    uint8_t i;
+
+    /* XOR together bytes at 0x0241-0x0248 */
+    for (i = 0; i < 8; i++) {
+        checksum ^= XDATA_VAR8(0x0241 + i);
+    }
+
+    /* Store result at 0x0240 */
+    XDATA_VAR8(0x0240) = checksum;
 }
 
 /*===========================================================================
@@ -3582,5 +3517,17 @@ void cmd_init_and_wait_e459(void)
     cmd_wait_completion();
 }
 
-/* helper_95af - Address: 0x95af - Command setup helper */
-void helper_95af(void) { /* Stub */ }
+/*
+ * helper_95af - Set command status to 0x06
+ * Address: 0x95af-0x95b5 (7 bytes)
+ *
+ * Original disassembly:
+ *   95af: mov dptr, #0x07c4  ; G_CMD_STATUS
+ *   95b2: mov a, #0x06
+ *   95b4: movx @dptr, a      ; G_CMD_STATUS = 0x06
+ *   95b5: ret
+ */
+void helper_95af(void)
+{
+    G_CMD_STATUS = 0x06;
+}

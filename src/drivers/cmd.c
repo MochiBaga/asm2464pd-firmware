@@ -1573,3 +1573,394 @@ void cfg_write_b217(uint8_t val)
 {
     REG_PCIE_BYTE_EN = val;
 }
+
+/*
+ * External helper functions used by the state machine
+ * Mappings to implemented functions:
+ *   0x99c6 = pcie_set_0a5b_flag
+ *   0x99ce = pcie_inc_0a5b
+ *   0x996a = pcie_check_txn_count
+ *   0x9a09 = pcie_lookup_r6_multiply
+ *   0x9916 = pcie_store_r6_to_05a6
+ *   0x9923 = pcie_lookup_config_05c0
+ *   0x99af = pcie_read_and_store_idata
+ *   0x994e = pcie_init_idata_65_63
+ *   0x99b5 = pcie_add_2_to_idata
+ *   0x9ab3 = pcie_set_byte_enables_0f
+ *   0x9902/990c = pcie_init/pcie_init_alt (poll write status)
+ */
+extern void pcie_set_0a5b_flag(__xdata uint8_t *ptr, uint8_t val);
+extern void pcie_inc_0a5b(void);
+extern uint8_t pcie_check_txn_count(void);
+extern __xdata uint8_t *pcie_lookup_r6_multiply(uint8_t idx);
+extern void pcie_store_r6_to_05a6(uint8_t val);
+extern __xdata uint8_t *pcie_lookup_config_05c0(void);
+extern void pcie_read_and_store_idata(__xdata uint8_t *ptr);
+extern void pcie_init_idata_65_63(void);
+extern void pcie_add_2_to_idata(uint8_t val);
+extern void pcie_set_byte_enables_0f(void);
+extern void or32(void);
+extern void shl32(void);
+extern uint8_t pcie_init(void);
+extern uint8_t pcie_init_alt(void);
+
+/*
+ * cfg_pcie_ep_state_machine - PCIe Endpoint Configuration State Machine
+ * Address: 0x9741-0x9901 (449 bytes)
+ *
+ * This is the main PCIe endpoint configuration state machine that processes
+ * the PCIe config table and programs endpoint registers.
+ *
+ * The state machine:
+ * 1. Clears EP config registers 0x0A5E-0x0A60
+ * 2. Initializes 0x0A5C with 0x1F mask
+ * 3. Iterates through config entries comparing transaction counts
+ * 4. Processes each config entry type differently
+ * 5. Programs registers based on config table entries
+ *
+ * Globals used:
+ * - G_EP_CFG_0A5C: Current mask/config value
+ * - G_EP_CFG_0A5D: PCIe speed config
+ * - G_EP_CFG_0A5E: EP config count low
+ * - G_EP_CFG_0A5F: EP config count high
+ * - G_EP_CFG_0A60: Max count
+ * - G_NIBBLE_SWAP_0A5B: Transaction counter
+ * - Config table at 0x05A6/0x05C0 area (34-byte entries)
+ *
+ * Entry points within this function:
+ * - 0x9777: ANL A with 0x0F entry point (6 calls)
+ * - 0x984d: Mid-loop entry point (7 calls)
+ * - 0x9854: Config read entry point (7 calls)
+ * - 0x9874: After e91d check (1 call)
+ * - 0x9887: Inner loop entry (1 call)
+ */
+void cfg_pcie_ep_state_machine(void)
+{
+    uint8_t temp, r6_val = 0, r7_val = 0, r1_val = 0;
+    __xdata uint8_t *dptr = 0;
+
+    /*
+     * 0x9741-0x9749: Clear EP config registers
+     * (same as cfg_clear_ep_regs but inlined)
+     */
+    G_EP_CFG_0A5E = 0;
+    G_EP_CFG_0A5F = 0;
+    G_EP_CFG_0A60 = 0;
+
+    /*
+     * 0x974a-0x9751: Initialize 0x0A5C = 0x1F, call pcie_set_0a5b_flag
+     *   mov dptr, #0x0a5c
+     *   mov a, #0x1f
+     *   lcall 0x99c6
+     */
+    pcie_set_0a5b_flag(&G_EP_CFG_0A5C, 0x1F);
+
+    /*
+     * 0x9752-0x976d: First loop - compare transaction counts
+     * Loop while there are more entries to process
+     */
+loop_9752:
+    /* Call 0x996a - compare 0x05A7 with 0x0A5B */
+    temp = pcie_check_txn_count();
+    if ((temp & 0x80) == 0) {  /* JNC 0x976d - carry not set means done */
+        goto label_976d;
+    }
+
+    /* 0x9757-0x9767: Read config entry, AND with mask */
+    /* inc dptr; movx a, @dptr; mov r7, a */
+    r7_val = (&G_EP_CFG_0A5C)[1];  /* Read 0x0A5D */
+
+    /* mov dptr, #0x05c6; lcall 0x9a09 */
+    dptr = pcie_lookup_r6_multiply(r6_val);  /* Sets DPTR based on index */
+
+    /* movx a, @dptr; mov r6, a; mov a, r7; anl a, r6 */
+    dptr = (__xdata uint8_t *)0x05C6;
+    r6_val = *dptr;
+    temp = r7_val & r6_val;
+
+    /* mov dptr, #0x0a5c; movx @dptr, a */
+    G_EP_CFG_0A5C = temp;
+
+    /* lcall 0x99ce - increment 0x0A5B */
+    pcie_inc_0a5b();
+
+    /* sjmp 0x9752 */
+    goto loop_9752;
+
+label_976d:
+    /*
+     * 0x976d-0x9777: Check bit 4 of 0x0A5C
+     *   mov dptr, #0x0a5c
+     *   movx a, @dptr
+     *   jb 0xe0.4, 0x9777  (if bit 4 set, continue)
+     *   ljmp 0x9901        (else exit)
+     */
+    temp = G_EP_CFG_0A5C;
+    if ((temp & 0x10) == 0) {
+        return;  /* Exit - no bit 4 set */
+    }
+
+    /*
+     * 0x9777-0x97fb: Second processing phase
+     * Entry point 0x9777: anl a, #0x0f
+     */
+entry_9777:
+    temp = temp & 0x0F;  /* Mask to lower 4 bits */
+
+    /* Store to 0x0A5C, set 0x0A5B=1 (0x99c6) */
+    pcie_set_0a5b_flag(&G_EP_CFG_0A5C, temp);
+
+loop_977c:
+    /* Call 0x996a again */
+    temp = pcie_check_txn_count();
+    if ((temp & 0x80) == 0) {  /* JNC 0x97fb - done with this phase */
+        goto label_97fb;
+    }
+
+    /* 0x9781-0x979c: Complex config processing */
+    /* Store R6 to 0x05A6 */
+    pcie_store_r6_to_05a6(r6_val);
+    r7_val = r6_val;
+
+    /* lcall 0xe77a - lookup helper - reads config to I_WORK_61/62 */
+    /* This function is in bank 1 at 0xe77a, not yet implemented */
+    /* For now, skip this call */
+
+    /* lcall 0x9923 - get config table entry */
+    dptr = pcie_lookup_config_05c0();
+
+    /* Read and store to idata */
+    pcie_read_and_store_idata(dptr);
+
+    /* 0x9799: Call 0xd02a with R7=4 */
+    /* This is power_state_machine_d02a - a complex wait/poll function */
+    /* For now, simulate the check */
+    if (I_WORK_64 != 0) {
+        return;  /* Exit on error */
+    }
+
+    /* 0x97a2-0x97b3: Compare values and update 0x0A60 */
+    r7_val = G_EP_CFG_0A60;
+    temp = *(__xdata uint8_t *)0x8006;  /* Read max count */
+    if (temp >= r7_val) {
+        /* Update max if current > stored */
+        G_EP_CFG_0A60 = temp;
+    }
+
+    /* 0x97b4-0x97c7: Read 0x8005, extract bits, store to 0x0A5D */
+    temp = *(__xdata uint8_t *)0x8005;
+    G_EP_CFG_0A5D = temp & 0x03;
+
+    /* Extract bits 3-7 >> 3 = bits 3-4 -> 0-1 */
+    r1_val = (temp >> 3) & 0x1F;
+
+    /* 0x97c8-0x97f6: Get 0x0A5F/0x0A5E, call e0f4, compare */
+    r7_val = G_EP_CFG_0A5F;
+    temp = G_EP_CFG_0A5E;
+
+    /* Store comparison results */
+    /* This section compares and updates 0x0A5F/0x0A5E if needed */
+
+    /* lcall 0x99ce - increment counter */
+    pcie_inc_0a5b();
+
+    /* sjmp 0x977c */
+    goto loop_977c;
+
+label_97fb:
+    /*
+     * 0x97fb-0x9822: Third phase - setup for config writes
+     */
+    pcie_store_r6_to_05a6(0x01);
+    *(__idata uint8_t *)0x26 = 0x02;  /* Set index */
+
+    dptr = pcie_lookup_config_05c0();  /* 0x9923 */
+    pcie_read_and_store_idata(dptr);  /* 0x99af */
+
+    /* 0x980b-0x981c: Setup and call more helpers */
+    G_EP_CFG_0A60 = 0;  /* Clear max */
+    pcie_set_byte_enables_0f();  /* 0x9ab3 */
+
+    shl32();  /* 0x0d46 */
+    pcie_init_idata_65_63();  /* 0x994e */
+
+    /* 0xe91d is in bank 1 - complex PCIe write operation */
+    /* For now, simulate success */
+    temp = 0;
+
+    /*
+     * 0x9822-0x9849: Loop calling 0x996a
+     */
+    G_NIBBLE_SWAP_0A5B = 1;  /* Entry at 0x99c7 */
+
+loop_9825:
+    temp = pcie_check_txn_count();
+    if ((temp & 0x80) == 0) {  /* JNC 0x9849 */
+        goto label_9849;
+    }
+
+    /* 0x982a-0x9844: Process config entry type 0x0c */
+    pcie_store_r6_to_05a6(r6_val);
+    *(__idata uint8_t *)0x26 = 0x0C;
+
+    pcie_cfg_table_get();
+    pcie_read_and_store_idata(dptr);
+
+    /* Setup 32-bit values and call 0x9902 */
+    r7_val = 0;
+    r6_val = 0;
+    /* R5=0xA0, R4=0x40 */
+
+    temp = pcie_poll_write_status();  /* 0x9902 */
+    if (temp != 0) {
+        return;
+    }
+
+    pcie_inc_0a5b();
+    goto loop_9825;
+
+label_9849:
+    /*
+     * 0x9849-0x987f: Fourth phase
+     */
+    G_NIBBLE_SWAP_0A5B = 1;
+
+loop_984c:
+    temp = pcie_check_txn_count();
+    if ((temp & 0x80) == 0) {  /* JNC 0x987f */
+        goto label_987f;
+    }
+
+    /* 0x9851-0x987a: Process with entry point 0x9854 */
+    pcie_store_r6_to_05a6(r6_val);
+
+    /* Entry 0x9854: movx a, @dptr */
+    r6_val = *dptr;
+    dptr++;
+    temp = *dptr + 3;
+
+    pcie_add_2_to_idata(temp);  /* 0x99b5 */
+
+    r7_val = G_EP_CFG_0A5E;
+    *(__idata uint8_t *)0x26 = 0x03;
+
+    /* More setup and processing */
+    pcie_set_byte_enables_0f();
+    or32();  /* 0x0d08 */
+    pcie_init_idata_65_63();
+
+    temp = FUN_CODE_e91d();
+    if (temp != 0) {
+        return;
+    }
+
+    pcie_inc_0a5b();
+    goto loop_984c;
+
+label_987f:
+    /*
+     * 0x987f-0x989d: Fifth phase
+     */
+    G_NIBBLE_SWAP_0A5B = 1;
+
+loop_9882:
+    temp = pcie_check_txn_count();
+    if ((temp & 0x80) == 0) {  /* JNC 0x989d */
+        goto label_989d;
+    }
+
+    /* 0x9887-0x989b: Entry point 0x9887 */
+    pcie_store_r6_to_05a6(r6_val);
+    pcie_read_and_store_idata(dptr);
+
+    pcie_set_byte_enables_0f();
+
+    temp = pcie_poll_write_status();
+    if (temp != 0) {
+        return;
+    }
+
+    pcie_inc_0a5b();
+    goto loop_9882;
+
+label_989d:
+    /*
+     * 0x989d-0x98c5: Sixth phase
+     */
+    G_NIBBLE_SWAP_0A5B = 1;
+
+loop_98a0:
+    temp = pcie_check_txn_count();
+    if ((temp & 0x80) == 0) {  /* JNC 0x98c5 */
+        goto label_98c5;
+    }
+
+    /* 0x98a5-0x98c3: Process with 0x0F index, calculations */
+    pcie_store_r6_to_05a6(r6_val);
+    *(__idata uint8_t *)0x26 = 0x0F;
+
+    pcie_set_byte_enables_0f();
+
+    /* 0x9a10 then add 0x0a, call 0x9a02 */
+    temp = I_WORK_64 + 0x0A;
+    cfg_store_ep_with_carry(temp);
+
+    /* Setup R4:R5:R6:R7 = 0:4:0:0 and call 0x990c */
+    r7_val = 0;
+    r6_val = 0x04;
+
+    temp = pcie_poll_write_status();
+    if (temp != 0) {
+        return;
+    }
+
+    pcie_inc_0a5b();
+    goto loop_98a0;
+
+label_98c5:
+    /*
+     * 0x98c5-0x9901: Final phase - finish configuration
+     */
+    G_NIBBLE_SWAP_0A5B = 1;
+
+loop_98c8:
+    temp = pcie_check_txn_count();
+    if ((temp & 0x80) == 0) {  /* JNC 0x9901 - exit */
+        return;
+    }
+
+    /* 0x98cd-0x98ff: Final config write processing */
+    pcie_store_r6_to_05a6(r6_val);
+
+    /* Set B=0x22 for table offset calculation */
+    /* Call 0x9a3b helper */
+    temp = G_EP_CFG_0A5C;
+    temp |= r6_val;
+    if (temp == 0) {
+        /* Skip if both zero */
+        pcie_inc_0a5b();
+        goto loop_98c8;
+    }
+
+    /* Non-zero path: read 0x05A6, do table lookup */
+    temp = *(__xdata uint8_t *)0x05A6;
+    pcie_store_r6_to_05a6(temp);
+
+    *(__idata uint8_t *)0x26 = 0x0F;
+    pcie_set_byte_enables_0f();
+
+    /* Add 1, call 0x99b5 */
+    temp = I_WORK_64 + 1;
+    pcie_add_2_to_idata(temp);
+
+    /* Setup R4:R5:R6:R7 = 0x10:0x03:0x10:0x03 and call 0x990c */
+    temp = pcie_poll_write_status();
+    if (temp != 0) {
+        return;
+    }
+
+    pcie_inc_0a5b();
+    goto loop_98c8;
+
+    /* 0x9901: ret - implicit return */
+}

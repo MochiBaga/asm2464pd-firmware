@@ -318,3 +318,56 @@ void mul16x16(void) __naked
         ret
     __endasm;
 }
+
+/*
+ * shl32 - 32-bit shift left
+ * Address: 0x0d46-0x0d58 (19 bytes)
+ *
+ * Shifts R4:R5:R6:R7 left by R0 bits.
+ *
+ * Input: R4:R5:R6:R7 (32-bit value), R0 (shift count)
+ * Output: R4:R5:R6:R7 (shifted result)
+ *
+ * Original disassembly:
+ *   0d46: mov a, r0       ; A = shift count
+ *   0d47: jz 0x0d58       ; If count == 0, return
+ *   0d49: mov a, r7       ; Start of loop
+ *   0d4a: clr c           ; Clear carry
+ *   0d4b: rlc a           ; Rotate left through carry
+ *   0d4c: mov r7, a       ; Store R7
+ *   0d4d: mov a, r6
+ *   0d4e: rlc a           ; Carry from R7 into R6
+ *   0d4f: mov r6, a
+ *   0d50: mov a, r5
+ *   0d51: rlc a           ; Carry from R6 into R5
+ *   0d52: mov r5, a
+ *   0d53: mov a, r4
+ *   0d54: rlc a           ; Carry from R5 into R4
+ *   0d55: mov r4, a
+ *   0d56: djnz r0, 0x0d49 ; Decrement and loop
+ *   0d58: ret
+ */
+void shl32(void) __naked
+{
+    __asm
+        mov a, r0
+        jz shl32_done
+    shl32_loop:
+        mov a, r7
+        clr c
+        rlc a
+        mov r7, a
+        mov a, r6
+        rlc a
+        mov r6, a
+        mov a, r5
+        rlc a
+        mov r5, a
+        mov a, r4
+        rlc a
+        mov r4, a
+        djnz r0, shl32_loop
+    shl32_done:
+        ret
+    __endasm;
+}
