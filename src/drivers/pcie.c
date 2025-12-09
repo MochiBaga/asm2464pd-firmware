@@ -1294,6 +1294,26 @@ void pcie_setup_buffer_from_config(void)
 }
 
 /*
+ * pcie_write_data_reg - Write R4-R7 to PCIe data register
+ * Address: 0x994e-0x9953 (6 bytes)
+ *
+ * Sets DPTR to 0xB220 (REG_PCIE_DATA) and jumps to the dword
+ * store helper at 0x0dc5 which writes R4/R5/R6/R7 to consecutive
+ * addresses.
+ *
+ * Original disassembly:
+ *   994e: mov dptr, #0xb220
+ *   9951: ljmp 0x0dc5
+ */
+void pcie_write_data_reg(uint8_t r4, uint8_t r5, uint8_t r6, uint8_t r7)
+{
+    (&REG_PCIE_DATA)[0] = r4;
+    (&REG_PCIE_DATA)[1] = r5;
+    (&REG_PCIE_DATA)[2] = r6;
+    (&REG_PCIE_DATA)[3] = r7;
+}
+
+/*
  * pcie_shift_r7_to_r6 - Shift R7 right twice and mask
  * Address: 0x9954-0x9961 (14 bytes)
  *
@@ -1315,6 +1335,29 @@ uint8_t pcie_calc_queue_idx(uint8_t val)
 {
     uint8_t result = (val >> 2) & 0x3F;
     return result;
+}
+
+/*
+ * pcie_get_txn_count_with_mult - Read transaction count with multiplier
+ * Address: 0x995a-0x9961 (8 bytes)
+ *
+ * Reads G_PCIE_TXN_COUNT_LO, sets B register to 0x22 (34) for
+ * subsequent multiply operation. Used to calculate offsets into
+ * 34-byte entry tables.
+ *
+ * Returns: A = transaction count from 0x05A6
+ *          B = 0x22 (set for MUL AB)
+ *
+ * Original disassembly:
+ *   995a: mov dptr, #0x05a6
+ *   995d: movx a, @dptr
+ *   995e: mov b, #0x22
+ *   9961: ret
+ */
+uint8_t pcie_get_txn_count_with_mult(void)
+{
+    B = 0x22;
+    return G_PCIE_TXN_COUNT_LO;
 }
 
 /*

@@ -86,6 +86,48 @@ void jump_bank_1(uint16_t reg_addr)
     DPX = 0x01;
 }
 
+/*
+ * dispatch_0206 - USB/DMA status dispatch
+ * Address: 0x0206-0x024A (69 bytes)
+ *
+ * This is an inline dispatch function (not a bank jump stub).
+ * It reads R5/R7 and performs register operations for USB endpoint control.
+ * Called after queue_idx_get_3291 which sets R7 and clears R5.
+ *
+ * When (R5 & 0x06) != 0: Write 0xA0 to REG 0xC8D4, copy XDATA 0x0056-0057 to
+ *                        REG 0x905B-905C and 0xD802-D803
+ * When (R5 & 0x06) == 0: Use R7|0x80 to configure REG 0xC8D4 and 0xC4ED,
+ *                        then copy 0xC4EE-0xC4EF to 0xD802-D803
+ *
+ * Since this is called after queue_idx_get_3291 which clears R5,
+ * the (R5 & 0x06) == 0 path is always taken.
+ */
+void dispatch_0206(void)
+{
+    uint8_t idx;
+    uint8_t r2, r3;
+
+    /* Get R7 value - in SDCC, we use the return value of queue_idx_get_3291 */
+    /* which was called before us. Since we can't easily get R7, we'll read
+     * from the same source: I_QUEUE_IDX */
+    idx = *((__idata uint8_t *)0x0D);
+
+    /* Path for (R5 & 0x06) == 0 - which is the common case */
+    /* Write (R7 | 0x80) to REG 0xC8D4 */
+    XDATA_REG8(0xC8D4) = idx | 0x80;
+
+    /* Read REG 0xC4ED, mask with 0xC0, OR with R7, write back */
+    r2 = XDATA_REG8(0xC4ED);
+    r2 = (r2 & 0xC0) | idx;
+    XDATA_REG8(0xC4ED) = r2;
+
+    /* Read REG 0xC4EE-0xC4EF and write to 0xD802-D803 */
+    r3 = XDATA_REG8(0xC4EE);
+    r2 = XDATA_REG8(0xC4EF);
+    XDATA_REG8(0xD802) = r3;
+    XDATA_REG8(0xD803) = r2;
+}
+
 /*===========================================================================
  * Bank 0 Dispatch Functions (0x0322-0x03A7)
  * These all jump to 0x0300 (jump_bank_0)

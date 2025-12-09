@@ -2437,3 +2437,178 @@ void flash_config_copy_9403(void)
     /* Clear bit 4 of USB endpoint control */
     REG_USB_EP_CTRL_905F &= 0xEF;
 }
+
+/*
+ * External dispatch functions from dispatch.c
+ */
+extern void dispatch_036d(void);  /* handler_e96f - buffer status 0 handler */
+extern void dispatch_0368(void);  /* handler_df15 - link status handler */
+extern void dispatch_0372(void);  /* handler_e970 - buffer status 1 handler */
+extern void dispatch_0377(void);  /* handler_e952 - buffer status 2 handler */
+extern void dispatch_037c(void);  /* handler_e941 - buffer status 3 handler */
+extern void dispatch_0381(void);  /* handler_e947 - buffer status 4 handler */
+extern void dispatch_0386(void);  /* handler_e92c - buffer status 5 handler */
+extern void dispatch_038b(void);  /* handler_d2bd - config status handler */
+
+/* External USB/NVMe functions */
+extern void usb_set_transfer_active_flag(void);  /* 0x312a */
+extern void nvme_read_status(void);              /* 0x31ce */
+extern void usb_ep_loop_180d(uint8_t param);     /* 0x180d */
+extern void usb_ep_loop_3419(void);              /* 0x3419 */
+extern void helper_2608(void);                   /* 0x2608 - link event handler */
+extern void helper_3adb(uint8_t param);          /* 0x3adb - CEF2 handler */
+extern void helper_488f(void);                   /* 0x488f - queue processor */
+extern void helper_3e81(void);                   /* 0x3e81 - USB status handler */
+extern void helper_4784(void);                   /* 0x4784 - link status handler */
+extern void helper_49e9(void);                   /* 0x49e9 - USB control handler */
+
+/*
+ * helper_1196 - USB endpoint loop with r7=1 and C47A write
+ * Address: 0x1196-0x11a1 (12 bytes)
+ *
+ * Calls usb_ep_loop_180d(1) then writes 0xFF to REG_NVME_CMD_STATUS_C47A.
+ *
+ * Original disassembly:
+ *   1196: mov r7, #0x01
+ *   1198: lcall 0x180d        ; usb_ep_loop_180d(1)
+ *   119b: mov dptr, #0xc47a   ; REG_NVME_CMD_STATUS_C47A
+ *   119e: mov a, #0xff
+ *   11a0: movx @dptr, a       ; Write 0xFF
+ *   11a1: ret
+ */
+void helper_1196(void)
+{
+    usb_ep_loop_180d(0x01);
+    REG_NVME_CMD_STATUS_C47A = 0xFF;
+}
+
+/*
+ * usb_state_handler_isr_1006 - USB State Machine Interrupt Handler
+ * Address: 0x1006-0x1195 (400 bytes)
+ *
+ * This is the main USB state machine interrupt service routine.
+ * It handles USB endpoint events, buffer configuration, and link state changes.
+ *
+ * Entry flow:
+ *   1. Save context via usb_set_transfer_active_flag + nvme_read_status
+ *   2. Write default 0x04 to REG_USB_EP_CFG1
+ *   3. Check REG_INT_SYSTEM bit 5 for link events
+ *   4. Check REG_INT_USB_STATUS bit 2 for queue processing
+ *   5. Loop up to 32 times processing queue entries
+ *   6. Restore context and return from interrupt
+ *
+ * Note: The firmware has multiple entry points into this handler for
+ * different USB/PCIe event sources. The main entry at 0x1006 is for
+ * the default USB endpoint configuration path.
+ *
+ * Original disassembly (entry):
+ *   1006: lcall 0x5455          ; usb_set_transfer_active_flag + nvme_read_status
+ *   1009: mov dptr, #0x9093     ; REG_USB_EP_CFG1
+ *   100c: ljmp 0x10d1           ; Jump to write 0x04 and continue
+ */
+void usb_state_handler_isr_1006(void)
+{
+    uint8_t i;
+    uint8_t val;
+
+    /* Save context - calls usb_set_transfer_active_flag + nvme_read_status */
+    usb_set_transfer_active_flag();
+    nvme_read_status();
+
+    /* Default action: Write 0x04 to REG_USB_EP_CFG1 (0x9093) */
+    REG_USB_EP_CFG1 = 0x04;
+
+    /*
+     * Common exit path processing (0x10e0)
+     * Check REG_INT_SYSTEM (0xC806) bit 5 for link state change events
+     */
+    val = REG_INT_SYSTEM;
+    if (val & 0x20) {  /* Bit 5: Link state change */
+        /* Check REG_CPU_LINK_CEF3 bit 3 */
+        val = REG_CPU_LINK_CEF3;
+        if (val & 0x08) {  /* Bit 3: Link active */
+            /* Clear G_SYS_STATUS_PRIMARY, write 0x08 to CEF3, call helper */
+            G_SYS_STATUS_PRIMARY = 0;
+            REG_CPU_LINK_CEF3 = 0x08;
+            helper_2608();
+        } else {
+            /* Check REG_CPU_LINK_CEF2 bit 7 */
+            val = REG_CPU_LINK_CEF2;
+            if (val & 0x80) {  /* Bit 7: Link ready */
+                /* Write 0x80 to CEF2, call helper_3adb(0) */
+                REG_CPU_LINK_CEF2 = 0x80;
+                helper_3adb(0);
+            }
+        }
+    }
+
+    /*
+     * Queue processing (0x110d)
+     * Check REG_INT_USB_STATUS (0xC802) bit 2 for NVMe queue processing
+     */
+    val = REG_INT_USB_STATUS;
+    if (val & 0x04) {  /* Bit 2: NVMe queue processing */
+        /* Loop up to 32 times (0x20) processing queue entries */
+        for (i = 0; i < 0x20; i++) {
+            /* Check REG_NVME_QUEUE_BUSY (0xC471) bit 0 */
+            val = REG_NVME_QUEUE_BUSY;
+            if (!(val & 0x01)) {  /* Bit 0 not set - queue not busy */
+                break;
+            }
+
+            /* Check G_NVME_QUEUE_READY (0x0055) for queue state */
+            val = G_NVME_QUEUE_READY;
+            if (val == 0) {
+                /* Check REG_NVME_LINK_STATUS (0xC520) bit 1 */
+                val = REG_NVME_LINK_STATUS;
+                if (val & 0x02) {  /* Bit 1 set */
+                    helper_488f();
+                }
+            }
+
+            /* Always call helper_1196 for each iteration */
+            helper_1196();
+        }
+    }
+
+    /*
+     * Final status checks (0x113a onwards)
+     * Check REG_USB_STATUS (0x9000) bit 0
+     */
+    val = REG_USB_STATUS;
+    if (val & 0x01) {  /* Bit 0: USB active */
+        /* Check REG_NVME_LINK_STATUS (0xC520) bit 0 */
+        val = REG_NVME_LINK_STATUS;
+        if (val & 0x01) {  /* Bit 0 set */
+            helper_3e81();
+        }
+
+        /* Check REG_NVME_LINK_STATUS bit 1 */
+        val = REG_NVME_LINK_STATUS;
+        if (val & 0x02) {  /* Bit 1 set */
+            helper_488f();
+        }
+    } else {
+        /* USB not active - check link status */
+        /* Check REG_NVME_LINK_STATUS (0xC520) bit 1 */
+        val = REG_NVME_LINK_STATUS;
+        if (val & 0x02) {  /* Bit 1 set */
+            helper_4784();
+        }
+
+        /* Check REG_NVME_LINK_STATUS bit 0 */
+        val = REG_NVME_LINK_STATUS;
+        if (val & 0x01) {  /* Bit 0 set */
+            helper_49e9();
+        }
+    }
+
+    /* Check REG_USB_MSC_CTRL (0xC42C) bit 0 */
+    val = REG_USB_MSC_CTRL;
+    if (val & 0x01) {  /* Bit 0 set */
+        helper_4784();
+        REG_USB_MSC_CTRL = 0x01;  /* Write back to acknowledge */
+    }
+
+    /* Return from interrupt - context restored by caller */
+}

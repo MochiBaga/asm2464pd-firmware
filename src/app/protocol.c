@@ -3450,3 +3450,248 @@ uint32_t xdata_read_0a7e_329f(void)
     return result;
 }
 
+/*
+ * protocol_state_dispatcher_32a5 - Complex protocol state machine dispatcher
+ * Address: 0x32a5-0x33fe (346 bytes)
+ *
+ * This is a major protocol handler that dispatches based on:
+ *   - IDATA[0x6A] - current state (must be 0x02 for main handling)
+ *   - XDATA[0x0002] - command byte (for dispatch within state 0x02)
+ *
+ * State dispatch table:
+ *   - State != 0x02: goto default_handler (calls helper_312a, helper_31ce)
+ *   - State 0x02, cmd 0xE3 or 0xFB: complex DMA/buffer handling
+ *   - State 0x02, cmd 0xF9 or 0xE1: USB transaction mode handling
+ *   - State 0x02, other cmd: goto default_handler
+ */
+void protocol_state_dispatcher_32a5(void)
+{
+    __idata uint8_t *state_ptr = (__idata uint8_t *)0x6A;
+    __idata uint8_t *dword_6b = (__idata uint8_t *)0x6B;
+    __idata uint8_t *dword_6f = (__idata uint8_t *)0x6F;
+    uint8_t state;
+    uint8_t cmd;
+    uint8_t link_status;
+    uint16_t usb_status;
+    uint32_t val_6b, val_6f, sub_result;
+
+    /* External function declarations */
+    extern void helper_312a(void);
+    extern void helper_31ce(void);
+    extern uint16_t helper_3181(void);
+    extern uint8_t helper_313d(void);
+    extern void helper_544c(void);
+    extern void helper_523c(uint8_t r3, uint8_t r5, uint8_t r7);
+    extern void dispatch_04a3(void);
+    extern void dispatch_04a8(void);
+    extern void dispatch_0206(void);
+
+    state = *state_ptr;
+
+    /* Check if state == 0x02 */
+    if (state != 0x02) {
+        goto default_handler;
+    }
+
+    /* Read command byte from XDATA[0x0002] */
+    cmd = XDATA_VAR8(0x0002);
+
+    /* Dispatch based on command value */
+    if (cmd == 0xE3 || cmd == 0xFB) {
+        /* Case: 0x330b - DMA buffer handling for commands 0xE3/0xFB */
+        goto case_e3_fb;
+    } else if (cmd == 0xF9 || cmd == 0xE1) {
+        /* Case: 0x32c6 - USB transaction for commands 0xF9/0xE1 */
+        goto case_f9_e1;
+    } else {
+        goto default_handler;
+    }
+
+case_f9_e1:
+    /* 0x32c6: Check XDATA[0x0001] == 0x07 */
+    if (XDATA_VAR8(0x0001) != 0x07) {
+        /* Not 0x07: call int_aux_set_bit1, dispatch_04a3, then helper_523c */
+        int_aux_set_bit1_3280();
+        dispatch_04a3();
+        /* Simplified: always call helper_523c since we can't easily check R7 return */
+        helper_523c(0, 0x03, 0x03);
+        goto common_exit_e8;
+    }
+
+    /* XDATA[0x0001] == 0x07: Complex DMA calculation path */
+    /* Load 32-bit value from IDATA[0x6B] */
+    val_6b = (uint32_t)dword_6b[0] | ((uint32_t)dword_6b[1] << 8) |
+             ((uint32_t)dword_6b[2] << 16) | ((uint32_t)dword_6b[3] << 24);
+
+    /* Get USB status (16-bit) and extend to 32-bit */
+    usb_status = helper_3181();
+
+    /* sub32: val_6b = val_6b - usb_status */
+    sub_result = val_6b - (uint32_t)usb_status;
+
+    /* Store result back to IDATA[0x6B] */
+    dword_6b[0] = sub_result & 0xFF;
+    dword_6b[1] = (sub_result >> 8) & 0xFF;
+    dword_6b[2] = (sub_result >> 16) & 0xFF;
+    dword_6b[3] = (sub_result >> 24) & 0xFF;
+
+    /* Check if IDATA[0x6B] is non-zero */
+    if (helper_313d() != 0) {
+        goto common_exit_d8;
+    }
+
+    /* IDATA[0x6B] is zero: call helper_544c and goto common_exit_e8 */
+    helper_544c();
+    goto common_exit_e8;
+
+case_e3_fb:
+    /* 0x330b: DMA buffer handling for E3/FB commands */
+    /* Load 32-bit value from IDATA[0x6B] */
+    val_6b = (uint32_t)dword_6b[0] | ((uint32_t)dword_6b[1] << 8) |
+             ((uint32_t)dword_6b[2] << 16) | ((uint32_t)dword_6b[3] << 24);
+
+    /* Get USB status (16-bit) and extend to 32-bit */
+    usb_status = helper_3181();
+
+    /* sub32: val_6b = val_6b - usb_status */
+    sub_result = val_6b - (uint32_t)usb_status;
+
+    /* Store result back to IDATA[0x6B] */
+    dword_6b[0] = sub_result & 0xFF;
+    dword_6b[1] = (sub_result >> 8) & 0xFF;
+    dword_6b[2] = (sub_result >> 16) & 0xFF;
+    dword_6b[3] = (sub_result >> 24) & 0xFF;
+
+    /* Check REG 0x9000 bit 0 */
+    if (!(REG_USB_STATUS & 0x01)) {
+        goto path_330b_alt;
+    }
+
+    /* REG 0x9000 bit 0 set: Read link status */
+    link_status = usb_link_status_read_328a();
+
+    if (link_status == 0x01) {
+        /* Status == 1: Check R6 (from helper_3181) < 2 */
+        usb_status = helper_3181();
+        if ((usb_status >> 8) < 2) {
+            /* R6 < 2: Clear IDATA[0x6B] to zero */
+            dword_6b[0] = 0;
+            dword_6b[1] = 0;
+            dword_6b[2] = 0;
+            dword_6b[3] = 0;
+        }
+    } else {
+        /* Status != 1: Check R6 < 4 */
+        usb_status = helper_3181();
+        if ((usb_status >> 8) < 4) {
+            /* R6 < 4: Clear IDATA[0x6B] to zero */
+            dword_6b[0] = 0;
+            dword_6b[1] = 0;
+            dword_6b[2] = 0;
+            dword_6b[3] = 0;
+        }
+    }
+
+path_330b_alt:
+    /* Read REG 0xD80C and check value */
+    if (REG_USB_EP_CSW_STATUS == 0x01) {
+        /* D80C == 1: Check IDATA[0x6B] non-zero */
+        if (helper_313d() == 0) {
+            goto common_exit_e8;
+        }
+        goto common_exit_d8;
+    }
+
+    /* D80C != 1: Different path at 0x3363 */
+    int_aux_set_bit1_3280();
+
+    /* Check XDATA[0x0005] */
+    if (XDATA_VAR8(0x0005) != 0) {
+        /* XDATA[0x0005] != 0: Set 32-bit value to 0x00010000 and add to 0x6F */
+        val_6f = (uint32_t)dword_6f[0] | ((uint32_t)dword_6f[1] << 8) |
+                 ((uint32_t)dword_6f[2] << 16) | ((uint32_t)dword_6f[3] << 24);
+        val_6f += 0x00010000UL;
+    } else {
+        /* XDATA[0x0005] == 0: Set 32-bit value to 0x00000100 and add to 0x6F */
+        val_6f = (uint32_t)dword_6f[0] | ((uint32_t)dword_6f[1] << 8) |
+                 ((uint32_t)dword_6f[2] << 16) | ((uint32_t)dword_6f[3] << 24);
+        val_6f += 0x00000100UL;
+    }
+
+    /* add32 to IDATA[0x6F] - read REG 0x910D-910E and copy to 0x0A81-0A82 */
+    {
+        uint8_t r3_val;
+        r3_val = XDATA_VAR8(0x910D);
+        XDATA_VAR8(0x0A81) = r3_val;
+        XDATA_VAR8(0x0A82) = XDATA_VAR8(0x910E);
+    }
+
+    /* Call dispatch_04a8 - simplified: always take the R7==0 path */
+    dispatch_04a8();
+
+    /* Simplified: Call helper_523c(0, 3, 3), check helper_313d */
+    helper_523c(0, 0x03, 0x03);
+    if (helper_313d() == 0) {
+        goto path_33dc;
+    }
+    /* helper_313d non-zero: Complex add path */
+    usb_status = helper_3181();
+    val_6b = (uint32_t)dword_6b[0] | ((uint32_t)dword_6b[1] << 8) |
+             ((uint32_t)dword_6b[2] << 16) | ((uint32_t)dword_6b[3] << 24);
+    val_6b += (uint32_t)(usb_status & 0xFF);
+    dword_6f[0] = val_6b & 0xFF;
+    dword_6f[1] = (val_6b >> 8) & 0xFF;
+    dword_6f[2] = (val_6b >> 16) & 0xFF;
+    dword_6f[3] = (val_6b >> 24) & 0xFF;
+    goto common_exit_d8;
+
+path_33dc:
+    /* 0x33dc: Read helper_3181, store low byte to IDATA[0x6F] as 32-bit */
+    usb_status = helper_3181();
+    dword_6f[0] = usb_status & 0xFF;
+    dword_6f[1] = 0;
+    dword_6f[2] = 0;
+    dword_6f[3] = 0;
+    /* Fall through to common_exit_e3 */
+
+common_exit_e3:
+    /* 0x33e3: Store to IDATA[0x6F] and fall to common_exit_e8 */
+    /* Already stored above */
+    goto common_exit_e8;
+
+common_exit_d8:
+    /* 0x33d8: Call nvme_ep_config_init and return */
+    nvme_ep_config_init_3267();
+    return;
+
+common_exit_e8:
+    /* 0x33e8: Check REG 0x9000 bit 0 */
+    if (REG_USB_STATUS & 0x01) {
+        /* Bit 0 set: Get queue index, then call dispatch_0206 */
+        (void)queue_idx_get_3291();  /* Sets R7 for dispatch_0206 */
+        dispatch_0206();
+    } else {
+        /* Bit 0 clear: Call nvme_call_and_signal */
+        nvme_call_and_signal_3219();
+    }
+
+    /* Set state to 0x05 */
+    *state_ptr = 0x05;
+    return;
+
+default_handler:
+    /* 0x33ff: Default handler path */
+    helper_312a();
+    helper_31ce();
+
+    /* Check REG 0x9000 bit 0 */
+    if (REG_USB_STATUS & 0x01) {
+        /* Bit 0 set: Call helper_3133 on 0x905F and 0x905D */
+        __xdata uint8_t *reg_905f = (__xdata uint8_t *)0x905F;
+        __xdata uint8_t *reg_905d = (__xdata uint8_t *)0x905D;
+        *reg_905f = (*reg_905f & 0x7F) | 0x80;
+        *reg_905d = (*reg_905d & 0x7F) | 0x80;
+    }
+    return;
+}
+

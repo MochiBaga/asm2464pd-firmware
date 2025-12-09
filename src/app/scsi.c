@@ -89,7 +89,10 @@ extern void handler_d6bc(void);               /* was: dispatch_0534 */
 extern void dispatch_0426(void);              /* Bank 0 target 0xE762 */
 extern void dispatch_041c(uint8_t param);     /* Bank 0 dispatch */
 extern void dispatch_0453(void);              /* Bank 0 dispatch */
-extern void helper_173b(void);                /* Helper at 0x173b */
+extern void transfer_func_173b(void);         /* Helper at 0x173b in usb.c */
+extern void helper_312a(void);                /* Protocol helper at 0x312a */
+extern void helper_31ce(void);                /* Protocol helper at 0x31ce */
+extern void helper_1cf0(void);                /* Helper at 0x1cf0 */
 
 /* Forward declarations */
 static void scsi_setup_buffer_length(uint8_t hi, uint8_t lo);
@@ -2437,6 +2440,48 @@ void scsi_init_slot_53d4(void)
 void scsi_dispatch_5426(void)
 {
     dispatch_0426();
-    helper_173b();
+    transfer_func_173b();
     dispatch_0453();
 }
+
+/*
+ * scsi_helper_5455 - Call protocol helpers
+ * Address: 0x5455-0x545b (7 bytes)
+ *
+ * Calls helper_312a and helper_31ce in sequence
+ */
+void scsi_helper_5455(void)
+{
+    helper_312a();
+    helper_31ce();
+}
+
+/*
+ * scsi_clear_mode_545c - Clear transfer mode flag
+ * Address: 0x545c-0x5461 (6 bytes)
+ *
+ * Clears XDATA[0x0af8] to 0
+ */
+void scsi_clear_mode_545c(void)
+{
+    G_POWER_INIT_FLAG = 0;  /* Clear XDATA[0x0af8] */
+}
+
+/*
+ * scsi_helper_5462 - Call helper 1cf0
+ * Address: 0x5462-0x5465 (4 bytes)
+ *
+ * Simple wrapper for helper_1cf0
+ */
+void scsi_helper_5462(void)
+{
+    helper_1cf0();
+}
+
+/*
+ * Note: The following addresses are DATA tables, not code:
+ * - 0x5157-0x519d: Jump/data table (NOPs and control flow)
+ * - 0x53a4: Part of loop at 0x538d (not standalone function)
+ * - 0x54fc-0x5621: Data table/jump table
+ * - 0x5622-0x5930: Large data tables
+ */

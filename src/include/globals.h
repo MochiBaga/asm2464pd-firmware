@@ -66,6 +66,8 @@ __idata __at(0x45) uint8_t I_WORK_45;         /* Work variable 0x45 - chain inde
 __idata __at(0x46) uint8_t I_WORK_46;         /* Work variable 0x46 - chain flag */
 __idata __at(0x47) uint8_t I_WORK_47;         /* Work variable 0x47 - product cap */
 __idata __at(0x51) uint8_t I_WORK_51;         /* Work variable 0x51 */
+__idata __at(0x61) uint8_t I_WORK_61;         /* Work variable 0x61 - PCIe txn data byte 0 */
+__idata __at(0x62) uint8_t I_WORK_62;         /* Work variable 0x62 - PCIe txn data byte 1 */
 __idata __at(0x52) uint8_t I_WORK_52;         /* Work variable 0x52 */
 __idata __at(0x53) uint8_t I_WORK_53;         /* Work variable 0x53 */
 __idata __at(0x55) uint8_t I_WORK_55;         /* Work variable 0x55 */
@@ -190,6 +192,8 @@ __idata __at(0x72) uint8_t I_BUF_CTRL_GLOBAL; /* Buffer control global */
 #define G_PCIE_ADDR_1           XDATA_VAR8(0x05B0)  /* PCIe target address byte 1 */
 #define G_PCIE_ADDR_2           XDATA_VAR8(0x05B1)  /* PCIe target address byte 2 */
 #define G_PCIE_ADDR_3           XDATA_VAR8(0x05B2)  /* PCIe target address byte 3 */
+#define G_PCIE_TXN_TABLE        ((__xdata uint8_t *)0x05B7) /* PCIe transaction table (34-byte entries) */
+#define G_PCIE_TXN_ENTRY_SIZE   34                  /* Size of each table entry */
 #define G_EP_LOOKUP_TABLE       XDATA_VAR8(0x057A)  /* EP lookup table index */
 #define G_EP_CONFIG_05F8        XDATA_VAR8(0x05F8)  /* EP config 0x05F8 */
 

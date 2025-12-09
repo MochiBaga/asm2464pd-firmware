@@ -965,12 +965,12 @@ void delay_wait_e80a(uint16_t delay, uint8_t flag)
  * cmp32 - 32-bit comparison (check if equal)
  * Address: 0x0d22-0x0d32 (17 bytes)
  *
- * Compares R0:R1:R2:R3 with R4:R5:R6:R7.
- * Returns 0 in A (via B register ORing) if equal, non-zero if different.
+ * Compares R0:R1:R2:R3 with R4:R5:R6:R7 using register calling convention.
+ * Returns 0 in A if equal, non-zero if different.
  *
  * Original disassembly:
- *   0d22: mov a, r3       ; A = R3
- *   0d23: subb a, r7      ; A = R3 - R7 (with borrow)
+ *   0d22: mov a, r3       ; A = R3 (LSB of second operand)
+ *   0d23: subb a, r7      ; A = R3 - R7
  *   0d24: mov 0xf0, a     ; B = result
  *   0d26: mov a, r2       ; A = R2
  *   0d27: subb a, r6      ; A = R2 - R6
@@ -978,19 +978,28 @@ void delay_wait_e80a(uint16_t delay, uint8_t flag)
  *   0d2a: mov a, r1       ; A = R1
  *   0d2b: subb a, r5      ; A = R1 - R5
  *   0d2c: orl 0xf0, a     ; B |= result
- *   0d2e: mov a, r0       ; A = R0
+ *   0d2e: mov a, r0       ; A = R0 (MSB of second operand)
  *   0d2f: subb a, r4      ; A = R0 - R4
  *   0d30: orl a, 0xf0     ; A |= B
  *   0d32: ret             ; Return A (0 if equal)
  */
-uint8_t cmp32(uint32_t val1, uint32_t val2)
+void cmp32(void) __naked
 {
-    /* Returns 0 if equal, non-zero if different */
-    uint8_t b0 = (uint8_t)(val1 & 0xFF) - (uint8_t)(val2 & 0xFF);
-    uint8_t b1 = (uint8_t)((val1 >> 8) & 0xFF) - (uint8_t)((val2 >> 8) & 0xFF);
-    uint8_t b2 = (uint8_t)((val1 >> 16) & 0xFF) - (uint8_t)((val2 >> 16) & 0xFF);
-    uint8_t b3 = (uint8_t)((val1 >> 24) & 0xFF) - (uint8_t)((val2 >> 24) & 0xFF);
-    return b0 | b1 | b2 | b3;
+    __asm
+        mov  a, r3
+        subb a, r7
+        mov  0xf0, a        ; B = result
+        mov  a, r2
+        subb a, r6
+        orl  0xf0, a        ; B |= result
+        mov  a, r1
+        subb a, r5
+        orl  0xf0, a        ; B |= result
+        mov  a, r0
+        subb a, r4
+        orl  a, 0xf0        ; A |= B
+        ret
+    __endasm;
 }
 
 /*
@@ -1134,6 +1143,153 @@ uint8_t banked_load_byte(uint8_t addrlo, uint8_t addrhi, uint8_t memtype)
     }
     /* Invalid memory type */
     return 0;
+}
+
+/*
+ * banked_store_byte - Store byte to memory based on memory type
+ * Address: 0x0be6-0x0bfc (23 bytes)
+ *
+ * Stores A to memory at address R2:R1 based on memory type in R3.
+ * R3=0x00: IDATA, R3=0x01: XDATA, R3=0xFE: PDATA, R3=0xFF: no-op
+ * Other R3 values: banked XDATA store via 0x0adc
+ *
+ * Original disassembly:
+ *   0be6: cjne r3, #0x01, 0x0bef  ; if R3 != 1, check other types
+ *   0be9: mov 0x82, r1            ; DPL = R1
+ *   0beb: mov 0x83, r2            ; DPH = R2
+ *   0bed: movx @dptr, a           ; Store to XDATA
+ *   0bee: ret
+ *   0bef: jnc 0x0bf3              ; if R3 > 1, check PDATA
+ *   0bf1: mov @r1, a              ; Store to IDATA
+ *   0bf2: ret
+ *   0bf3: cjne r3, #0xfe, 0x0bf8  ; if R3 != 0xFE, check banked
+ *   0bf6: movx @r1, a             ; Store to PDATA
+ *   0bf7: ret
+ *   0bf8: jnc 0x0bf7              ; if R3 == 0xFF, just return
+ *   0bfa: ljmp 0x0adc             ; Otherwise banked store
+ */
+void banked_store_byte(uint8_t addrlo, uint8_t addrhi, uint8_t memtype, uint8_t val)
+{
+    if (memtype == 0x01) {
+        /* XDATA access */
+        __xdata uint8_t *ptr = (__xdata uint8_t *)((addrhi << 8) | addrlo);
+        *ptr = val;
+    } else if (memtype == 0x00) {
+        /* IDATA access */
+        *((__idata uint8_t *)addrlo) = val;
+    } else if (memtype == 0xFE) {
+        /* PDATA access */
+        *((__pdata uint8_t *)addrlo) = val;
+    } else if (memtype == 0xFF) {
+        /* No-op */
+        return;
+    } else {
+        /* Banked XDATA store: set DPX from memtype, store to XDATA */
+        uint8_t adjusted_bank = (memtype - 1) & 0x7F;
+        if (memtype < 0x80) {
+            __xdata uint8_t *ptr;
+            DPX = adjusted_bank;
+            ptr = (__xdata uint8_t *)((addrhi << 8) | addrlo);
+            *ptr = val;
+            DPX = 0x00;
+        }
+    }
+}
+
+/*
+ * table_search_dispatch_alt - Table-driven dispatch with 8-bit key
+ * Address: 0x0def-0x0e14 (38 bytes)
+ *
+ * Similar to table_search_dispatch but uses single-byte key in A/R0.
+ * Table format (3 bytes per entry):
+ *   Bytes 0-1: Target address (hi, lo)
+ *   Byte 2: Key to match with R0
+ *
+ * End-of-table marker:
+ *   Bytes 0-1: 0x00, 0x00
+ *   Bytes 2-3: Default target address (hi, lo)
+ *
+ * Original disassembly:
+ *   0def: pop 0x83          ; DPH = return_addr_hi
+ *   0df1: pop 0x82          ; DPL = return_addr_lo
+ *   0df3: mov r0, a         ; R0 = A (key to search for)
+ *   ; Loop
+ *   0df4: clr a
+ *   0df5: movc a, @a+dptr   ; Read table[0]
+ *   0df6: jnz 0x0e0a        ; if != 0, check key
+ *   0df8: mov a, #0x01
+ *   0dfa: movc a, @a+dptr   ; Read table[1]
+ *   0dfb: jnz 0x0e0a        ; if != 0, check key
+ *   ; End marker - jump to default
+ *   0dfd: inc dptr
+ *   0dfe: inc dptr
+ *   ; Read target and jump
+ *   0dff: movc a, @a+dptr   ; A = target_hi
+ *   0e00: mov r0, a
+ *   0e01: mov a, #0x01
+ *   0e03: movc a, @a+dptr   ; A = target_lo
+ *   0e04: mov 0x82, a       ; DPL = target_lo
+ *   0e06: mov 0x83, r0      ; DPH = target_hi
+ *   0e08: clr a
+ *   0e09: jmp @a+dptr       ; Jump to target
+ *   ; Check key match
+ *   0e0a: mov a, #0x02
+ *   0e0c: movc a, @a+dptr   ; A = key
+ *   0e0d: xrl a, r0         ; Compare with R0
+ *   0e0e: jz 0x0dff         ; Match!
+ *   ; No match - skip to next entry
+ *   0e10: inc dptr          ; 3x inc
+ *   0e11: inc dptr
+ *   0e12: inc dptr
+ *   0e13: sjmp 0x0df4       ; Loop back
+ */
+void table_search_dispatch_alt(void) __naked
+{
+    __asm
+        ; Pop return address into DPTR (points to table)
+        pop  dph            ; 0x83
+        pop  dpl            ; 0x82
+        mov  r0, a          ; R0 = key (passed in A)
+
+    _tsda_loop:
+        ; Check for end-of-table marker (0x00, 0x00)
+        clr  a
+        movc a, @a+dptr     ; Read table[0]
+        jnz  _tsda_check_key
+        mov  a, #0x01
+        movc a, @a+dptr     ; Read table[1]
+        jnz  _tsda_check_key
+
+        ; End marker found - skip to default address
+        inc  dptr
+        inc  dptr
+
+    _tsda_jump:
+        ; Read 2-byte target address and jump
+        ; A is 0 here (from xrl match or end-marker read)
+        movc a, @a+dptr     ; A = target_hi
+        mov  r0, a          ; R0 = target_hi
+        mov  a, #0x01
+        movc a, @a+dptr     ; A = target_lo
+        mov  dpl, a         ; DPL = target_lo
+        mov  dph, r0        ; DPH = target_hi
+        clr  a
+        jmp  @a+dptr        ; Jump to target
+
+    _tsda_check_key:
+        ; Compare table[2] with R0
+        mov  a, #0x02
+        movc a, @a+dptr     ; A = key from table
+        xrl  a, r0          ; Compare with R0
+        jz   _tsda_jump     ; Match!
+
+    _tsda_next:
+        ; No match - advance to next 3-byte entry
+        inc  dptr
+        inc  dptr
+        inc  dptr
+        sjmp _tsda_loop
+    __endasm;
 }
 
 /*

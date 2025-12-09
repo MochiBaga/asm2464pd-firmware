@@ -1969,25 +1969,51 @@ uint8_t check_link_status_e2b9(void)
  *   e786: mov @r0, a         ; Store to idata 0x62
  *   e787: ret
  */
-/* Stub for helper_99bc at 0x99bc - TODO: implement in nvme.c */
-void helper_99bc(uint8_t param)
-{
-    (void)param;
-    /* TODO: Implement - called from pcie_txn_setup_e775 */
-}
-
-/* Stub for helper_9980 at 0x9980 - TODO: implement in nvme.c */
-void helper_9980(void)
-{
-    /* TODO: Implement - called from pcie_txn_setup_e775 */
-}
-
+/*
+ * pcie_txn_setup_e775 - Setup PCIe transaction from global count
+ * Address: 0xe775-0xe787 (19 bytes)
+ *
+ * Reads transaction count from G_PCIE_TXN_COUNT_LO, looks up entry in
+ * the 34-byte transaction table at 0x05B7, and stores bytes 0 and 1
+ * of the entry to I_WORK_61 and I_WORK_62.
+ *
+ * The original code uses two helper functions (0x99bc and 0x9980) that
+ * return pointers via DPTR. In C, we inline the computation since
+ * DPTR isn't preserved across function calls.
+ *
+ * Original disassembly:
+ *   e775: mov dptr, #0x05a6  ; G_PCIE_TXN_COUNT_LO
+ *   e778: movx a, @dptr
+ *   e779: mov r7, a
+ *   e77a: lcall 0x99bc       ; DPTR = 0x05b7 + R7*0x22
+ *   e77d: movx a, @dptr      ; Read byte from table
+ *   e77e: mov r0, #0x61      ; I_WORK_61
+ *   e780: mov @r0, a         ; Store to idata 0x61
+ *   e781: lcall 0x9980       ; DPTR = 0x05b8 + R7*0x22
+ *   e784: movx a, @dptr      ; Read byte from table
+ *   e785: inc r0             ; I_WORK_62
+ *   e786: mov @r0, a         ; Store to idata 0x62
+ *   e787: ret
+ *
+ * Helper 0x99bc (8 bytes):
+ *   99bc: mov dptr, #0x05b7
+ *   99bf: mov a, r7
+ *   99c0: mov 0xf0, #0x22    ; B = 34
+ *   99c3: ljmp 0x0dd1        ; DPTR = base + A*B
+ *
+ * Helper 0x9980 (8 bytes):
+ *   9980: mov dptr, #0x05b8
+ *   9983: mov a, r7
+ *   9984: mov 0xf0, #0x22    ; B = 34
+ *   9987: ljmp 0x0dd1        ; DPTR = base + A*B
+ */
 void pcie_txn_setup_e775(void)
 {
     uint8_t count = G_PCIE_TXN_COUNT_LO;
-    helper_99bc(count);
-    /* Results stored to I_WORK_61/I_WORK_62 by helpers */
-    helper_9980();
+    __xdata uint8_t *entry = G_PCIE_TXN_TABLE + (count * G_PCIE_TXN_ENTRY_SIZE);
+
+    I_WORK_61 = entry[0];
+    I_WORK_62 = entry[1];
 }
 
 /*
@@ -2947,6 +2973,31 @@ uint8_t ep_config_read(uint8_t param) { (void)param; return 0; }
 /* helper_2608 - Address: 0x2608 */
 void helper_2608(void) {}
 
+/* helper_3adb - CEF2 handler
+ * Address: 0x3adb
+ */
+void helper_3adb(uint8_t param) { (void)param; }
+
+/* helper_488f - Queue processor
+ * Address: 0x488f
+ */
+void helper_488f(void) {}
+
+/* helper_3e81 - USB status handler
+ * Address: 0x3e81
+ */
+void helper_3e81(void) {}
+
+/* helper_4784 - Link status handler
+ * Address: 0x4784
+ */
+void helper_4784(void) {}
+
+/* helper_49e9 - USB control handler
+ * Address: 0x49e9
+ */
+void helper_49e9(void) {}
+
 /* helper_0584 - Address: 0x0584 */
 void helper_0584(void) {}
 
@@ -3236,4 +3287,117 @@ void ext_mem_access_0bc8(uint8_t bank, uint8_t addr_hi, uint8_t addr_lo)
 
 /* helper_e677 - Address: 0xe677 - PCIe channel init helper */
 void helper_e677(void) { /* Stub */ }
+
+/*===========================================================================
+ * Bank1 High 1-Call Functions (0xE000-0xFFFF)
+ *===========================================================================*/
+
+/*
+ * get_pcie_status_flags_e00c - Build status flags from PCIe buffers
+ * Address: 0xe00c-0xe03b (48 bytes)
+ *
+ * Reads status buffers 0x0B34-0x0B37 and builds a status byte:
+ *   bit 0: set if 0x0B34 != 0
+ *   bit 1: set if 0x0B35 != 0
+ *   bit 2: set if 0x0B36 != 0
+ *   bit 3: set if 0x0B37 != 0
+ * Then calls helper_a2ff, combines results, and writes via helper_0be6
+ */
+extern uint8_t helper_a2ff(void);
+
+uint8_t get_pcie_status_flags_e00c(void)
+{
+    uint8_t flags = 0;
+
+    if (XDATA8(0x0B34) != 0) flags |= 0x01;
+    if (XDATA8(0x0B35) != 0) flags |= 0x02;
+    if (XDATA8(0x0B36) != 0) flags |= 0x04;
+    if (XDATA8(0x0B37) != 0) flags |= 0x08;
+
+    /* Combine with upper nibble from helper */
+    flags |= (helper_a2ff() & 0xF0);
+
+    /* Write result via helper_0be6 */
+    helper_0be6();
+
+    return flags;
+}
+
+/*
+ * check_nvme_ready_e03c - Check if NVMe subsystem is ready
+ * Address: 0xe03c-0xe06a (47 bytes)
+ *
+ * Checks multiple status conditions:
+ *   - 0x0ACF must equal 0xA1 (XOR check)
+ *   - 0x0AD3 must be 0
+ *   - 0x0AD5 must equal 1
+ *   - 0x0AD1 must be 0
+ * If all pass: writes init sequence to 0x9003-0x9004, 0x9E00, returns 3
+ * If any fail: returns 5
+ */
+uint8_t check_nvme_ready_e03c(void)
+{
+    /* Check 0x0ACF == 0xA1 */
+    if (XDATA8(0x0ACF) != 0xA1) {
+        return 5;  /* Not ready */
+    }
+
+    /* Check 0x0AD3 == 0 */
+    if (XDATA8(0x0AD3) != 0) {
+        return 5;
+    }
+
+    /* Check 0x0AD5 == 1 */
+    if (XDATA8(0x0AD5) != 1) {
+        return 5;
+    }
+
+    /* Check 0x0AD1 == 0 */
+    if (XDATA8(0x0AD1) != 0) {
+        return 5;
+    }
+
+    /* All checks passed - initialize NVMe registers */
+    XDATA_REG8(0x9003) = 0x00;
+    XDATA_REG8(0x9004) = 0x01;
+    XDATA_REG8(0x9E00) = 0x00;
+
+    return 3;  /* Ready */
+}
+
+/*
+ * pcie_dma_init_e0e4 - Initialize PCIe DMA transfer
+ * Address: 0xe0e4-0xe0f3 (16 bytes)
+ *
+ * Calls initialization helper 0x053e, sets up extended memory
+ * parameters (r3=0xFF, r2=0x52, r1=0xE6), calls 0x538d, then 0xe7ae
+ */
+extern void helper_053e(void);
+extern void helper_538d(uint8_t r3, uint8_t r2, uint8_t r1);
+extern void FUN_CODE_e7ae(void);
+
+void pcie_dma_init_e0e4(void)
+{
+    /* Initial setup */
+    helper_053e();
+
+    /* Set up extended memory parameters and call */
+    helper_538d(0xFF, 0x52, 0xE6);
+
+    /* Final PCIe/DMA handler */
+    FUN_CODE_e7ae();
+}
+
+/* helper_a2ff - Address: 0xa2ff - Status read helper */
+uint8_t helper_a2ff(void) { return 0; /* Stub */ }
+
+/* helper_053e - Address: 0x053e - Init helper */
+void helper_053e(void) { /* Stub */ }
+
+/* helper_538d - Address: 0x538d - Extended memory setup */
+void helper_538d(uint8_t r3, uint8_t r2, uint8_t r1)
+{
+    (void)r3; (void)r2; (void)r1;
+    /* Stub */
+}
 

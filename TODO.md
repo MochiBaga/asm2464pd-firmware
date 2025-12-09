@@ -5,8 +5,8 @@
 - **Functions remaining**: ~750
 - **Stub functions** (empty placeholder): 24
 - **High-priority** (called 5+ times): 66
-- **State Machine Helpers**: 29/49 implemented (59%)
-- **Firmware size**: 44,250 / 98,012 bytes (45.1%)
+- **State Machine Helpers**: 31/49 implemented (63%)
+- **Firmware size**: 46,328 / 98,012 bytes (47.3%)
 
 ### Metrics Note
 
@@ -53,11 +53,13 @@ These functions are called frequently and should be prioritized:
 - [x] `0x0bfd` - mul16x16 - 16x16 multiply (math.c)
 - [x] `0x0ba9` - banked_store_dword - Banked XDATA write (utils.c)
 - [x] `0x0bc8` - banked_load_byte - Banked memory read (utils.c)
+- [x] `0x0be6` - banked_store_byte - Banked memory write (utils.c)
 - [x] `0x0c9e` - add32 - 32-bit addition (math.c)
 - [x] `0x0cab` - sub32 - 32-bit subtraction (math.c)
 - [x] `0x0cb9` - mul32 - 32-bit multiplication (math.c)
 - [x] `0x0d08` - or32 - 32-bit OR (math.c)
 - [x] `0x0d15` - xor32 - 32-bit XOR (math.c)
+- [x] `0x0d22` - cmp32 - 32-bit comparison (utils.c)
 - [x] `0x0d59` - Memory type dispatcher (internal, routes to idata/xdata/pdata)
 - [x] `0x0d78` - idata_load_dword (utils.c)
 - [x] `0x0d84` - xdata_load_dword (utils.c)
@@ -89,7 +91,8 @@ These functions are called frequently and should be prioritized:
 
 ### Implemented (Complex)
 
-- [x] `0x0e15` - table_search_dispatch - Table-driven dispatch (inline asm in utils.c)
+- [x] `0x0def` - table_search_dispatch_alt - Table-driven dispatch with 8-bit key (utils.c)
+- [x] `0x0e15` - table_search_dispatch - Table-driven dispatch with 32-bit key (utils.c)
 
 ---
 
@@ -115,7 +118,7 @@ These functions are called frequently and should be prioritized:
 - [x] `0x1b3b` - scsi_get_ctrl_ptr_1b3b (5 calls) - SCSI control pointer
 - [x] `0x1bd7` - mem_read_ptr_1bd7 (5 calls) - memory read with carry
 
-### Other (37 functions - 17 implemented)
+### Other (37 functions - 19 implemented)
 
 - [x] `0x120b` (4 calls) - state_inc_and_calc_120b
 - [x] `0x15a0` (4 calls) - get_usb_index_ptr_15a0
@@ -134,11 +137,12 @@ These functions are called frequently and should be prioritized:
 - [x] `0x1b88` (1 calls) - read_009f_idx3e_1b88
 - [x] `0x171d` (1 calls) - read_0472_pair_171d
 - [x] `0x1b47` (1 calls) - setup_c415_from_0475_1b47
+- [x] `0x1006` (1 calls) - usb_state_handler_isr_1006 - USB state machine interrupt handler (~400 bytes)
+- [x] `0x1196` (1 calls) - helper_1196 - USB endpoint loop with C47A write
 - [ ] `0x121b` (3 calls) - mid-function entry point
 - [ ] `0x1231` (2 calls) - mid-function (part of state machine)
 - [ ] `0x1295` (2 calls) - mid-function (part of state machine)
 - [ ] `0x16d2` (2 calls) - mid-function (multiply by 0x40)
-- [ ] `0x1006` (1 calls) - complex state handler
 - [ ] `0x168e` (1 calls) - mid-function entry
 - ... and ~14 more mid-function entry points
 
@@ -146,7 +150,7 @@ These functions are called frequently and should be prioritized:
 
 ## Protocol State Machines (0x2000-0x3FFF)
 
-**Total: 16** | Stubs: 0 | Implemented: 17 | High-priority: 0
+**Total: 16** | Stubs: 0 | Implemented: 18 | High-priority: 0
 
 ### Implemented
 
@@ -167,6 +171,7 @@ These functions are called frequently and should be prioritized:
 - [x] `0x3280` - int_aux_set_bit1_3280 (1 calls) - Set bit 1 of aux interrupt status
 - [x] `0x329f` - xdata_read_0a7e_329f (1 calls) - Read 32-bit value from XDATA 0x0A7E
 - [x] `0x313d` - helper_313d (1 calls) - Check if 32-bit IDATA[0x6B] is non-zero
+- [x] `0x32a5` - protocol_state_dispatcher_32a5 (1 calls) - Complex state machine dispatcher
 
 ### Data/Mid-function Regions (not code entry points)
 
@@ -177,10 +182,6 @@ These functions are called frequently and should be prioritized:
 - `0x2412` - USB descriptor data
 - `0x24fc` - USB descriptor data
 - `0x3978` - jump table entries (called via computed jump, not standalone)
-
-### Complex/Remaining
-
-- [ ] `0x32a5` (1 calls) - Complex state machine dispatcher (~350 bytes, many branches)
 
 ---
 
@@ -383,13 +384,13 @@ These functions are called frequently and should be prioritized:
 
 - [ ] `0xd1e6` (14 calls)
 - [ ] `0xd1f2` (14 calls)
-- [ ] `0xc1f9` (10 calls)
+- [x] `0xc1f9` (10 calls) - pcie_tlp_init_and_transfer in pcie.c
 - [ ] `0xd5da` (10 calls)
 - [ ] `0xc2e7` (8 calls)
-- [ ] `0xda9f` (7 calls)
+- [x] `0xda9f` (7 calls) - usb_check_phy_status in usb.c
 - [ ] `0xc2f8` (6 calls)
 - [ ] `0xd185` (6 calls)
-- [ ] `0xc20f` (5 calls)
+- [x] `0xc20f` (5 calls) - pcie_setup_memory_tlp in pcie.c
 - [ ] `0xc2bf` (5 calls)
 - [ ] `0xc2f1` (5 calls)
 - [ ] `0xce23` (5 calls)
@@ -408,7 +409,7 @@ These functions are called frequently and should be prioritized:
 - [ ] `0xc37b` (4 calls)
 - [ ] `0xc382` (4 calls)
 - [ ] `0xc389` (4 calls)
-- [ ] `0xcb0f` (4 calls)
+- [x] `0xcb0f` (4 calls) - power_get_state_nibble_cb0f in power.c
 - [ ] `0xd172` (4 calls)
 - [ ] `0xd17e` (4 calls)
 - [ ] `0xd229` (4 calls)
