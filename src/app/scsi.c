@@ -17,7 +17,7 @@
 void scsi_dma_mode_setup(void);
 
 /* External functions from moved stubs */
-extern void handler_3adb(uint8_t param);
+extern void nvme_completion_handler(uint8_t param);
 extern void handler_0395(void);
 
 /* Stub helpers for slot address calculations */
@@ -55,7 +55,7 @@ extern void usb_set_done_flag(void);
 extern void usb_set_transfer_active_flag(void);
 extern void nvme_read_status(void);
 extern void nvme_check_completion(uint16_t addr);
-extern void dma_start_transfer(void);
+extern void dma_poll_link_ready(void);
 extern void xdata_load_dword(void);
 extern void handler_039a_buffer_dispatch(void);
 extern uint8_t helper_1b0b(uint8_t param);
@@ -64,7 +64,7 @@ extern void helper_1b30(uint8_t param);
 extern void helper_1c13(uint8_t param);
 extern void helper_166f(void);
 extern void helper_15d4(void);
-extern uint8_t helper_1646(void);
+extern uint8_t get_ep_config_indexed(void);
 extern void usb_shift_right_3(uint8_t param);
 extern void helper_15ef(uint8_t a, uint8_t b);
 extern void helper_15f1(uint8_t param);
@@ -81,17 +81,17 @@ extern void phy_power_config_handler(void);   /* was: dispatch_032c */
 extern void handler_bf8e(void);               /* was: dispatch_0340 */
 extern void handler_0327_usb_power_init(void);
 extern void helper_3578(uint8_t param);
-extern void helper_157d(void);
+extern void pcie_txn_array_calc(void);
 extern void protocol_dispatch(uint8_t param);
 extern void transfer_func_1633(uint16_t param);
-extern void helper_1579(void);
+extern void pcie_txn_index_load(void);
 extern uint8_t usb_get_sys_status_offset(void);
 extern void nvme_call_and_signal_3219(void);
 extern uint8_t queue_idx_get_3291(void);
 extern void nvme_init_step(void);
 extern void transfer_func_16b0(uint8_t param);
-extern void helper_16e9(uint8_t param);
-extern void helper_16eb(uint8_t param);
+extern void get_sys_status_ptr_0456(uint8_t param);
+extern void get_sys_status_ptr_0400(uint8_t param);
 extern void nvme_util_advance_queue(void);
 extern void dma_queue_state_handler(void);
 extern void nvme_util_clear_completion(void);
@@ -464,7 +464,7 @@ void scsi_dma_dispatch(uint8_t param)
         IDATA_TRANSFER[1] = 0;
         IDATA_TRANSFER[2] = 0x40;
         IDATA_TRANSFER[3] = 0;
-        dma_start_transfer();
+        dma_poll_link_ready();
         G_DMA_STATE_0214 = 5;
     }
 }
@@ -482,7 +482,7 @@ void scsi_dma_start_with_param(uint8_t param)
     IDATA_TRANSFER[2] = 0x40;
     IDATA_TRANSFER[3] = 0;
 
-    dma_start_transfer();
+    dma_poll_link_ready();
     G_DMA_STATE_0214 = 5;
 }
 
@@ -577,7 +577,7 @@ void scsi_buffer_threshold_config(void)
 
     if (G_LOG_INIT_044D > 1) {
         val = G_DMA_ENDPOINT_0578;
-        mode = helper_1646();
+        mode = get_ep_config_indexed();
     }
 
     usb_shift_right_3(val);
@@ -645,7 +645,7 @@ void scsi_transfer_dispatch(void)
     }
 
     G_PCIE_TXN_COUNT_LO = usb_get_sys_status_offset();
-    helper_157d();
+    pcie_txn_array_calc();
 
     val = G_DMA_MODE_0A8E;
     if (val == 0x10) {
@@ -658,7 +658,7 @@ void scsi_transfer_dispatch(void)
         transfer_func_1633(0xB480);
         protocol_dispatch(G_PCIE_TXN_COUNT_LO);
         scsi_pcie_send_status(0);
-        helper_1579();
+        pcie_txn_index_load();
         G_PCIE_TXN_COUNT_LO = 3;
         interface_ready_check(0, 199, 3);
 
@@ -667,7 +667,7 @@ void scsi_transfer_dispatch(void)
         }
 
         scsi_dispatch_reset();
-        helper_1579();
+        pcie_txn_index_load();
         G_PCIE_TXN_COUNT_LO = 5;
         return;
     }
@@ -871,11 +871,11 @@ void scsi_sys_status_update(uint8_t param)
     uint8_t status;
 
     status = G_SYS_STATUS_PRIMARY;
-    helper_16e9(status);
+    get_sys_status_ptr_0456(status);
     I_WORK_51 = G_SYS_STATUS_PRIMARY;
 
     status = (I_WORK_51 + param) & 0x1F;
-    helper_16eb(status + 0x56);
+    get_sys_status_ptr_0400(status + 0x56);
     G_SYS_STATUS_PRIMARY = status;
 }
 
@@ -1905,7 +1905,7 @@ check_usb_status:
  *
  * Extended CSW building with additional status checks.
  */
-extern void handler_2608(void);  /* dma.c - 0x2608 */
+extern void dma_interrupt_handler(void);  /* dma.c - 0x2608 */
 
 void scsi_csw_build_ext_488f(void)
 {
@@ -1930,7 +1930,7 @@ void scsi_csw_build_ext_488f(void)
     /* Check REG_CPU_LINK_CEF3 bit 3 */
     if (REG_CPU_LINK_CEF3 & CPU_LINK_CEF3_ACTIVE) {
         REG_CPU_LINK_CEF3 = 0x08;  /* Clear bit by writing 1 */
-        handler_2608();
+        dma_interrupt_handler();
     }
 
     /* Check bit 1 again */
@@ -2262,24 +2262,24 @@ void scsi_transfer_helper_4f77(uint8_t param)
 }
 
 /*
- * scsi_queue_handler_4fb6 - Queue processing handler
+ * scsi_queue_process - Queue processing handler
  * Address: 0x4fb6-0x4ff1 (60 bytes)
  *
  * Processes queue with DMA initialization.
  */
-void scsi_queue_handler_4fb6(void)
+void scsi_queue_process(void)
 {
     /* Initialize DMA */
     scsi_dma_init_4be6();
 }
 
 /*
- * scsi_core_handler_4ff2 - Core command handler
+ * scsi_command_dispatch - Core command handler
  * Address: 0x4ff2-0x5007 (22 bytes)
  *
  * Core handler that dispatches to NVMe functions.
  */
-void scsi_core_handler_4ff2(uint8_t flag, uint8_t param)
+void scsi_command_dispatch(uint8_t flag, uint8_t param)
 {
     (void)param;
     if (flag) {
@@ -2583,14 +2583,14 @@ void scsi_send_csw(uint8_t status, uint8_t param)
             if (G_FLASH_ERROR_0 == 0) {
                 if ((int8_t)REG_CPU_LINK_CEF2 < 0) {
                     REG_CPU_LINK_CEF2 = 0x80;
-                    handler_3adb(0);
+                    nvme_completion_handler(0);
                     return;
                 }
             } else {
                 regval = REG_PCIE_POWER_B294;
                 if ((regval >> 4) & 1) {
                     REG_PCIE_POWER_B294 = 0x10;
-                    handler_3adb(0);
+                    nvme_completion_handler(0);
                     return;
                 }
             }
@@ -2910,10 +2910,10 @@ void helper_488f(void)
     }
 }
 
-/* helper_4784 - Link status handler
+/* nvme_queue_cfg_by_state - Link status handler
  * Address: 0x4784
  */
-void helper_4784(void)
+void nvme_queue_cfg_by_state(void)
 {
     uint8_t state = I_STATE_6A;
 
@@ -2929,10 +2929,10 @@ void helper_4784(void)
     }
 }
 
-/* helper_49e9 - USB control handler
+/* nvme_queue_index_update - USB control handler
  * Address: 0x49e9
  */
-void helper_49e9(void)
+void nvme_queue_index_update(void)
 {
     uint8_t queue_idx;
     uint8_t expected;

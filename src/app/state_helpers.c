@@ -57,7 +57,7 @@
 #include "globals.h"
 
 /* External helper functions from stubs.c */
-extern uint8_t helper_1646(void);
+extern uint8_t get_ep_config_indexed(void);
 extern void helper_1755(uint8_t offset);
 extern void helper_159f(uint8_t value);
 
@@ -414,7 +414,7 @@ extern void helper_5359(uint8_t param);     /* 0x5359 - Buffer setup */
 extern uint8_t helper_1cd4(void);  /* 0x1cd4 - Returns status with bit 1 flag */
 extern void helper_1cc8(void);     /* 0x1cc8 - Register setup */
 extern void helper_1c22(void);     /* 0x1c22 - Carry flag helper */
-extern uint8_t helper_1646(void);  /* 0x1646 - Get endpoint config value */
+extern uint8_t get_ep_config_indexed(void);  /* 0x1646 - Get endpoint config value */
 extern void helper_1755(uint8_t offset);  /* 0x1755 - Set up address pointer */
 extern void helper_159f(uint8_t value);   /* 0x159f - Write value via pointer */
 
@@ -767,7 +767,7 @@ void reg_wait_bit_set(uint16_t addr)
  *   1b20: lcall 0x0db9         ; Write R4-R7 to IDATA[0x12]
  *   (continues to 0x1b23)
  *
- * Used by protocol.c core_handler_4ff2.
+ * Used by protocol.c scsi_core_dispatch.
  */
 uint8_t usb_func_1b14(uint8_t param)
 {
@@ -852,7 +852,7 @@ uint8_t usb_func_1b23(void)
  *   1bc8: mov 0x83, a        ; DPH = R2
  *   1bca: ret
  *
- * Used by protocol.c core_handler_4ff2.
+ * Used by protocol.c scsi_core_dispatch.
  */
 void usb_reset_interface(uint8_t param)
 {
@@ -876,7 +876,7 @@ void xdata_load_dword_noarg(void)
 {
     /* Original reads 4 bytes from DPTR into R4-R7.
      * Since we can't access DPTR directly in C, this is a stub.
-     * The caller (core_handler_4ff2) doesn't use the return value. */
+     * The caller (scsi_core_dispatch) doesn't use the return value. */
 }
 
 /* reg_wait_bit_set and nvme_func_04da are defined earlier in this file */
@@ -989,7 +989,7 @@ void power_init_complete_e8ef(uint8_t param)
 }
 
 /*
- * Helper functions used by handler_2608
+ * Helper functions used by dma_interrupt_handler
  */
 
 /*
@@ -1122,7 +1122,7 @@ extern void helper_45d0(uint8_t param);
 extern void helper_0421(uint8_t param);
 
 /*
- * handler_2608 - DMA/buffer queue state handler
+ * dma_interrupt_handler - DMA/buffer queue state handler
  * Address: 0x2608-0x2809 (513 bytes)
  *
  * This is a complex state machine handler that manages:
@@ -1592,7 +1592,7 @@ extern void helper_dd42(uint8_t param);          /* stubs.c */
 extern void handler_e7c1(uint8_t param);         /* via dispatch */
 
 /*
- * system_state_handler_ca0d - Handle system state transitions
+ * power_state_handler - Handle system state transitions
  * Address: 0xca0d-0xca70 (100 bytes)
  *
  * Main handler for system state transitions. Checks event control
@@ -1620,7 +1620,7 @@ extern void handler_e7c1(uint8_t param);         /* via dispatch */
  *   ...
  *   ca70: ret
  */
-void system_state_handler_ca0d(void)
+void power_state_handler(void)
 {
     uint8_t val;
 
@@ -1680,7 +1680,7 @@ void system_state_handler_ca0d(void)
  * Algorithm:
  *   1. Read G_SCSI_CMD_PARAM_0470, check bit 3
  *   2. If bit 3 set:
- *      - Call helper_1646 to get divider (EP config value)
+ *      - Call get_ep_config_indexed to get divider (EP config value)
  *      - Compute G_XFER_DIV_0476 = ceil(I_WORK_3F / divider)
  *   3. Check REG_BUF_CFG_9000 bit 0
  *   4. If bit 0 set:
@@ -1704,7 +1704,7 @@ void state_transfer_calc_120d(void)
     }
 
     /* Get divider from EP config array */
-    divider = helper_1646();
+    divider = get_ep_config_indexed();
 
     /* Compute quotient = I_WORK_3F / divider */
     if (divider != 0) {
@@ -2540,12 +2540,12 @@ extern void usb_set_transfer_active_flag(void);  /* 0x312a */
 extern void nvme_read_status(void);              /* 0x31ce */
 extern void usb_ep_loop_180d(uint8_t param);     /* 0x180d */
 extern void usb_ep_loop_3419(void);              /* 0x3419 */
-extern void handler_2608(void);                  /* 0x2608 - link event handler (dma.c) */
-extern void handler_3adb(uint8_t param);         /* 0x3adb - CEF2 handler (protocol.c) */
+extern void dma_interrupt_handler(void);                  /* 0x2608 - link event handler (dma.c) */
+extern void nvme_completion_handler(uint8_t param);         /* 0x3adb - CEF2 handler (protocol.c) */
 extern void helper_488f(void);                   /* 0x488f - queue processor */
 extern void helper_3e81(void);                   /* 0x3e81 - USB status handler */
-extern void helper_4784(void);                   /* 0x4784 - link status handler */
-extern void helper_49e9(void);                   /* 0x49e9 - USB control handler */
+extern void nvme_queue_cfg_by_state(void);                   /* 0x4784 - link status handler */
+extern void nvme_queue_index_update(void);                   /* 0x49e9 - USB control handler */
 
 /*
  * helper_1196 - USB endpoint loop with r7=1 and C47A write
@@ -2615,14 +2615,14 @@ void usb_state_handler_isr_1006(void)
             /* Clear G_SYS_STATUS_PRIMARY, write 0x08 to CEF3, call helper */
             G_SYS_STATUS_PRIMARY = 0;
             REG_CPU_LINK_CEF3 = 0x08;
-            handler_2608();
+            dma_interrupt_handler();
         } else {
             /* Check REG_CPU_LINK_CEF2 bit 7 */
             val = REG_CPU_LINK_CEF2;
             if (val & 0x80) {  /* Bit 7: Link ready */
-                /* Write 0x80 to CEF2, call handler_3adb(0) */
+                /* Write 0x80 to CEF2, call nvme_completion_handler(0) */
                 REG_CPU_LINK_CEF2 = 0x80;
-                handler_3adb(0);
+                nvme_completion_handler(0);
             }
         }
     }
@@ -2678,20 +2678,20 @@ void usb_state_handler_isr_1006(void)
         /* Check REG_NVME_LINK_STATUS (0xC520) bit 1 */
         val = REG_NVME_LINK_STATUS;
         if (val & 0x02) {  /* Bit 1 set */
-            helper_4784();
+            nvme_queue_cfg_by_state();
         }
 
         /* Check REG_NVME_LINK_STATUS bit 0 */
         val = REG_NVME_LINK_STATUS;
         if (val & 0x01) {  /* Bit 0 set */
-            helper_49e9();
+            nvme_queue_index_update();
         }
     }
 
     /* Check REG_USB_MSC_CTRL (0xC42C) bit 0 */
     val = REG_USB_MSC_CTRL;
     if (val & 0x01) {  /* Bit 0 set */
-        helper_4784();
+        nvme_queue_cfg_by_state();
         REG_USB_MSC_CTRL = 0x01;  /* Write back to acknowledge */
     }
 
@@ -2716,19 +2716,19 @@ void state_update_e25e(void)
 }
 
 /*
- * state_handler_d996 - PCIe state machine handler
+ * system_state_update - PCIe state machine handler
  * Address: 0xd996-0xd9d4 (63 bytes)
  *
  * Complex state machine handler that configures PCIe registers
  * and calls multiple helper functions. Called as tail call from
- * transfer_handler_ceab.
+ * dma_start_transfer.
  *
  * TODO: Full implementation requires:
  *   - helper_ccac, helper_e8a9(0x0F), helper_e57d
  *   - helper_d630(0x01), helper_d436(0x0F), helper_e25e
  *   - ext_mem_access_0bc8 calls for register configuration
  */
-void state_handler_d996(void)
+void system_state_update(void)
 {
     uint8_t val;
     val = pcie_read_ctrl_b402();

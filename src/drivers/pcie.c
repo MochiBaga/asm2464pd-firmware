@@ -173,27 +173,27 @@ extern void handler_e478(void);
 extern void pcie_link_state_init(void);
 extern void process_log_entries(uint8_t param);
 extern void dispatch_04c1(void);
-extern void helper_befb(void);
+extern void pcie_short_delay(void);
 extern void uart_puthex(uint8_t val);
 extern void cmd_engine_clear(void);
-extern void helper_b8c3(void);
-extern void helper_9536(void);
+extern void cmd_engine_wait_idle(void);
+extern void link_state_init_stub(void);
 extern void cmd_config_e40b(void);
 extern uint8_t cmd_check_busy(void);
 extern void cmd_start_trigger(void);
 extern uint8_t banked_load_byte(uint8_t addrlo, uint8_t addrhi, uint8_t memtype);
 extern void ext_mem_read_bc57(uint8_t r3, uint8_t r2, uint8_t r1);
-extern void transfer_handler_ce23(uint8_t param);
+extern void dma_transfer_handler(uint8_t param);
 extern void reg_timer_clear_bits(void);
 extern void reg_timer_setup_and_set_bits(void);
-extern void helper_e762(uint8_t param);
-extern uint8_t helper_e8f9(void);
-extern uint8_t helper_a33d(uint8_t reg_offset);
-extern uint8_t helper_c1f9(void);
+extern void pcie_stage_address(uint8_t param);
+extern uint8_t pcie_read_transaction_start(void);
+extern uint8_t pcie_read_ext_reg(uint8_t reg_offset);
+extern uint8_t pcie_setup_tlp_transaction(void);
 extern void helper_053e(void);
 extern void helper_538d(uint8_t r3, uint8_t r2, uint8_t r1);
 extern void uart_wait_tx_ready(void);
-extern uint8_t helper_a71b(void);
+extern uint8_t nvme_clear_ep0_status(void);
 extern void helper_be8b(void);
 extern void helper_bd05(void);
 
@@ -2010,7 +2010,7 @@ extern void nvme_queue_clear_9003(void);
 extern void nvme_queue_set_9092(uint8_t param);
 extern void nvme_queue_set_bit0_ptr(__xdata uint8_t *ptr);
 extern uint8_t nvme_queue_shift_param(uint8_t param);
-extern void nvme_handler_ba06(void);
+extern void nvme_completion_poll(void);
 extern void usb_buffer_handler(void);
 
 /*
@@ -2070,7 +2070,7 @@ void pcie_tlp_handler_b28c(void)
             r3 = G_SYS_FLAGS_BASE;
             if (r3 == 0x03) {
                 /* Call 0xba06 */
-                nvme_handler_ba06();
+                nvme_completion_poll();
                 /* Check 0x0ae5 init flag */
                 if (G_TLP_INIT_FLAG_0AE5 != 0) {
                     usb_buffer_handler();
@@ -2489,32 +2489,32 @@ void nvme_queue_b851(void)
 }
 
 /*
- * nvme_handler_b881 - NVMe handler
+ * nvme_queue_submit - NVMe handler
  * Address: 0xb881-0xb8a1 (33 bytes)
  */
-void nvme_handler_b881(void)
+void nvme_queue_submit(void)
 {
     /* TODO: Implement NVMe handler */
 }
 
 /*
- * nvme_handler_b8b9 - NVMe handler 3
+ * nvme_queue_poll - NVMe handler 3
  * Address: 0xb8b9-0xba05 (~333 bytes)
  *
  * Large NVMe event handler.
  */
-void nvme_handler_b8b9(void)
+void nvme_queue_poll(void)
 {
     /* TODO: Implement NVMe handler 3 */
 }
 
 /*
- * nvme_handler_ba06 - NVMe handler 4
+ * nvme_completion_poll - NVMe handler 4
  * Address: 0xba06+
  *
  * Final NVMe handler in this range.
  */
-void nvme_handler_ba06(void)
+void nvme_completion_poll(void)
 {
     /* TODO: Implement NVMe handler 4 */
 }
@@ -3200,12 +3200,12 @@ uint8_t pcie_init_write_e902(void)
  *===========================================================================*/
 
 /* Extern declarations for helper stubs still in stubs.c */
-extern void helper_e677(void);
+extern void pcie_timer_channels_init(void);
 extern void helper_9617(void);
 extern void helper_95bf(void);
 extern void helper_bd23(__xdata uint8_t *reg);
-extern void helper_e50d(void);
-extern uint8_t helper_a2ff(void);
+extern void timer0_reset(void);
+extern uint8_t pcie_read_link_state(void);
 extern void helper_0be6(void);
 
 /*
@@ -3341,7 +3341,7 @@ void pcie_channel_setup_e19e(void)
     uint8_t val;
 
     /* Initial setup */
-    helper_e677();
+    pcie_timer_channels_init();
 
     /* Configure primary PCIe channel 0xCC1C-0xCC1F */
     val = XDATA_REG8(0xCC1C);
@@ -3446,7 +3446,7 @@ void pcie_disable_and_trigger_e74e(void)
 void pcie_wait_and_ack_e80a(void)
 {
     /* Call setup helper */
-    helper_e50d();
+    timer0_reset();
 
     /* Wait for bit 1 of 0xCC11 to be set */
     while (!(XDATA_REG8(0xCC11) & 0x02)) {
@@ -3490,7 +3490,7 @@ void clear_pcie_status_bytes_e8cd(void)
  *   bit 1: set if 0x0B35 != 0
  *   bit 2: set if 0x0B36 != 0
  *   bit 3: set if 0x0B37 != 0
- * Then calls helper_a2ff, combines results, and writes via helper_0be6
+ * Then calls pcie_read_link_state, combines results, and writes via helper_0be6
  */
 uint8_t get_pcie_status_flags_e00c(void)
 {
@@ -3502,7 +3502,7 @@ uint8_t get_pcie_status_flags_e00c(void)
     if (G_PCIE_STATUS_0B37 != 0) flags |= 0x08;
 
     /* Combine with upper nibble from helper */
-    flags |= (helper_a2ff() & 0xF0);
+    flags |= (pcie_read_link_state() & 0xF0);
 
     /* Write result via helper_0be6 */
     helper_0be6();
@@ -3791,7 +3791,7 @@ void handler_d676(void)
 }
 
 /*
- * handler_e3d8 - Event handler with conditional processing
+ * usb_state_event_handler - Event handler with conditional processing
  * Address: 0xe3d8-0xe3f8 (33 bytes)
  *
  * Disassembly:
@@ -3813,7 +3813,7 @@ void handler_d676(void)
  *   e3f7: movx @dptr, a      ; Set ready flag
  *   e3f8: ret
  */
-void handler_e3d8(void)
+void usb_state_event_handler(void)
 {
     uint8_t flags;
 
@@ -4012,7 +4012,7 @@ void pcie_bank1_helper_e902(void)
     pcie_tlp_init_and_transfer();
 }
 
-void handler_db09(void)
+void flash_dma_trigger_handler(void)
 {
     uint8_t state;
 
@@ -4091,14 +4091,14 @@ void pcie_link_state_init(void)
     /* If link state == 3, take short path */
     if (link_state == 0x03) {
         /* Short path: delay and return */
-        helper_befb();
+        pcie_short_delay();
         uart_puthex(0);  /* Placeholder for 0x51c7 call */
         /* Delay with 0xFF2285 params - just return */
         return;
     }
 
     /* Main initialization path */
-    helper_befb();
+    pcie_short_delay();
     uart_puthex(0);
 
     /* Additional delay */
@@ -4108,10 +4108,10 @@ void pcie_link_state_init(void)
     cmd_engine_clear();
 
     /* Clear command state */
-    helper_b8c3();
+    cmd_engine_wait_idle();
 
     /* Setup E40F/E40B/DMA registers */
-    helper_9536();
+    link_state_init_stub();
 
     /* Wait for transfer complete */
     while (!(REG_XFER_DMA_CMD & XFER_DMA_CMD_DONE)) {
@@ -4392,7 +4392,7 @@ void pcie_handler_e06b(uint8_t param)
     ext_mem_read_bc57(0x02, 0x12, 0x35);
     G_PCIE_WORK_0B34 = 1;
     param = G_USB_WORK_009F;
-    transfer_handler_ce23(param);
+    dma_transfer_handler(param);
     G_PCIE_STATUS_0B1C = (G_USB_WORK_009F != 0) ? 1 : 0;
 }
 
@@ -4445,7 +4445,7 @@ void handler_e7c1(uint8_t param)
 }
 
 /*
- * helper_cb05 - Set PHY config enable bit
+ * phy_set_config_bit0 - Set PHY config enable bit
  * Address: 0xcb05-0xcb0e (10 bytes)
  *
  * Sets bit 0 in REG_PHY_CFG_C6A8.
@@ -4458,7 +4458,7 @@ void handler_e7c1(uint8_t param)
  *   cb0d: movx @dptr, a      ; Write back
  *   cb0e: ret
  */
-void helper_cb05(void)
+void phy_set_config_bit0(void)
 {
     uint8_t val;
     val = REG_PHY_CFG_C6A8;
@@ -4477,10 +4477,10 @@ uint8_t check_link_with_delay_e6a7(void)
     uint8_t result;
 
     /* Wait with timeout parameter 0x1c */
-    helper_e762(0x1c);
+    pcie_stage_address(0x1c);
 
     /* Check status */
-    result = helper_e8f9();
+    result = pcie_read_transaction_start();
 
     if (result != 0) {
         return 0xFF;  /* Error/timeout */
@@ -4498,7 +4498,7 @@ void pcie_lane_init_e7f8(void)
     helper_0be6();
 
     /* Read extended register 0x37, set bit 7 */
-    val = helper_a33d(0x37);
+    val = pcie_read_ext_reg(0x37);
     val &= 0x7F;  /* Clear bit 7 */
     val |= 0x80;  /* Set bit 7 */
 
@@ -4507,13 +4507,13 @@ void pcie_lane_init_e7f8(void)
 }
 
 /*
- * helper_e762 - Store address calculation to G_WORK_05AF
+ * pcie_stage_address - Store address calculation to G_WORK_05AF
  * Address: 0xe762-0xe774 (19 bytes)
  *
  * Computes a 32-bit address (0x00D0_00_xx) where xx = param,
  * then stores it at G_WORK_05AF (0x05AF).
  */
-void helper_e762(uint8_t param)
+void pcie_stage_address(uint8_t param)
 {
     /* Store 32-bit address value at 0x05AF */
     volatile uint8_t __xdata *ptr = (__xdata uint8_t *)0x05AF;
@@ -4525,14 +4525,14 @@ void helper_e762(uint8_t param)
     ptr[3] = param; /* r7 - low byte */
 }
 
-uint8_t helper_e8f9(void)
+uint8_t pcie_read_transaction_start(void)
 {
     G_PCIE_DIRECTION = 0;
-    return helper_c1f9();
+    return pcie_setup_tlp_transaction();
 }
 
 /*
- * helper_a33d - Read PCIe extended register by offset
+ * pcie_read_ext_reg - Read PCIe extended register by offset
  * Address: 0xa33d-0xa343 (7 bytes)
  *
  * Disassembly:
@@ -4548,13 +4548,13 @@ uint8_t helper_e8f9(void)
  *
  * Returns: Value read from PCIe extended register 0xB200 + reg_offset
  */
-uint8_t helper_a33d(uint8_t reg_offset)
+uint8_t pcie_read_ext_reg(uint8_t reg_offset)
 {
     /* Read from PCIe extended register at 0xB200 + offset */
     return XDATA_REG8(0xB200 + reg_offset);
 }
 
-void helper_e677(void)
+void pcie_timer_channels_init(void)
 {
     /* Clear buffer flag at 0x044C */
     G_LOG_ACTIVE_044C = 0;
@@ -4581,7 +4581,7 @@ void pcie_dma_init_e0e4(void)
 }
 
 /*
- * helper_a2ff - Read PCIe extended register 0x34
+ * pcie_read_link_state - Read PCIe extended register 0x34
  * Address: 0xa2ff-0xa307 (9 bytes)
  *
  * Disassembly:
@@ -4593,7 +4593,7 @@ void pcie_dma_init_e0e4(void)
  * Reads PCIe extended register 0x34 (link state) from banked memory.
  * Bank 0x02:0x12xx maps to XDATA 0xB2xx.
  */
-uint8_t helper_a2ff(void)
+uint8_t pcie_read_link_state(void)
 {
     /* Read from PCIe extended register 0x34 (0xB234) */
     return XDATA_REG8(0xB234);
@@ -4615,7 +4615,7 @@ uint8_t check_pcie_status_e239(void)
     }
 
     /* Call helper and increment result */
-    val = helper_a71b();
+    val = nvme_clear_ep0_status();
     G_TLP_MODE_0AD3 = val + 1;
 
     /* Copy bit 0 of 0x9000 to 0x9E00 */
@@ -4626,7 +4626,7 @@ uint8_t check_pcie_status_e239(void)
 }
 
 /*
- * helper_a71b - Clear NVME status register
+ * nvme_clear_ep0_status - Clear NVME status register
  * Address: 0xa71b-0xa721 (7 bytes)
  *
  * Original disassembly:
@@ -4638,13 +4638,13 @@ uint8_t check_pcie_status_e239(void)
  *
  * Returns 0.
  */
-uint8_t helper_a71b(void)
+uint8_t nvme_clear_ep0_status(void)
 {
     XDATA_REG8(0x9003) = 0;
     return 0;
 }
 
-void helper_e50d_full(uint8_t div_bits, uint8_t threshold_hi, uint8_t threshold_lo)
+void timer0_configure(uint8_t div_bits, uint8_t threshold_hi, uint8_t threshold_lo)
 {
     uint8_t val;
 
@@ -4664,35 +4664,35 @@ void helper_e50d_full(uint8_t div_bits, uint8_t threshold_hi, uint8_t threshold_
     REG_TIMER0_CSR = 0x01;
 }
 
-void helper_e50d(void)
+void timer0_reset(void)
 {
-    helper_e50d_full(0, 0, 0);
+    timer0_configure(0, 0, 0);
 }
 
 /*
- * set_flag_and_call_e902 - Set flag and call helper
+ * pcie_write_transaction_start - Set flag and call helper
  * Address: 0xe902-0xe908 (7 bytes)
  *
- * Sets 0x05AE to 1 and calls helper_c1f9 (opposite of helper_e8f9).
+ * Sets 0x05AE to 1 and calls pcie_setup_tlp_transaction (opposite of pcie_read_transaction_start).
  */
-void set_flag_and_call_e902(void)
+void pcie_write_transaction_start(void)
 {
     G_PCIE_DIRECTION = 1;
-    (void)helper_c1f9();  /* helper_c1f9 is declared earlier */
+    (void)pcie_setup_tlp_transaction();  /* pcie_setup_tlp_transaction is declared earlier */
 }
 
-void pcie_trigger_and_call_e90b(void)
+void pcie_trigger_link_init(void)
 {
     XDATA_REG8(0xCC81) = 0x04;
     helper_be8b();
 }
 
-void call_bd05_wrapper_e95f(void)
+void pcie_bd05_wrapper(void)
 {
     helper_bd05();
 }
 
-uint8_t helper_c1f9(void)
+uint8_t pcie_setup_tlp_transaction(void)
 {
     uint8_t i;
     uint8_t val;

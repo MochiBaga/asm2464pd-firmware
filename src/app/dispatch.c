@@ -572,7 +572,7 @@ void dispatch_05de(void) { jump_bank_1(0xE282); }
 /* 0x05E3: Target 0xDB80 - handler_db80 */
 void dispatch_05e3(void) { jump_bank_0(0xDB80); }
 
-/* 0x05E8: Target Bank1:0x9D90 (file 0x11D90) - handler_9d90 */
+/* 0x05E8: Target Bank1:0x9D90 (file 0x11D90) - protocol_nop_handler */
 void dispatch_05e8(void) { jump_bank_1(0x9D90); }
 
 /* 0x05ED: Target Bank1:0xD556 (file 0x15556) - handler_d556 */

@@ -55,8 +55,8 @@ extern void usb_buffer_handler(void);          /* drivers/usb.c - 0x0448 */
 extern void usb_get_descriptor_length(uint8_t param);  /* drivers/usb.c */
 extern void usb_convert_speed(uint8_t param);  /* drivers/usb.c */
 extern uint8_t nvme_build_cmd(uint8_t param);  /* drivers/nvme.c - 0x31da */
-extern void handler_9d90(void);                /* app/protocol.c */
-extern void handler_db09(void);                /* drivers/pcie.c */
+extern void protocol_nop_handler(void);                /* app/protocol.c */
+extern void flash_dma_trigger_handler(void);                /* drivers/pcie.c */
 
 /* Dispatch stubs from app/dispatch.c */
 extern void dispatch_04b7(void);               /* 0x04b7 -> Bank0:0xE597 */
@@ -1072,7 +1072,7 @@ void startup_init(void)
 void sys_event_dispatch_05e8(void)
 {
     /* Dispatch to event handler at 0x9D90 in bank 1 */
-    handler_9d90();
+    protocol_nop_handler();
 }
 
 /*
@@ -1098,7 +1098,7 @@ void sys_init_helper_bbc7(void)
 
 void sys_timer_handler_e957(void)
 {
-    handler_db09();
+    flash_dma_trigger_handler();
 }
 
 /*

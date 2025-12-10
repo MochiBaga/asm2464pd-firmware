@@ -25,9 +25,9 @@ extern void cmd_start_trigger(void);                /* drivers/cmd.c */
 void ext_mem_access_0bc8(uint8_t bank, uint8_t addr_hi, uint8_t addr_lo);
 
 /* Stub functions - these may need proper implementation */
-void helper_befb(void) { /* TODO: implement 0xbefb */ }
-void helper_b8c3(void) { /* TODO: implement 0xb8c3 */ }
-void helper_9536(void) { /* TODO: implement 0x9536 */ }
+void pcie_short_delay(void) { /* TODO: implement 0xbefb */ }
+void cmd_engine_wait_idle(void) { /* TODO: implement 0xb8c3 */ }
+void link_state_init_stub(void) { /* TODO: implement 0x9536 */ }
 
 /*
  * idata_load_dword - Load 32-bit value from IDATA
@@ -1456,19 +1456,19 @@ void table_search_dispatch(void) __naked
  * ============================================================ */
 
 /*
- * helper_1579 - Read PCIe transaction count and set up array access
+ * pcie_txn_index_load - Read PCIe transaction count and set up array access
  * Address: 0x1579-0x157c (4 bytes)
  *
- * Reads G_PCIE_TXN_COUNT_LO then falls through to helper_157d.
+ * Reads G_PCIE_TXN_COUNT_LO then falls through to pcie_txn_array_calc.
  */
-void helper_1579(void)
+void pcie_txn_index_load(void)
 {
     uint8_t idx = G_PCIE_TXN_COUNT_LO;
     (void)idx;  /* Sets up for subsequent array access */
 }
 
 /*
- * helper_157d - Set up array access with index calculation
+ * pcie_txn_array_calc - Set up array access with index calculation
  * Address: 0x157d-0x1585 (9 bytes)
  *
  * Disassembly:
@@ -1479,7 +1479,7 @@ void helper_1579(void)
  * The 0x0dd1 function calculates: DPTR = DPTR + (A * B)
  * This sets DPTR to point to a 34-byte structure in an array at 0x05B4.
  */
-void helper_157d(void)
+void pcie_txn_array_calc(void)
 {
     /* This sets up DPTR for array access - DPTR = 0x05B4 + (A * 0x22)
      * In context, A contains the index from prior call */
@@ -1503,7 +1503,7 @@ void helper_15f1(uint8_t param)
 }
 
 /*
- * helper_1646 - Get endpoint config value with array index calculation
+ * get_ep_config_indexed - Get endpoint config value with array index calculation
  * Address: 0x1646-0x1658 (19 bytes)
  *
  * Disassembly:
@@ -1521,7 +1521,7 @@ void helper_15f1(uint8_t param)
  *
  * Returns: XDATA[0x054E + (G_SYS_STATUS_SECONDARY * 0x14)]
  */
-uint8_t helper_1646(void)
+uint8_t get_ep_config_indexed(void)
 {
     uint8_t idx = G_SYS_STATUS_SECONDARY;
     uint16_t addr = 0x054E + ((uint16_t)idx * 0x14);
@@ -1558,7 +1558,7 @@ void helper_166f(void)
 }
 
 /*
- * helper_16e9 - Calculate DPTR address 0x0456 + param
+ * get_sys_status_ptr_0456 - Calculate DPTR address 0x0456 + param
  * Address: 0x16e9-0x16f2 (10 bytes)
  *
  * Disassembly:
@@ -1571,13 +1571,13 @@ void helper_166f(void)
  *
  * Returns: XDATA pointer at 0x0456 + param
  */
-__xdata uint8_t * helper_16e9(uint8_t param)
+__xdata uint8_t * get_sys_status_ptr_0456(uint8_t param)
 {
     return (__xdata uint8_t *)(0x0456 + param);
 }
 
 /*
- * helper_16eb - Calculate DPTR address 0x0400 + param (mid-entry of 16e9)
+ * get_sys_status_ptr_0400 - Calculate DPTR address 0x0400 + param (mid-entry of 16e9)
  * Address: 0x16eb-0x16f2 (8 bytes)
  *
  * Disassembly:
@@ -1589,7 +1589,7 @@ __xdata uint8_t * helper_16e9(uint8_t param)
  *
  * Returns: XDATA pointer at 0x0400 + param
  */
-__xdata uint8_t * helper_16eb(uint8_t param)
+__xdata uint8_t * get_sys_status_ptr_0400(uint8_t param)
 {
     return (__xdata uint8_t *)(0x0400 + param);
 }
@@ -1801,7 +1801,7 @@ uint8_t helper_0cab(uint8_t r0, uint8_t r1, uint8_t r6, uint8_t r7) {
 }
 
 /*
- * helper_1c5d - USB/Transfer table lookup helper
+ * pcie_txn_table_lookup - USB/Transfer table lookup helper
  * Address: 0x1c5d-0x1c6b (15 bytes)
  *
  * Reads a value from a table based on G_SYS_STATUS_PRIMARY (0x0464)
@@ -1811,7 +1811,7 @@ uint8_t helper_0cab(uint8_t r0, uint8_t r1, uint8_t r6, uint8_t r7) {
  *   G_PCIE_TXN_COUNT_LO = table[0x05A8 + *param_1];
  *   where param_1 points to G_SYS_STATUS_PRIMARY (0x0464)
  */
-void helper_1c5d(void)
+void pcie_txn_table_lookup(void)
 {
     uint8_t idx = G_SYS_STATUS_PRIMARY;
     /* Table lookup at 0x05A8 + idx */
@@ -2443,20 +2443,20 @@ void helper_be8b(void)
     /* Extract and check if both bits 4-5 are set (mode_bits >> 4 == 3) */
     if (((mode_bits >> 4) & 0x0F) == 0x03) {
         /* Alternate path - both bits set */
-        helper_befb();
+        pcie_short_delay();
         uart_puthex(0);  /* lcall 0x51c7 */
         /* uart_puts - different address than main path */
         return;
     }
 
     /* Main processing path */
-    helper_befb();
+    pcie_short_delay();
     uart_puthex(0);
 
     /* Additional helper calls */
     cmd_engine_clear();
-    helper_b8c3();
-    helper_9536();
+    cmd_engine_wait_idle();
+    link_state_init_stub();
 
     /* Poll loop 1: Wait for CC89 bit 1 */
     while (!(XDATA_REG8(0xCC89) & 0x02)) {

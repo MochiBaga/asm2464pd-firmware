@@ -230,7 +230,7 @@ void protocol_state_machine(void)
 }
 
 /*
- * handler_3adb - Event handler for DMA and state transitions
+ * nvme_completion_handler - Event handler for DMA and state transitions
  * Address: 0x3ADB-0x3BA5 (approximate)
  *
  * Handles DMA events and coordinates state transitions between
@@ -259,7 +259,7 @@ void protocol_state_machine(void)
  *   3af9: anl a, #0xfb        ; clear bit 2
  *   3afb: movx @dptr, a
  */
-void handler_3adb(uint8_t param)
+void nvme_completion_handler(uint8_t param)
 {
     uint8_t dma_status;
     uint8_t state_counter;
@@ -343,7 +343,7 @@ void handler_3adb(uint8_t param)
 }
 
 /*
- * core_handler_4ff2 - Core processing handler
+ * scsi_core_dispatch - Core processing handler
  * Address: 0x4FF2-0x502D (60 bytes)
  *
  * Coordinates USB event processing based on input flags.
@@ -384,7 +384,7 @@ void handler_3adb(uint8_t param)
  *   502c: mov @r0, a          ; store A to IDATA[0x17]
  *   502d: ret
  */
-void core_handler_4ff2(uint8_t param_2)
+void scsi_core_dispatch(uint8_t param_2)
 {
     uint8_t result;
     uint8_t val_hi, val_lo;
@@ -1285,11 +1285,11 @@ void helper_1d1d(void)
  * helper_1c9f - Core processing and buffer setup
  * Address: 0x1c9f-0x1cad (15 bytes)
  *
- * Calls core_handler_4ff2 with param=0, then calls helper_4e6d to
+ * Calls scsi_core_dispatch with param=0, then calls helper_4e6d to
  * configure buffers. Returns OR of IDATA[0x16] and IDATA[0x17].
  *
  * Original disassembly:
- *   1c9f: lcall 0x4ff2         ; core_handler_4ff2(0)
+ *   1c9f: lcall 0x4ff2         ; scsi_core_dispatch(0)
  *   1ca2: lcall 0x4e6d         ; helper_4e6d
  *   1ca5: mov r0, #0x16
  *   1ca7: mov a, @r0           ; R4 = [0x16]
@@ -1303,7 +1303,7 @@ void helper_1d1d(void)
 uint8_t helper_1c9f(void)
 {
     /* Call core handler with param=0 */
-    core_handler_4ff2(0);
+    scsi_core_dispatch(0);
 
     /* Configure buffer base addresses */
     helper_4e6d();
@@ -3889,7 +3889,7 @@ void helper_d17a(void)
     /* Stub implementation */
 }
 
-void handler_9d90(void) {}
+void protocol_nop_handler(void) {}
 
 void protocol_state_dispatch(void)
 {

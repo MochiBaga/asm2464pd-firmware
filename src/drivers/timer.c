@@ -117,7 +117,7 @@ extern void jump_bank_0(uint16_t addr);
 extern void jump_bank_1(uint16_t addr);
 
 /* External functions for moved stubs */
-extern void helper_e50d_full(uint8_t div_bits, uint8_t threshold_hi, uint8_t threshold_lo);
+extern void timer0_configure(uint8_t div_bits, uint8_t threshold_hi, uint8_t threshold_lo);
 extern void cmd_engine_clear(void);
 extern void helper_95e1(uint8_t r7, uint8_t r5);
 extern void cmd_wait_completion(void);
@@ -683,14 +683,14 @@ void timer_wait(uint8_t timeout_lo, uint8_t timeout_hi, uint8_t mode)
  * ============================================================ */
 
 /*
- * timer_config_trampoline - Trampoline to helper_e50d (0xe50d)
+ * timer_config_trampoline - Trampoline to timer0_reset (0xe50d)
  * Address: 0x0511
  * Original: mov dptr, #0xe50d; ajmp 0x0300
  * Params: p1→threshold_hi, p2→threshold_lo, p3→div_bits
  */
 void timer_config_trampoline(uint8_t p1, uint8_t p2, uint8_t p3)
 {
-    helper_e50d_full(p3, p1, p2);
+    timer0_configure(p3, p1, p2);
 }
 
 /*

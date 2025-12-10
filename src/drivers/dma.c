@@ -118,7 +118,7 @@ extern uint32_t idata_load_dword(__idata uint8_t *ptr);
 extern void idata_store_dword(__idata uint8_t *ptr, uint32_t val);
 extern uint8_t banked_load_byte(uint8_t addrlo, uint8_t addrhi, uint8_t memtype);
 extern void banked_store_byte(uint8_t addrlo, uint8_t addrhi, uint8_t memtype, uint8_t val);
-extern void helper_e50d_full(uint8_t div_bits, uint8_t threshold_hi, uint8_t threshold_lo);
+extern void timer0_configure(uint8_t div_bits, uint8_t threshold_hi, uint8_t threshold_lo);
 
 /* External PCIe functions */
 extern uint8_t pcie_read_status_a334(void);
@@ -129,7 +129,7 @@ extern void pcie_trigger_cc11_e8ef(void);
 
 /* External protocol/state functions */
 extern void helper_dd42(uint8_t param);
-extern void state_handler_d996(void);
+extern void system_state_update(void);
 
 /* Forward declarations */
 void dma_set_scsi_param3(void);
@@ -1491,7 +1491,7 @@ void transfer_func_16b0(uint8_t param)
     REG_SCSI_DMA_STATUS_L = param + 1;
 }
 
-/* External helper functions for handler_2608 */
+/* External helper functions for dma_interrupt_handler */
 extern void transfer_func_1633(uint16_t addr);
 extern __xdata uint8_t *usb_calc_indexed_addr(void);
 extern void scsi_decrement_pending(void);
@@ -1500,14 +1500,14 @@ extern void scsi_buffer_threshold_config(uint8_t slot);
 extern void helper_0421(uint8_t slot);
 
 /*
- * handler_2608 - DMA/Queue endpoint handler
+ * dma_interrupt_handler - DMA/Queue endpoint handler
  * Address: 0x2608-0x2809 (514 bytes)
  *
  * Complex state machine that handles DMA transfers between PCIe queues
  * and USB endpoints. Manages queue indices, buffer states, and transfer
  * completion.
  */
-void handler_2608(void)
+void dma_interrupt_handler(void)
 {
     __xdata uint8_t *ptr;
     uint8_t buf_state, flags_lo, queue_flags;
@@ -1772,7 +1772,7 @@ void transfer_func_1633(uint16_t addr)
 }
 
 /*
- * transfer_handler_ce23 - PCIe lane configuration transfer handler
+ * dma_transfer_handler - PCIe lane configuration transfer handler
  * Address: 0xce23-0xce76 (84 bytes)
  *
  * Configures PCIe lane registers based on param:
@@ -1806,7 +1806,7 @@ void transfer_func_1633(uint16_t addr)
  *   0xB23C-0xB23F: Lane config registers (write)
  *   0xB240-0xB243: Lane status registers (read)
  */
-void transfer_handler_ce23(uint8_t param)
+void dma_transfer_handler(uint8_t param)
 {
     uint8_t saved_status_lo;
     uint8_t reg_val;
@@ -1909,7 +1909,7 @@ void transfer_handler_ce23(uint8_t param)
  * transfer_continuation_d996 - PCIe transfer continuation after poll complete
  * Address: 0xd996-0xd9?? (large function)
  *
- * This is the continuation function called as a tail call from transfer_poll_handler_ceab.
+ * This is the continuation function called as a tail call from dma_poll_complete.
  * It performs extensive PCIe register configuration using banked memory access.
  *
  * Called functions:
@@ -1946,7 +1946,7 @@ void transfer_continuation_d996(void)
 }
 
 /*
- * transfer_poll_handler_ceab - Timer poll and transfer handler
+ * dma_poll_complete - Timer poll and transfer handler
  * Address: 0xceab-0xcece (36 bytes)
  *
  * Sets up timer, polls status registers until ready, then calls
@@ -1977,14 +1977,14 @@ void transfer_continuation_d996(void)
  *   cecb: lcall 0xdd42         ; helper_dd42(0)
  *   cece: ljmp 0xd996          ; Tail call to continuation
  */
-void transfer_poll_handler_ceab(void)
+void dma_poll_complete(void)
 {
     uint8_t status;
 
     /* Set timer divisor bits to 3 and start timer */
     /* Note: e50d also uses r4/r5 for thresholds inherited from caller context,
      * but the key part is setting div_bits = 3 */
-    helper_e50d_full(0x03, 0x00, 0x00);
+    timer0_configure(0x03, 0x00, 0x00);
 
     /* Poll loop: wait for link status or timer timeout */
     while (1) {
@@ -2038,12 +2038,12 @@ void dma_buffer_store_result_e68f(void)
     (void)0;
 }
 
-void transfer_handler_ceab(void)
+void dma_poll_link_ready(void)
 {
     uint8_t status;
 
     /* Configure Timer0 with divisor bits = 3 */
-    helper_e50d_full(3, 0, 0);
+    timer0_configure(3, 0, 0);
 
     /* Poll loop: wait for E712 ready or timer timeout */
     while (1) {
@@ -2073,5 +2073,5 @@ void transfer_handler_ceab(void)
     helper_dd42(0);
 
     /* Tail call to state handler */
-    state_handler_d996();
+    system_state_update();
 }

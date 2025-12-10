@@ -144,7 +144,7 @@
 #include "globals.h"
 
 /* External functions */
-extern void handler_2608(void);                       /* drivers/dma.c */
+extern void dma_interrupt_handler(void);                       /* drivers/dma.c */
 extern void usb_get_descriptor_ptr(void);             /* drivers/usb.c */
 extern uint16_t helper_1b77(void);                    /* utils.c */
 extern uint8_t helper_1c1b(void);                     /* utils.c */
@@ -153,8 +153,8 @@ extern void usb_init_pcie_txn_state(void);            /* drivers/usb.c */
 extern void helper_1b47(void);                        /* utils.c */
 extern void usb_add_masked_counter(uint8_t value);    /* drivers/usb.c */
 extern void power_check_status(uint8_t param);        /* drivers/power.c */
-extern __xdata uint8_t *helper_16e9(uint8_t param);   /* utils.c */
-extern __xdata uint8_t *helper_16eb(uint8_t param);   /* utils.c */
+extern __xdata uint8_t *get_sys_status_ptr_0456(uint8_t param);   /* utils.c */
+extern __xdata uint8_t *get_sys_status_ptr_0400(uint8_t param);   /* utils.c */
 
 /* Forward declarations */
 void nvme_util_get_queue_depth(uint8_t p1, uint8_t p2);
@@ -1686,10 +1686,10 @@ void nvme_func_1c7e(void)
  * nvme_func_1c9f - Process command and check result
  * Address: 0x1c9f-0x1cad (15 bytes)
  *
- * Calls core_handler_4ff2 and FUN_CODE_4e6d, returns OR of R6 and R7.
+ * Calls scsi_core_dispatch and FUN_CODE_4e6d, returns OR of R6 and R7.
  *
  * Original disassembly:
- *   1c9f: lcall 0x4ff2        ; core_handler_4ff2
+ *   1c9f: lcall 0x4ff2        ; scsi_core_dispatch
  *   1ca2: lcall 0x4e6d        ; FUN_CODE_4e6d
  *   1ca5: mov a, r7
  *   1ca6: orl a, r6           ; A = R7 | R6
@@ -1698,7 +1698,7 @@ void nvme_func_1c7e(void)
  */
 uint8_t nvme_func_1c9f(void)
 {
-    /* This would call core_handler_4ff2() and FUN_CODE_4e6d() */
+    /* This would call scsi_core_dispatch() and FUN_CODE_4e6d() */
     /* Returns combined status from R6 | R7 */
     /* Placeholder implementation */
     return 0;
@@ -2063,9 +2063,9 @@ void nvme_queue_sync(void)
 
         /* Check REG_CPU_LINK_CEF3 bit 3 */
         if (REG_CPU_LINK_CEF3 & CPU_LINK_CEF3_ACTIVE) {
-            /* Set CEF3 to 0x08 and call handler_2608 */
+            /* Set CEF3 to 0x08 and call dma_interrupt_handler */
             REG_CPU_LINK_CEF3 = CPU_LINK_CEF3_ACTIVE;
-            /* TODO: call handler_2608() */
+            /* TODO: call dma_interrupt_handler() */
             continue;  /* Loop back */
         }
 
@@ -2186,7 +2186,7 @@ void nvme_queue_process_pending(void)
 
     /* Set link control bit 3 and call handler */
     REG_CPU_LINK_CEF3 = CPU_LINK_CEF3_ACTIVE;
-    /* TODO: call handler_2608() */
+    /* TODO: call dma_interrupt_handler() */
     return;
 
 handle_mismatch:
@@ -3266,7 +3266,7 @@ void nvme_pcie_store_b851(uint8_t param, __xdata uint8_t *ptr)
  */
 void nvme_pcie_handler_b8b9(void)
 {
-    extern void handler_e3d8(void);
+    extern void usb_state_event_handler(void);
     extern void handler_e529(uint8_t param);
     extern void handler_d676(void);
     extern void handler_e90b(void);
@@ -3279,7 +3279,7 @@ void nvme_pcie_handler_b8b9(void)
     /* Check Timer 3 */
     val = REG_TIMER3_CSR;
     if ((val >> 1) & 1) {
-        handler_e3d8();
+        usb_state_event_handler();
         REG_TIMER3_CSR = 2;
     }
 
@@ -3542,7 +3542,7 @@ void nvme_util_check_command_ready(void)
         status = REG_CPU_LINK_CEF3;
         if ((status >> 3) & 1) {
             REG_CPU_LINK_CEF3 = 8;  /* Clear interrupt */
-            handler_2608();
+            dma_interrupt_handler();
         }
 
         /* Check completion */
@@ -3653,12 +3653,12 @@ void nvme_queue_state_update(uint8_t param)
     uint8_t new_val;
 
     status = G_SYS_STATUS_PRIMARY;
-    helper_16e9(status);
+    get_sys_status_ptr_0456(status);
 
     I_WORK_51 = G_SYS_STATUS_PRIMARY;
     new_val = (I_WORK_51 + param) & 0x1F;
 
-    helper_16eb(status + 0x56);  /* 'V' = 0x56 */
+    get_sys_status_ptr_0400(status + 0x56);  /* 'V' = 0x56 */
     G_SYS_STATUS_PRIMARY = new_val;
 }
 

@@ -159,7 +159,7 @@ extern void nvme_func_04da(uint8_t param);
 extern void reg_wait_bit_set(uint16_t addr);
 
 /* External from moved stubs */
-extern void helper_1c5d(void);
+extern void pcie_txn_table_lookup(void);
 extern void scsi_handle_init_4d92(void);
 
 /* External NVMe queue functions from nvme.c */
@@ -170,9 +170,9 @@ extern void nvme_queue_process_pending(void);  /* 0x3e81 */
 extern void nvme_queue_helper(void);           /* 0x1196 */
 
 /* External from protocol.c */
-extern void core_handler_4ff2(uint8_t param);  /* 0x4ff2 */
+extern void scsi_core_dispatch(uint8_t param);  /* 0x4ff2 */
 extern void helper_523c(uint8_t r3, uint8_t r5, uint8_t r7);  /* 0x523c */
-extern void handler_3adb(uint8_t param);  /* 0x3adb */
+extern void nvme_completion_handler(uint8_t param);  /* 0x3adb */
 
 /* External from state_helpers.c */
 extern void dma_queue_state_handler(void);  /* 0x2608 */
@@ -1369,8 +1369,8 @@ void usb_master_handler(void)
             if (status & 0x80) {
                 /* Write 0x80 to 0xCEF2 */
                 REG_CPU_LINK_CEF2 = 0x80;
-                /* Call 0x3ADB (handler_3adb) with R7=0 */
-                handler_3adb(0);
+                /* Call 0x3ADB (nvme_completion_handler) with R7=0 */
+                nvme_completion_handler(0);
             }
         }
     }
@@ -2342,10 +2342,10 @@ uint8_t usb_get_ep_config_txn(void)
  * usb_core_protocol_dispatch - Call core handler and helper
  * Address: 0x1c9f-0x1ca4 (6 bytes)
  *
- * Calls core_handler_4ff2 (protocol core), then calls 0x4e6d helper.
+ * Calls scsi_core_dispatch (protocol core), then calls 0x4e6d helper.
  *
  * Original disassembly:
- *   1c9f: lcall 0x4ff2      ; core_handler_4ff2
+ *   1c9f: lcall 0x4ff2      ; scsi_core_dispatch
  *   1ca2: lcall 0x4e6d      ; helper function
  */
 extern void helper_4e6d(void);  /* 0x4e6d - Buffer configuration helper */
@@ -2353,7 +2353,7 @@ extern void helper_4e6d(void);  /* 0x4e6d - Buffer configuration helper */
 void usb_core_protocol_dispatch(void)
 {
     /* Calls core handler and nvme helper */
-    core_handler_4ff2(0);
+    scsi_core_dispatch(0);
     helper_4e6d();
 }
 
@@ -2994,7 +2994,7 @@ uint8_t usb_set_xfer_mode_check_ctrl(uint8_t val, uint8_t compare)
 uint8_t usb_get_indexed_status(void)
 {
     uint8_t status = G_SYS_STATUS_PRIMARY;
-    /* Call helper_16e9 to get DPTR, read value */
+    /* Call get_sys_status_ptr_0456 to get DPTR, read value */
     (void)status;
     return 0;
 }
@@ -3140,7 +3140,7 @@ void usb_wait_with_timeout(void)
 }
 
 /*
- * usb_ep_handler_5442 - USB endpoint check and clear
+ * usb_endpoint_handler - USB endpoint check and clear
  * Address: 0x5442-0x544b (10 bytes)
  *
  * Reads G_EP_CHECK_FLAG (0x000A), if zero calls usb_clear_state_and_dispatch to clear state.
@@ -3152,7 +3152,7 @@ void usb_wait_with_timeout(void)
  *   5448: lcall 0x5409        ; clear state
  *   544b: ret
  */
-void usb_ep_handler_5442(void)
+void usb_endpoint_handler(void)
 {
     if (G_EP_CHECK_FLAG == 0) {
         usb_clear_state_and_dispatch();
@@ -4839,7 +4839,7 @@ void usb_state_setup_4c98(void)
     G_SYS_STATUS_PRIMARY = (&G_SCSI_CMD_PARAM_0470)[0x0A + lun];
 
     /* Call helper function */
-    helper_1c5d();
+    pcie_txn_table_lookup();
 
     /* Configure NVMe queue based on LUN */
     if (lun == 0) {

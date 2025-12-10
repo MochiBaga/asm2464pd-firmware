@@ -201,7 +201,7 @@ static void clear_cmd_count_regs(void)
 }
 
 /*
- * nvme_cmd_state_handler_aa36 - NVMe command state handler
+ * nvme_cmd_state_handler - NVMe command state handler
  * Address: 0xaa36-0xab0c (~215 bytes)
  *
  * This function handles NVMe command state transitions.
@@ -217,7 +217,7 @@ static void clear_cmd_count_regs(void)
  *   6. Set control/timeout registers (E430-E435)
  *   7. Update G_CMD_STATUS based on mode
  */
-void nvme_cmd_state_handler_aa36(void)
+void nvme_cmd_state_handler(void)
 {
     uint8_t mode;
     uint8_t param;
@@ -329,12 +329,12 @@ void nvme_cmd_state_handler_aa36(void)
 }
 
 /*
- * nvme_cmd_error_handler_ab0d - Error handler for command state
+ * nvme_cmd_error_handler - Error handler for command state
  * Address: 0xab0d-0xab15 (9 bytes)
  *
  * Called when command check fails. Calls helper_dd0e and helper_95a0.
  */
-void nvme_cmd_error_handler_ab0d(void)
+void nvme_cmd_error_handler(void)
 {
     helper_dd0e();
     helper_95a0(0x01);
@@ -823,7 +823,7 @@ void pcie_config_init_a3f5(void)
 
 /* Forward declarations */
 extern void helper_545c(void);
-extern void helper_cb05(void);
+extern void phy_set_config_bit0(void);
 
 /*
  * system_state_clear_bfc4 - Clear system state globals
@@ -872,7 +872,7 @@ void system_state_clear_bfc4(void)
 
     /* Call helper functions */
     helper_545c();
-    helper_cb05();
+    phy_set_config_bit0();
 
     /* Read-modify power control register */
     val = REG_POWER_CTRL_92C8;
@@ -1115,34 +1115,34 @@ uint8_t queue_status_bc9f(void)
 }
 
 /*
- * queue_handler_bcfe - Queue event handler
+ * cmd_queue_handler - Queue event handler
  * Address: 0xbcfe-0xbd30 (51 bytes)
  *
  * Called 7 times.
  */
-void queue_handler_bcfe(void)
+void cmd_queue_handler(void)
 {
     /* Queue event handling */
 }
 
 /*
- * state_handler_bf9a - State transition handler
+ * buffer_state_handler - State transition handler
  * Address: 0xbf9a-0xbfb7 (30 bytes)
  *
  * Called 6 times.
  */
-void state_handler_bf9a(void)
+void buffer_state_handler(void)
 {
     /* State transition */
 }
 
 /*
- * state_handler_bfb8 - State update handler
+ * transfer_state_handler - State update handler
  * Address: 0xbfb8-0xbfc3 (12 bytes)
  *
  * Called 6 times.
  */
-void state_handler_bfb8(void)
+void transfer_state_handler(void)
 {
     /* State update */
 }
@@ -1184,7 +1184,7 @@ void queue_setup_abc9(void)
     /* Queue initialization */
 }
 
-/* Note: helper_96ae, cmd_trigger_params, cmd_param_setup, helper_545c, helper_cb05
+/* Note: helper_96ae, cmd_trigger_params, cmd_param_setup, helper_545c, phy_set_config_bit0
  * are defined in stubs.c */
 
 /*===========================================================================
@@ -1231,7 +1231,7 @@ void pcie_write_and_read_a308(void)
 
 /* External helper declarations */
 extern void helper_545c(void);
-extern void helper_cb05(void);
+extern void phy_set_config_bit0(void);
 
 /*
  * state_clear_all_bfc4 - Clear state variables to a value
@@ -1246,7 +1246,7 @@ extern void helper_cb05(void);
  * - G_SYS_FLAGS_07E8 (0x07E8)
  * - G_STATE_CTRL_0B3C (0x0B3C)
  * - G_SYS_FLAGS_07ED (0x07ED)
- * Then calls helper_545c and helper_cb05.
+ * Then calls helper_545c and phy_set_config_bit0.
  * Finally clears bits 0 and 1 of REG_POWER_CTRL_92C8.
  */
 void state_clear_all_bfc4(uint8_t val)
@@ -1265,7 +1265,7 @@ void state_clear_all_bfc4(uint8_t val)
 
     /* Call helpers */
     helper_545c();
-    helper_cb05();
+    phy_set_config_bit0();
 
     /* Clear bits 0 and 1 of power control register */
     reg_val = REG_POWER_CTRL_92C8;
