@@ -46,33 +46,33 @@
 #include "../types.h"
 
 /* Timer ISR and control */
-void timer0_isr(void) __interrupt(1) __using(0);
-void timer0_csr_ack(void);
-void timer0_wait_done(void);
-void timer1_check_and_ack(void);
+void timer0_isr(void) __interrupt(1) __using(0);                /* 0x0520-0x0523 (vector) */
+void timer0_csr_ack(void);                      /* 0x95c2-0x95c8 */
+void timer0_wait_done(void);                    /* 0xad95-0xada1 */
+void timer1_check_and_ack(void);                /* 0x3094-0x30a0 */
 
 /* Timer event handlers */
-void timer_idle_timeout_handler(void);
-void timer_uart_debug_output(void);
-void timer_pcie_link_event(void);
-void timer_pcie_async_event(void);
-void timer_system_event_stub(void);
-void timer_pcie_error_handler(void);
-void timer_nvme_completion(void);
-void timer_link_status_handler(void);
+void timer_idle_timeout_handler(void);          /* 0x04d0-0x04d4 -> 0xce79 */
+void timer_uart_debug_output(void);             /* 0x0520-0x0524 -> 0xb4ba */
+void timer_pcie_link_event(void);               /* 0x0642-0x0646 */
+void timer_pcie_async_event(void);              /* 0xe883-0xe88d (Bank 1) */
+void timer_system_event_stub(void);             /* 0x0499-0x049c */
+void timer_pcie_error_handler(void);            /* 0x052f-0x0532 */
+void timer_nvme_completion(void);               /* 0x0593-0x0596 */
+void timer_link_status_handler(void);           /* 0x061a-0x061d */
 
 /* System handlers */
-void system_interrupt_handler(void);
-void system_timer_handler(void);
+void system_interrupt_handler(void);            /* 0x4486-0x4531 */
+void system_timer_handler(void);                /* 0x0570-0x0573 */
 
 /* Timer configuration */
-void timer_wait(uint8_t timeout_lo, uint8_t timeout_hi, uint8_t mode);
-void timer_config_trampoline(uint8_t p1, uint8_t p2, uint8_t p3);
-void timer_event_init(void);
-void timer_trigger_e726(void);
-void timer_phy_config_e57d(uint8_t param);
+void timer_wait(uint8_t timeout_lo, uint8_t timeout_hi, uint8_t mode);  /* 0xe726-0xe72f (Bank 1) */
+void timer_config_trampoline(uint8_t p1, uint8_t p2, uint8_t p3);       /* 0x0511-0x0514 */
+void timer_event_init(void);                    /* 0x4532-0x45ff */
+void timer_trigger_e726(void);                  /* 0xe726-0xe72f (Bank 1) */
+void timer_phy_config_e57d(uint8_t param);      /* 0xe57d-0xe5fd (Bank 1) */
 
 /* Delay functions */
-void delay_loop_adb0(void);
+void delay_loop_adb0(void);                     /* 0xadb0-0xade5 */
 
 #endif /* _TIMER_H_ */
