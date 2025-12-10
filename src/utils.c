@@ -10,16 +10,13 @@
 #include "sfr.h"
 #include "registers.h"
 #include "globals.h"
+#include "drivers/power.h"
+#include "drivers/uart.h"
+#include "drivers/cmd.h"
+#include "drivers/timer.h"
 
-/* External functions */
+/* External functions from app layer */
 extern void helper_523c(uint8_t r3, uint8_t r5, uint8_t r7);  /* app/protocol.c */
-extern void power_config_init(void);                /* drivers/power.c */
-extern void power_check_status_e647(void);          /* drivers/power.c */
-extern void uart_puthex(uint8_t val);               /* drivers/uart.c */
-extern void cmd_engine_clear(void);                 /* drivers/cmd.c */
-extern void cmd_config_e40b(void);                  /* drivers/cmd.c */
-extern uint8_t cmd_check_busy(void);                /* drivers/cmd.c */
-extern void cmd_start_trigger(void);                /* drivers/cmd.c */
 
 /* Forward declarations for functions defined later in this file */
 void ext_mem_access_0bc8(uint8_t bank, uint8_t addr_hi, uint8_t addr_lo);
@@ -939,8 +936,7 @@ void init_sys_flags_07f0(void)
     REG_CPU_EXEC_STATUS_3 = REG_CPU_EXEC_STATUS_3 & 0xFE;
 }
 
-/* Forward declaration for loop helper */
-extern void delay_loop_adb0(void);
+/* delay_loop_adb0 is declared in timer.h */
 
 /*
  * delay_short_e89d - Short delay with IDATA setup

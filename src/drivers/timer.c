@@ -100,6 +100,9 @@
 #include "sfr.h"
 #include "registers.h"
 #include "globals.h"
+#include "app/dispatch.h"
+#include "utils.h"
+#include "drivers/cmd.h"
 
 /*
  * Register aliases for timer ISR (using standard names from registers.h/globals.h)
@@ -112,15 +115,8 @@
  * 0xE7E3 = REG_PHY_LINK_CTRL   - PHY link control
  */
 
-/* External dispatch functions from main.c */
-extern void jump_bank_0(uint16_t addr);
-extern void jump_bank_1(uint16_t addr);
-
-/* External functions for moved stubs */
-extern void timer0_configure(uint8_t div_bits, uint8_t threshold_hi, uint8_t threshold_lo);
-extern void cmd_engine_clear(void);
+/* External helper functions */
 extern void helper_95e1(uint8_t r7, uint8_t r5);
-extern void cmd_wait_completion(void);
 
 /*
  * timer_idle_timeout_handler - Handle idle timeout events

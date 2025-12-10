@@ -70,24 +70,9 @@
 #include "sfr.h"
 #include "registers.h"
 #include "globals.h"
-
-/*===========================================================================
- * External handler function declarations
- *===========================================================================*/
-
-/* USB handlers */
-extern void usb_ep_dispatch_loop(void);              /* drivers/usb.c */
-extern void usb_buffer_dispatch(void);               /* drivers/usb.c - 0x039a -> 0xD810 */
-
-/* Timer handlers */
-extern void system_interrupt_handler(void);          /* drivers/timer.c - 0x0520 -> 0xB4BA */
-extern void system_timer_handler(void);              /* drivers/timer.c - 0x0642 -> 0xEF4E */
-
-/* PCIe handlers */
-extern void pcie_nvme_event_handler(void);           /* drivers/pcie.c - 0x052f -> 0xAF5E */
-extern void pcie_error_dispatch(void);               /* drivers/pcie.c - 0x0570 -> Bank1:0xE911 */
-extern void pcie_event_bit5_handler(void);           /* drivers/pcie.c - 0x061a -> Bank1:0xA066 */
-extern void pcie_timer_bit4_handler(void);           /* drivers/pcie.c - 0x0593 -> 0xC105 */
+#include "drivers/usb.h"
+#include "drivers/timer.h"
+#include "drivers/pcie.h"
 
 /*===========================================================================
  * Interrupt Status Helper Functions

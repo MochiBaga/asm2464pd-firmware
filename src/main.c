@@ -12,6 +12,22 @@
 #include "sfr.h"
 #include "registers.h"
 #include "globals.h"
+#include "app/dispatch.h"
+#include "drivers/timer.h"
+#include "drivers/phy.h"
+#include "drivers/flash.h"
+#include "drivers/usb.h"
+#include "drivers/pcie.h"
+#include "drivers/nvme.h"
+#include "drivers/uart.h"
+#include "utils.h"
+#include "drivers/power.h"
+
+/* Forward declarations for app layer functions */
+extern void event_state_handler(void);         /* app/state_helpers.c */
+extern void error_state_config(void);          /* app/state_helpers.c */
+extern void protocol_nop_handler(void);        /* app/protocol.c */
+extern void scsi_flash_ready_check(void);      /* app/scsi.c */
 
 /*===========================================================================
  * Forward declarations
@@ -23,55 +39,11 @@ void main_loop(void);
 /* Initialization */
 void process_init_table(void);
 
-/* Dispatch/utility functions */
-extern void jump_bank_0(uint16_t reg_addr);    /* app/dispatch.c - 0x0300-0x0310 */
-extern void jump_bank_1(uint16_t reg_addr);    /* app/dispatch.c - 0x0311-0x0321 */
+/* Local functions */
 void reg_set_bit_0(uint16_t reg_addr);
 void reg_set_bit_0_cpu_exec(void);
-
-/* Main loop handler stubs - some moved to driver files */
-extern void timer_link_status_handler(void);   /* drivers/timer.c - 0x04d0 -> 0xCE79 */
-extern void phy_config_link_params(void);      /* drivers/phy.c */
-void reserved_stub_handler(void);              /* 0x04b2 -> 0xE971 - Reserved/unused */
-void main_polling_handler(void);               /* 0x4fb6 - Core polling and dispatch */
-void usb_power_init(void);                     /* 0x0327 -> 0xB1CB - USB/power init */
-extern void event_state_handler(void);         /* app/state_helpers.c - 0x0494 -> Bank1:0xE56F */
-extern void error_state_config(void);          /* app/state_helpers.c - 0x0606 -> Bank1:0xB230 */
-extern void phy_register_config(void);         /* drivers/phy.c - 0x0589 -> 0xD894 */
-extern void flash_command_handler(void);       /* drivers/flash.c - 0x0525 -> 0xBAA0 */
-extern void system_init_from_flash(void);      /* drivers/flash.c - Bank 1: 0x8d77 */
-extern void usb_buffer_dispatch(void);         /* drivers/usb.c - 0x039a -> 0xD810 */
-extern void system_interrupt_handler(void);    /* drivers/timer.c - 0x0520 -> 0xB4BA */
-extern void pcie_nvme_event_handler(void);     /* drivers/pcie.c - 0x052f -> 0xAF5E */
-extern void pcie_error_dispatch(void);         /* drivers/pcie.c - 0x0570 -> Bank1:0xE911 */
-extern void pcie_event_bit5_handler(void);     /* drivers/pcie.c - 0x061a -> Bank1:0xA066 */
-extern void pcie_timer_bit4_handler(void);     /* drivers/pcie.c - 0x0593 -> 0xC105 */
-extern void system_timer_handler(void);        /* drivers/timer.c - 0x0642 -> 0xEF4E */
-
-/* External functions */
-extern void uart_init(void);
-extern void usb_ep_dispatch_loop(void);
-extern void usb_buffer_handler(void);          /* drivers/usb.c - 0x0448 */
-extern void usb_get_descriptor_length(uint8_t param);  /* drivers/usb.c */
-extern void usb_convert_speed(uint8_t param);  /* drivers/usb.c */
-extern uint8_t nvme_build_cmd(uint8_t param);  /* drivers/nvme.c - 0x31da */
-extern void protocol_nop_handler(void);                /* app/protocol.c */
-extern void flash_dma_trigger_handler(void);                /* drivers/pcie.c */
-
-/* Dispatch stubs from app/dispatch.c */
-extern void dispatch_04b7(void);               /* 0x04b7 -> Bank0:0xE597 */
-extern void dispatch_04bc(void);               /* 0x04bc -> Bank0:0xE14B */
-extern void phy_power_config_handler(void);    /* 0x032c -> Bank0:0x92C5 */
-extern void dispatch_0539(void);               /* 0x0539 -> Bank0:0x8D77 */
-extern void dispatch_04f8(void);               /* 0x04f8 -> Bank0:0xDE16 */
-extern void pcie_tunnel_setup(void);           /* 0xCD6C */
-extern void dispatch_0435(void);               /* 0x0435 -> Bank0:0xD127 */
-extern void handler_bf8e(void);                /* 0x0340 -> Bank0:0xBF8E */
-
-/* External handlers */
-extern void scsi_flash_ready_check(void);      /* app/scsi.c - 0x5305 */
-extern void pcie_handler_unused_eef9(void);    /* drivers/pcie.c - Bank1:0xEEF9 */
-extern void init_sys_flags_07f0(void);         /* 0x4be6 - inline config handler */
+void reserved_stub_handler(void);
+void main_polling_handler(void);
 
 /*===========================================================================
  * Boot State Verification - startup_0016
@@ -523,21 +495,6 @@ void main(void)
 /*===========================================================================
  * Main Processing Loop
  *===========================================================================*/
-
-/* External dispatch functions from dispatch.c */
-extern void dispatch_0322(void);      /* 0x0322 -> 0xCA0D */
-extern void dispatch_04e9(void);      /* 0x04e9 -> 0xE8E4 (handler_e8e4) */
-extern void dispatch_0516(void);      /* 0x0516 -> 0xE30E */
-extern void dispatch_0430(void);      /* 0x0430 -> 0x9037 */
-extern void dispatch_045d(void);      /* 0x045d -> 0xC00D */
-extern void dispatch_04d5(void);      /* 0x04d5 -> 0xD3A2 */
-extern void dispatch_04e4(void);      /* 0x04e4 -> 0xE2EC */
-extern void dispatch_061f(void);      /* 0x061f -> Bank1:0xE25E */
-extern void dispatch_0601(void);      /* 0x0601 -> 0xEA7C */
-extern void dispatch_052a(void);      /* 0x052a -> 0xE961 */
-extern void dispatch_0359(void);      /* 0x0359 -> 0xDEE3 */
-extern void dispatch_043a(void);      /* 0x043a -> 0xE677 */
-extern void dispatch_0507(void);      /* 0x0507 -> 0xE50D */
 
 /* External functions from firmware - USB endpoint loop */
 extern void usb_ep_loop_180d(uint8_t param);  /* 0x180d */
@@ -1003,18 +960,12 @@ void main_polling_handler(void)
  * It resides in Bank 1 (code offset 0x10000+) and is called during boot.
  *===========================================================================*/
 
-/* External helpers for UART/debug output */
-extern uint8_t uart_read_byte_dace(uint8_t offset);  /* 0xdace - Read from UART buffer */
-extern void uart_write_byte_daeb(void);              /* 0xdaeb - Write to UART buffer */
-extern uint8_t uart_check_status_daf5(void);         /* 0xdaf5 - Check UART status */
-extern uint8_t uart_read_status_dae2(void);          /* 0xdae2 - Read UART status */
-extern void uart_write_daff(void);                   /* 0xdaff - UART write */
-extern uint8_t uart_read_dacc(void);                 /* 0xdacc - UART read */
+/* UART functions declared in uart.h */
 
-/* External helpers for system setup */
-extern void sys_event_dispatch_05e8(void);           /* 0x05e8 - Event dispatcher */
-extern void sys_init_helper_bbc7(void);              /* 0xbbc7 - System init helper */
-extern void sys_timer_handler_e957(void);            /* 0xe957 - Timer/watchdog handler */
+/* Forward declarations for functions defined in this file */
+void sys_event_dispatch_05e8(void);
+void sys_init_helper_bbc7(void);
+void sys_timer_handler_e957(void);
 
 /* system_init_from_flash() moved to drivers/flash.c */
 

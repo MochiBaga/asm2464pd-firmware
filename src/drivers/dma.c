@@ -111,29 +111,23 @@
 #include "sfr.h"
 #include "registers.h"
 #include "globals.h"
+#include "utils.h"
+#include "drivers/pcie.h"
+#include "drivers/usb.h"
 
-/* External functions from utils.c */
-extern uint32_t xdata_load_triple(__xdata uint8_t *ptr);
-extern uint32_t idata_load_dword(__idata uint8_t *ptr);
-extern void idata_store_dword(__idata uint8_t *ptr, uint32_t val);
-extern uint8_t banked_load_byte(uint8_t addrlo, uint8_t addrhi, uint8_t memtype);
-extern void banked_store_byte(uint8_t addrlo, uint8_t addrhi, uint8_t memtype, uint8_t val);
-extern void timer0_configure(uint8_t div_bits, uint8_t threshold_hi, uint8_t threshold_lo);
-
-/* External PCIe functions */
-extern uint8_t pcie_read_status_a334(void);
-extern void pcie_handler_e890(void);
-extern uint8_t get_pcie_status_flags_e00c(void);
-extern void clear_pcie_status_bytes_e8cd(void);
-extern void pcie_trigger_cc11_e8ef(void);
-
-/* External protocol/state functions */
+/* External protocol/state functions from app layer */
 extern void helper_dd42(uint8_t param);
 extern void system_state_update(void);
+extern uint8_t pcie_read_status_a334(void);
+extern void scsi_decrement_pending(void);
+extern void scsi_csw_write_residue(void);
+extern void scsi_buffer_threshold_config(uint8_t slot);
+extern void helper_0421(uint8_t slot);
 
 /* Forward declarations */
 void dma_set_scsi_param3(void);
 void dma_set_scsi_param1(void);
+void transfer_func_1633(uint16_t addr);
 
 /*
  * dma_copy_idata_6b_to_6f - Copy 32-bit value from IDATA[0x6B] to IDATA[0x6F]
@@ -1491,13 +1485,7 @@ void transfer_func_16b0(uint8_t param)
     REG_SCSI_DMA_STATUS_L = param + 1;
 }
 
-/* External helper functions for dma_interrupt_handler */
-extern void transfer_func_1633(uint16_t addr);
-extern __xdata uint8_t *usb_calc_indexed_addr(void);
-extern void scsi_decrement_pending(void);
-extern void scsi_csw_write_residue(void);
-extern void scsi_buffer_threshold_config(uint8_t slot);
-extern void helper_0421(uint8_t slot);
+/* transfer_func_1633 and usb_calc_indexed_addr are forward declarations from this file and usb.h */
 
 /*
  * dma_interrupt_handler - DMA/Queue endpoint handler

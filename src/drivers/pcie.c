@@ -153,49 +153,32 @@
 #include "sfr.h"
 #include "registers.h"
 #include "globals.h"
+#include "utils.h"
+#include "drivers/phy.h"
+#include "app/dispatch.h"
+#include "drivers/cmd.h"
+#include "drivers/uart.h"
+#include "drivers/dma.h"
 
-/* External functions from utils.c */
-extern void idata_store_dword(__idata uint8_t *ptr, uint32_t val);
-
-/* External functions from other modules */
-extern void pcie_lane_config(uint8_t lane_mask);  /* from phy.c (0xD436) */
-extern void pcie_tunnel_setup(void);              /* 0xCD6C - in dispatch.c */
-
-/* External functions for moved stubs */
-extern void cmd_write_cc89_02(void);
+/* External helper functions not in headers */
 extern void helper_e3b7(uint8_t param);
 extern void helper_3578(uint8_t param);
-extern void dispatch_039a(void);
 extern void helper_e396(void);
 extern void helper_d17a(void);
 extern void helper_dd42(uint8_t param);
 extern void handler_e478(void);
 extern void pcie_link_state_init(void);
 extern void process_log_entries(uint8_t param);
-extern void dispatch_04c1(void);
-extern void pcie_short_delay(void);
-extern void uart_puthex(uint8_t val);
-extern void cmd_engine_clear(void);
-extern void cmd_engine_wait_idle(void);
-extern void link_state_init_stub(void);
-extern void cmd_config_e40b(void);
-extern uint8_t cmd_check_busy(void);
-extern void cmd_start_trigger(void);
-extern uint8_t banked_load_byte(uint8_t addrlo, uint8_t addrhi, uint8_t memtype);
-extern void ext_mem_read_bc57(uint8_t r3, uint8_t r2, uint8_t r1);
-extern void dma_transfer_handler(uint8_t param);
-extern void reg_timer_clear_bits(void);
-extern void reg_timer_setup_and_set_bits(void);
 extern void pcie_stage_address(uint8_t param);
 extern uint8_t pcie_read_transaction_start(void);
 extern uint8_t pcie_read_ext_reg(uint8_t reg_offset);
 extern uint8_t pcie_setup_tlp_transaction(void);
 extern void helper_053e(void);
 extern void helper_538d(uint8_t r3, uint8_t r2, uint8_t r1);
-extern void uart_wait_tx_ready(void);
 extern uint8_t nvme_clear_ep0_status(void);
 extern void helper_be8b(void);
 extern void helper_bd05(void);
+extern void ext_mem_read_bc57(uint8_t r3, uint8_t r2, uint8_t r1);
 
 /* Forward declarations */
 uint8_t pcie_poll_and_read_completion(void);

@@ -142,19 +142,17 @@
 #include "sfr.h"
 #include "registers.h"
 #include "globals.h"
+#include "drivers/dma.h"
+#include "drivers/usb.h"
+#include "utils.h"
+#include "drivers/power.h"
 
-/* External functions */
-extern void dma_interrupt_handler(void);                       /* drivers/dma.c */
-extern void usb_get_descriptor_ptr(void);             /* drivers/usb.c */
-extern uint16_t helper_1b77(void);                    /* utils.c */
-extern uint8_t helper_1c1b(void);                     /* utils.c */
-extern void helper_1aad(uint8_t param);               /* utils.c */
-extern void usb_init_pcie_txn_state(void);            /* drivers/usb.c */
-extern void helper_1b47(void);                        /* utils.c */
-extern void usb_add_masked_counter(uint8_t value);    /* drivers/usb.c */
-extern void power_check_status(uint8_t param);        /* drivers/power.c */
-extern __xdata uint8_t *get_sys_status_ptr_0456(uint8_t param);   /* utils.c */
-extern __xdata uint8_t *get_sys_status_ptr_0400(uint8_t param);   /* utils.c */
+/* External helper functions not in headers */
+extern void usb_get_descriptor_ptr(void);
+extern uint16_t helper_1b77(void);
+extern uint8_t helper_1c1b(void);
+extern void helper_1aad(uint8_t param);
+extern void helper_1b47(void);
 
 /* Forward declarations */
 void nvme_util_get_queue_depth(uint8_t p1, uint8_t p2);
