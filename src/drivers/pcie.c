@@ -36,6 +36,11 @@ extern uint8_t nvme_clear_ep0_status(void);
 extern void pcie_config_helper(void);
 extern void pcie_status_helper(void);
 extern void ext_mem_read_stub(uint8_t r3, uint8_t r2, uint8_t r1);
+extern void helper_bc9f(uint8_t val);
+extern void helper_bc63(uint8_t val);
+
+/* Power driver functions */
+extern void power_state_handler_ca0d(void);
 
 /* Forward declarations */
 uint8_t pcie_poll_and_read_completion(void);
@@ -777,110 +782,179 @@ void pcie_setup_config_tlp(void)
 }
 
 /*
- * pcie_event_handler - PCIe event handler (handler_c105)
- * Address: 0xC105-0xC17E
+ * pcie_event_handler - PCIe event handler
+ * Address: 0xC105-0xC17E (122 bytes)
  *
- * This is a PCIe event/interrupt handler that processes PCIe-related events.
- * It checks various status bits and dispatches to appropriate sub-handlers.
+ * Processes PCIe-related events. Checks various status bits and dispatches
+ * to appropriate sub-handlers.
  *
- * The function:
- * 1. Calls bank-switching helper 0xBCDE (reads reg with DPX=1)
- * 2. If bit 0 set: calls 0xA522 (PCIe interrupt handler)
- * 3. Calls bank-switching helper 0xBCAF
- * 4. If bit 0 set and G_EVENT_CTRL_09FA bit 1 set:
- *    - Checks 0x92C2 (power status) bit 6
- *    - If set: writes 0x01 to 0x0AE2 and calls 0xCA0D
- *    - Calls 0xE74E and writes 0x69 to 0x07FF
- * 5. If bit 0 clear: handles alternate path based on event state
- *
- * Original disassembly at 0xC105:
- *   c105: lcall 0xbcde        ; Bank-switch read
- *   c108: jnb acc.0, 0xc10e   ; Skip if bit 0 clear
- *   c10b: lcall 0xa522        ; PCIe interrupt sub-handler
- *   c10e: lcall 0xbcde        ; Bank-switch read again
- *   c111: jnb acc.3, 0xc117   ; Skip if bit 3 clear
- *   c114: lcall 0x0543        ; Another handler
- *   c117: lcall 0xbcaf        ; Different bank read
- *   c11a: jnb acc.0, 0xc143   ; Check bit 0
- *   ... (continues with state machine logic)
+ * Original disassembly:
+ *   c105: lcall 0xbcde        ; reg_read_bank_1407 - read from bank 1
+ *   c108: jnb acc.0, 0xc10e   ; skip if bit 0 clear
+ *   c10b: lcall 0xa522        ; pcie_interrupt_handler
+ *   c10e: lcall 0xbcde        ; reg_read_bank_1407 again
+ *   c111: jnb acc.3, 0xc117   ; skip if bit 3 clear
+ *   c114: lcall 0x0543        ; handler_0543
+ *   c117: lcall 0xbcaf        ; reg_read_bank_1603
+ *   c11a: jnb acc.0, 0xc143   ; if bit 0 clear, goto alternate path
+ *   c11d: mov a, #0x01
+ *   c11f: lcall 0x0be6        ; banked_store_byte with A=0x01
+ *   c122: mov dptr, #0x09fa   ; G_EVENT_CTRL_09FA
+ *   c125: movx a, @dptr
+ *   c126: jnb acc.1, 0xc17e   ; if bit 1 clear, return
+ *   c129: mov dptr, #0x92c2   ; REG_POWER_STATUS
+ *   c12c: movx a, @dptr
+ *   c12d: jnb acc.6, 0xc139   ; if bit 6 clear, skip
+ *   c130: mov dptr, #0x0ae2   ; G_SYSTEM_STATE_0AE2
+ *   c133: mov a, #0x01
+ *   c135: movx @dptr, a       ; write 0x01
+ *   c136: lcall 0xca0d        ; handler_ca0d
+ *   c139: lcall 0xe74e        ; handler_e74e
+ *   c13c: mov dptr, #0x07ff   ; G_CMD_DEBUG_FF
+ *   c13f: mov a, #0x69
+ *   c141: movx @dptr, a       ; write 0x69
+ *   c142: ret
+ *   c143: lcall 0xbcaf        ; reg_read_bank_1603 (alternate path)
+ *   c146: jnb acc.1, 0xc17e   ; if bit 1 clear, return
+ *   c149: mov a, #0x02
+ *   c14b: lcall 0x0be6        ; banked_store_byte with A=0x02
+ *   c14e: mov dptr, #0x09fa
+ *   c151: movx a, @dptr
+ *   c152: jnb acc.1, 0xc17e   ; if bit 1 clear, return
+ *   c155: lcall 0xbc88        ; reg_read_bank_1235
+ *   c158: anl a, #0xc0        ; mask with 0xC0
+ *   c15a: orl a, #0x04        ; OR with 0x04
+ *   c15c: lcall 0xbc9f        ; helper_bc9f - store back
+ *   c15f: anl a, #0x3f        ; mask with 0x3F
+ *   c161: orl a, #0x40        ; OR with 0x40
+ *   c163: lcall 0x0be6        ; banked_store_byte
+ *   c166: mov a, #0x09
+ *   c168: lcall 0xbc63        ; helper_bc63
+ *   c16b: lcall 0xe890        ; handler_e890
+ *   c16e: mov r1, #0x43
+ *   c170: lcall 0xbc98        ; reg_read_bank_1200
+ *   c173: jnb acc.6, 0xc17e   ; if bit 6 clear, return
+ *   c176: clr a
+ *   c177: mov r7, a           ; R7 = 0
+ *   c178: lcall 0xd916        ; handler_d916
+ *   c17b: lcall 0xbf8e        ; reg_clear_state_flags
+ *   c17e: ret
  */
 void pcie_event_handler(void)
 {
     uint8_t status;
     uint8_t event_ctrl;
+    uint8_t val;
 
-    /*
-     * Note: The original function uses complex bank-switching via DPX
-     * register to access code bank 1 registers. In our implementation,
-     * we'll use simpler register access patterns.
-     *
-     * The actual hardware behavior depends on:
-     * - REG_BANK_CONFIG at 0xB214 for bank switching
-     * - Event control at 0x09FA for state machine
-     * - Power status at 0x92C2 for power events
-     * - System state at 0x0AE2 for handler dispatch
-     */
+    /* c105: lcall 0xbcde - read from bank 1407 */
+    status = reg_read_bank_1407();
 
-    /* First bank read and check (0xBCDE pattern) */
-    /* Original reads from bank 1 address loaded via DPTR */
-    status = REG_PCIE_STATUS;  /* Simplified - actual reads bank 1 reg */
-
+    /* c108: jnb acc.0, 0xc10e - if bit 0 set, call pcie interrupt handler */
     if (status & 0x01) {
-        /* Bit 0 set - call PCIe interrupt sub-handler (0xA522) */
-        /* This handles PCIe link events */
+        /* c10b: lcall 0xa522 */
+        pcie_interrupt_handler();
     }
 
-    /* Second check - bit 3 */
+    /* c10e: lcall 0xbcde - read again */
+    status = reg_read_bank_1407();
+
+    /* c111: jnb acc.3, 0xc117 - if bit 3 set, call dispatch_0543 */
     if (status & 0x08) {
-        /* Call handler at 0x0543 - likely another PCIe event type */
+        /* c114: lcall 0x0543 */
+        dispatch_0543();
     }
 
-    /* Different bank read (0xBCAF pattern) */
-    /* Check event control flags */
-    event_ctrl = G_EVENT_CTRL_09FA;
+    /* c117: lcall 0xbcaf - read from bank 1603 */
+    status = reg_read_bank_1603();
 
+    /* c11a: jnb acc.0, 0xc143 - if bit 0 clear, goto alternate path */
     if (status & 0x01) {
-        /* Path 1: Event bit set */
-        /* Write 0x01 to event handler params */
-        /* This is func at 0x0BE6 with A=0x01 */
+        /* c11d-c11f: mov a, #0x01; lcall 0x0be6 */
+        banked_store_byte(0, 0, 0x01, 0x01);
 
-        if (event_ctrl & 0x02) {
-            /* Event control bit 1 set */
-            /* Check power status bit 6 */
-            if (REG_POWER_STATUS & POWER_STATUS_SUSPENDED) {
-                /* Power event - set system state and call handler */
-                G_SYSTEM_STATE_0AE2 = 0x01;
-                /* Call 0xCA0D - system state handler */
-            }
+        /* c122-c125: read G_EVENT_CTRL_09FA */
+        event_ctrl = G_EVENT_CTRL_09FA;
 
-            /* Call 0xE74E - bank 1 event handler */
-            /* Write marker 0x69 to debug byte */
-            G_CMD_DEBUG_FF = 0x69;
+        /* c126: jnb acc.1, 0xc17e - if bit 1 clear, return */
+        if (!(event_ctrl & 0x02)) {
             return;
         }
-    }
 
-    /* Path 2: Alternate event handling */
-    /* Write 0x02 to event handler params */
+        /* c129-c12c: read REG_POWER_STATUS (0x92C2) */
+        val = REG_POWER_STATUS;
 
-    if (event_ctrl & 0x02) {
-        /* Read 0xBC88 pattern - another bank helper */
-        /* Mask with 0xC0, OR with 0x04 */
-        /* Write back via 0xBC9F */
-
-        /* Read again, mask with 0x3F, OR with 0x40 */
-        /* Call 0x0BE6 with result */
-
-        /* Write 0x09 via 0xBC63 */
-        /* Call 0xE890 - bank 1 handler */
-
-        /* Call 0xBC98 with R1=0x43 */
-        /* Check bit 6 of result */
-        if (REG_POWER_STATUS & POWER_STATUS_SUSPENDED) {
-            /* Call 0xD916 with R7=0 */
-            /* Call 0xBF8E */
+        /* c12d: jnb acc.6, 0xc139 - if bit 6 set */
+        if (val & 0x40) {
+            /* c130-c135: write 0x01 to G_SYSTEM_STATE_0AE2 */
+            G_SYSTEM_STATE_0AE2 = 0x01;
+            /* c136: lcall 0xca0d */
+            power_state_handler_ca0d();
         }
+
+        /* c139: lcall 0xe74e */
+        pcie_disable_and_trigger_e74e();
+
+        /* c13c-c141: write 0x69 to G_CMD_DEBUG_FF (0x07FF) */
+        G_CMD_DEBUG_FF = 0x69;
+
+        /* c142: ret */
+        return;
     }
+
+    /* Alternate path starting at c143 */
+    /* c143: lcall 0xbcaf */
+    status = reg_read_bank_1603();
+
+    /* c146: jnb acc.1, 0xc17e - if bit 1 clear, return */
+    if (!(status & 0x02)) {
+        return;
+    }
+
+    /* c149-c14b: mov a, #0x02; lcall 0x0be6 */
+    banked_store_byte(0, 0, 0x01, 0x02);
+
+    /* c14e-c151: read G_EVENT_CTRL_09FA */
+    event_ctrl = G_EVENT_CTRL_09FA;
+
+    /* c152: jnb acc.1, 0xc17e - if bit 1 clear, return */
+    if (!(event_ctrl & 0x02)) {
+        return;
+    }
+
+    /* c155: lcall 0xbc88 - reg_read_bank_1235 */
+    val = reg_read_bank_1235();
+
+    /* c158-c15a: anl a, #0xc0; orl a, #0x04 */
+    val = (val & 0xC0) | 0x04;
+
+    /* c15c: lcall 0xbc9f - store back */
+    banked_store_and_load_bc9f(val);
+
+    /* c15f-c161: anl a, #0x3f; orl a, #0x40 */
+    val = (val & 0x3F) | 0x40;
+
+    /* c163: lcall 0x0be6 */
+    banked_store_byte(0, 0, 0x01, val);
+
+    /* c166-c168: mov a, #0x09; lcall 0xbc63 */
+    banked_multi_store_bc63(0x09);
+
+    /* c16b: lcall 0xe890 */
+    pcie_handler_e890();
+
+    /* c16e-c170: mov r1, #0x43; lcall 0xbc98 */
+    val = reg_read_bank_1200();
+
+    /* c173: jnb acc.6, 0xc17e - if bit 6 clear, return */
+    if (!(val & 0x40)) {
+        return;
+    }
+
+    /* c176-c178: clr a; mov r7, a; lcall 0xd916 */
+    handler_d916(0);
+
+    /* c17b: lcall 0xbf8e */
+    reg_clear_state_flags();
 }
 
 /*

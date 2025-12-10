@@ -4,8 +4,9 @@
 
 | Metric | Value |
 |--------|-------|
-| **Firmware Size** | 51,904 / 98,012 bytes (53.0%) |
+| **Firmware Size** | 52,440 / 98,012 bytes (53.5%) |
 | **Build Status** | Compiles successfully |
+| **Extern Declarations** | ~378 (reduced from ~410) |
 
 ---
 
@@ -113,41 +114,22 @@ These stub functions need to be implemented:
 
 ---
 
-## Extern Declarations in .c Files
+## Remaining Extern Declarations
 
-~410 extern declarations in .c files that should ideally be in headers:
+~378 extern declarations remain in .c files. Key functions added to headers:
 
-### High-traffic externs (used by multiple files)
+**Recently moved to headers:**
+- `cmd_param_setup`, `cmd_trigger_params` → cmd.h
+- `handler_d916` → dispatch.h (with param)
+- uart functions → already in uart.h
+- pcie functions → already in pcie.h
 
-**From cmd.c:**
-- `cmd_param_setup(uint8_t, uint8_t)` - 0xe120
-- `cmd_trigger_params(uint8_t, uint8_t)`
-- `cmd_engine_clear(void)`
-
-**From usb.c:**
-- `usb_buffer_dispatch(void)`
-- `nvme_func_04da(uint8_t param)`
+**Still needing headers:**
+- `nvme_func_04da(uint8_t param)` - event_handler.c
 - `protocol_setup_params(uint8_t, uint8_t, uint8_t)` - 0x523c
 - `scsi_core_dispatch(uint8_t param)` - 0x4ff2
 - `dma_queue_state_handler(void)` - 0x2608
-
-**From flash.c:**
-- `flash_func_0bc8(uint8_t param)` - 0x0bc8
-- `uart_write_byte_daeb(void)`
-- `uart_read_byte_dace(uint8_t offset)`
-
-**From power.c:**
-- `usb_mode_config_d07f(uint8_t param)`
-- `nvme_queue_config_e214(void)`
-- `pcie_clear_address_regs(void)` - 0x9a9c
-- `helper_e3b7(uint8_t param)` - 0xe3b7
-
----
-
-## Build Warnings to Address
-
-- `helper_95af` implicit declaration (cmd.c:2104)
-- `reg_timer_clear_bits` and `reg_timer_setup_and_set_bits` implicit declarations (pcie.c:4276, 4282)
+- Various helper functions (helper_e3b7, helper_bc9f, etc.)
 
 ---
 

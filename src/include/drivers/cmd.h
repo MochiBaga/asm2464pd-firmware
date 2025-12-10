@@ -117,6 +117,10 @@ uint8_t cmd_extract_bits67(uint8_t val);        /* 0x9621-0x962d */
 uint8_t cmd_extract_bits67_write(uint8_t val);  /* 0x962e-0x9634 */
 uint8_t cmd_read_indexed(uint8_t hi, uint8_t lo);               /* 0x9635-0x9646 */
 
+/* Command trigger and parameter setup */
+void cmd_trigger_params(uint8_t r7, uint8_t r5);  /* 0xdd0e - Sets trigger parameters */
+void cmd_param_setup(uint8_t r7, uint8_t r5);     /* 0xe120 - Command parameter setup */
+
 /* Command state management */
 void cmd_write_cc89_01(void);                   /* 0x9647-0x964e */
 void cmd_write_cc89_02(void);                   /* 0x964f-0x9655 */

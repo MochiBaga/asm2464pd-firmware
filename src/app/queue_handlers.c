@@ -14,6 +14,7 @@
 #include "sfr.h"
 #include "registers.h"
 #include "globals.h"
+#include "drivers/cmd.h"
 
 /*===========================================================================
  * PCIe Extended Register Access Helpers
@@ -178,8 +179,6 @@ uint8_t power_state_helper_aa26(void)
 
 /* Forward declarations */
 extern void helper_96ae(void);
-extern void cmd_trigger_params(uint8_t r7, uint8_t r5);
-extern void cmd_param_setup(uint8_t r7, uint8_t r5);
 extern void helper_dd0e(void);
 extern void helper_95a0(uint8_t r7);
 

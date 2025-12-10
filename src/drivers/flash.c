@@ -5,6 +5,8 @@
  */
 
 #include "drivers/flash.h"
+#include "drivers/uart.h"
+#include "app/dispatch.h"
 #include "types.h"
 #include "sfr.h"
 #include "registers.h"
@@ -876,9 +878,6 @@ void flash_command_handler(void)
 }
 
 /* External helper functions declared for use in system_init_from_flash */
-extern void uart_write_byte_daeb(void);
-extern void uart_write_daff(void);
-extern uint8_t uart_read_byte_dace(uint8_t offset);
 extern void sys_event_dispatch_05e8(void);
 extern void sys_init_helper_bbc7(void);
 extern void sys_timer_handler_e957(void);
@@ -938,7 +937,7 @@ void system_init_from_flash(void)
                 /* Compute checksum from 0x7004 to 0x707E */
                 computed_checksum = 0;
                 for (i = 4; i < 0x7F; i++) {
-                    computed_checksum += uart_read_byte_dace(0);
+                    computed_checksum += uart_read_byte_dace();
                 }
 
                 /* Get stored checksum from 0x707F */
@@ -953,22 +952,22 @@ void system_init_from_flash(void)
                     if (G_FLASH_BUF_7004 != 0xFF) {
                         /* Copy vendor string data */
                         for (i = 0; (&G_FLASH_BUF_7004)[i] != 0xFF && i < 0x28; i++) {
-                            uart_write_byte_daeb();
+                            (void)uart_write_byte_daeb((&G_FLASH_BUF_7004)[i]);
                         }
                     }
 
                     /* Parse serial strings from 0x702C if valid */
                     if (G_FLASH_BUF_702C != 0xFF) {
                         for (i = 0; (&G_FLASH_BUF_702C)[i] != 0xFF && i < 0x28; i++) {
-                            uart_write_daff();
+                            (void)uart_write_daff();
                         }
                     }
 
                     /* Parse configuration bytes */
                     for (i = 0; i < 6; i++) {
-                        tmp = uart_read_byte_dace(0x54);
+                        tmp = uart_read_byte_dace();
                         if (tmp == 0xFF) break;
-                        (&G_FLASH_CFG_0A41)[-5 + i] = uart_read_byte_dace(0x54);
+                        (&G_FLASH_CFG_0A41)[-5 + i] = uart_read_byte_dace();
                         if (i == 5) {
                             /* Mask lower nibble of 0x0A41 */
                             G_FLASH_CFG_0A41 = G_FLASH_CFG_0A41 & 0x0F;

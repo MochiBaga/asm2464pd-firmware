@@ -10,13 +10,11 @@
 #include "registers.h"
 #include "globals.h"
 #include "structs.h"
+#include "utils.h"
 
 /* External utility functions from utils.c */
 extern uint32_t idata_load_dword(__idata uint8_t *ptr);
 extern uint32_t idata_load_dword_alt(__idata uint8_t *ptr);
-
-/* External handler from main.c */
-extern void usb_buffer_dispatch(void);
 
 /* External from event_handler.c */
 extern void nvme_func_04da(uint8_t param);

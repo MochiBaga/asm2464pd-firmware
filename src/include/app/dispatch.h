@@ -51,7 +51,7 @@ void jump_bank_1(uint16_t reg_addr);            /* 0x0311-0x0321 */
 /* Named dispatch handlers */
 void phy_power_config_handler(void);            /* 0x0206-0x024a */
 void handler_bf8e(void);                        /* dispatch to 0xbf8e */
-void handler_d916(void);                        /* dispatch to 0xd916 */
+void handler_d916(uint8_t param);               /* dispatch to 0xd916 - param in R7 */
 void handler_e6fc(void);                        /* dispatch to 0xe6fc */
 void handler_e91d(void);                        /* dispatch to 0xe91d */
 void handler_e96c(void);                        /* dispatch to 0xe96c */

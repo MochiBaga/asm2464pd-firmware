@@ -460,6 +460,81 @@ void shl32(void) __naked
 }
 
 /*
+ * load_dword_r4r7 - Load XDATA dword at DPTR into R4-R7 (naked version)
+ * Address: 0x0d84-0x0d8f (12 bytes)
+ *
+ * This is the naked version for inline assembly where DPTR is already set.
+ * Does NOT take a parameter - caller must set DPTR before calling.
+ */
+void load_dword_r4r7(void) __naked
+{
+    __asm
+        movx a, @dptr
+        mov  r4, a
+        inc  dptr
+        movx a, @dptr
+        mov  r5, a
+        inc  dptr
+        movx a, @dptr
+        mov  r6, a
+        inc  dptr
+        movx a, @dptr
+        mov  r7, a
+        ret
+    __endasm;
+}
+
+/*
+ * load_dword_r0r3 - Load XDATA dword at DPTR into R0-R3 (naked version)
+ * Address: 0x0d9d-0x0da8 (12 bytes)
+ *
+ * This is the naked version for inline assembly where DPTR is already set.
+ * Does NOT take a parameter - caller must set DPTR before calling.
+ */
+void load_dword_r0r3(void) __naked
+{
+    __asm
+        movx a, @dptr
+        mov  r0, a
+        inc  dptr
+        movx a, @dptr
+        mov  r1, a
+        inc  dptr
+        movx a, @dptr
+        mov  r2, a
+        inc  dptr
+        movx a, @dptr
+        mov  r3, a
+        ret
+    __endasm;
+}
+
+/*
+ * store_dword_r4r7 - Store R4-R7 to XDATA at DPTR (naked version)
+ * Address: 0x0dc5-0x0dd0 (12 bytes)
+ *
+ * This is the naked version for inline assembly where DPTR is already set.
+ * Does NOT take a parameter - caller must set DPTR before calling.
+ */
+void store_dword_r4r7(void) __naked
+{
+    __asm
+        mov  a, r4
+        movx @dptr, a
+        inc  dptr
+        mov  a, r5
+        movx @dptr, a
+        inc  dptr
+        mov  a, r6
+        movx @dptr, a
+        inc  dptr
+        mov  a, r7
+        movx @dptr, a
+        ret
+    __endasm;
+}
+
+/*
  * xdata_load_triple - Load 3 bytes from XDATA
  * Address: 0x0ddd-0x0de5 (9 bytes)
  *
@@ -1039,7 +1114,7 @@ void init_sys_flags_07f0(void)
  *   0d30: orl a, 0xf0     ; A |= B
  *   0d32: ret             ; Return A (0 if equal)
  */
-void cmp32(void) __naked
+uint8_t cmp32(void) __naked
 {
     __asm
         mov  a, r3
@@ -1053,7 +1128,7 @@ void cmp32(void) __naked
         orl  0xf0, a        ; B |= result
         mov  a, r0
         subb a, r4
-        orl  a, 0xf0        ; A |= B
+        orl  a, 0xf0        ; A |= B (return value: 0 if equal)
         ret
     __endasm;
 }
@@ -1250,6 +1325,53 @@ void banked_store_byte(uint8_t addrlo, uint8_t addrhi, uint8_t memtype, uint8_t 
             DPX = 0x00;
         }
     }
+}
+
+/*
+ * banked_store_and_load_bc9f - Store value then load from banked memory
+ * Address: 0xbc9f-0xbca4 (6 bytes)
+ *
+ * Stores the value in A via banked_store_byte then jumps to banked_load_byte.
+ * This is a helper used in register configuration sequences.
+ *
+ * Original disassembly:
+ *   bc9f: lcall 0x0be6        ; banked_store_byte
+ *   bca2: ljmp 0x0bc8         ; banked_load_byte
+ */
+void banked_store_and_load_bc9f(uint8_t val)
+{
+    /* Store via banked_store_byte with R1/R2/R3 as set by caller */
+    /* For now, use default bank 0x01 like the calling code does */
+    banked_store_byte(0, 0, 0x01, val);
+    /* Would then call banked_load_byte but caller doesn't use return value */
+}
+
+/*
+ * banked_multi_store_bc63 - Multi-byte banked store sequence
+ * Address: 0xbc63-0xbc6f (13 bytes)
+ *
+ * Performs a multi-byte store sequence with incrementing addresses.
+ * R1 is incremented between stores.
+ *
+ * Original disassembly:
+ *   bc63: inc r1              ; R1++
+ *   bc64: lcall 0x0be6        ; banked_store_byte
+ *   bc67: inc r1              ; R1++
+ *   bc68: lcall 0x0bc8        ; banked_load_byte
+ *   bc6b: anl a, #0xe0        ; mask with 0xE0
+ *   bc6d: ljmp 0x0be6         ; banked_store_byte
+ */
+void banked_multi_store_bc63(uint8_t val)
+{
+    uint8_t tmp;
+
+    /* inc r1, store val */
+    banked_store_byte(0x01, 0, 0x01, val);
+
+    /* inc r1, load, mask with 0xE0, store */
+    tmp = banked_load_byte(0x02, 0, 0x01);
+    tmp &= 0xE0;
+    banked_store_byte(0x02, 0, 0x01, tmp);
 }
 
 /*

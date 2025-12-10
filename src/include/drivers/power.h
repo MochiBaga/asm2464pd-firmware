@@ -94,8 +94,9 @@ void power_clear_interface_flags_cb2d(void);    /* 0xcb2d-0xcb36 */
 
 /* PHY power configuration */
 void power_phy_init_config_cb37(void);          /* 0xcb37-0xcb4a */
-void power_check_event_ctrl_c9fa(void);         /* 0xc9fa-0xca0d */
+void power_check_event_ctrl_c9fa(void);         /* 0xc9fa-0xca0c */
 void power_reset_sys_state_c9ef(void);          /* 0xc9ef-0xc9f9 */
 void power_config_d630(uint8_t param);          /* 0xd630-0xd6a0 */
+void power_state_handler_ca0d(void);            /* 0xca0d-0xca70 */
 
 #endif /* _POWER_H_ */

@@ -65,7 +65,6 @@
 /* Forward declarations for functions not yet in headers */
 extern uint8_t usb_event_handler(void);
 extern void usb_reset_interface(uint8_t param);
-extern void cmd_trigger_params(uint8_t param1, uint8_t param2);
 extern void dispatch_062e(void);
 
 /* Stub helper functions - these need to be implemented properly */

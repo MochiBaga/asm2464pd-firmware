@@ -8,6 +8,7 @@
  */
 
 #include "app/scsi.h"
+#include "app/dispatch.h"
 #include "types.h"
 #include "sfr.h"
 #include "registers.h"
@@ -72,15 +73,7 @@ extern void dptr_calc_ce40_param(uint8_t param);
 extern void usb_calc_addr_with_offset(void);
 extern void helper_3f4a(void);
 extern void interface_ready_check(uint8_t p1, uint8_t p2, uint8_t p3);
-extern void handler_d916(void);               /* was: dispatch_039f */
-extern void handler_e96c(void);               /* was: dispatch_04fd */
-extern void handler_e6fc(void);               /* was: dispatch_04ee */
-extern void dispatch_04e9(void);              /* 0x04e9 -> 0xE8E4 */
 extern void pcie_tunnel_enable(void);         /* 0xC00D */
-extern void handler_e91d(void);               /* was: dispatch_044e */
-extern void phy_power_config_handler(void);   /* was: dispatch_032c */
-extern void handler_bf8e(void);               /* was: dispatch_0340 */
-extern void handler_0327_usb_power_init(void);
 extern void helper_3578(uint8_t param);
 extern void pcie_txn_array_calc(void);
 extern void protocol_dispatch(uint8_t param);
@@ -503,7 +496,7 @@ static void scsi_init_interface(void)
     /* Bit 7: Main interface */
     if ((flags & 0x80) != 0) {
         interface_ready_check(0, 0x13, 5);
-        handler_d916();  /* was: dispatch_039f */
+        handler_d916(0);  /* was: dispatch_039f */
         G_INTERFACE_READY_0B2F = 1;
         handler_e96c();  /* was: dispatch_04fd */
     }

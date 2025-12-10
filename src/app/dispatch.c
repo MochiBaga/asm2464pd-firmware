@@ -210,7 +210,7 @@ void dispatch_0395(void) { jump_bank_0(0xDA8F); }
 void dispatch_039a(void) { jump_bank_0(0xD810); }
 
 /* 0x039F: Target 0xD916 - handler_d916 */
-void handler_d916(void) { jump_bank_0(0xD916); }  /* was: dispatch_039f */
+void handler_d916(uint8_t param) { (void)param; jump_bank_0(0xD916); }  /* was: dispatch_039f */
 
 /* 0x03A4: Target 0xCB37 - power_ctrl_cb37 */
 void dispatch_03a4(void) { jump_bank_0(0xCB37); }

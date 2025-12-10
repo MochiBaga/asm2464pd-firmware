@@ -10,6 +10,8 @@
 #include "registers.h"
 #include "globals.h"
 #include "structs.h"
+#include "utils.h"
+#include "app/dispatch.h"
 
 /* External declarations */
 extern void usb_mode_config_d07f(uint8_t param);     /* event_handler.c */
@@ -1012,6 +1014,85 @@ void power_check_event_ctrl_c9fa(void)
             helper_e3b7(1);
         }
     }
+}
+
+/*
+ * power_state_handler_ca0d - Power state transition handler
+ * Address: 0xca0d-0xca70 (100 bytes)
+ *
+ * Called during power state transitions. Checks G_EVENT_CTRL_09FA
+ * and G_SYSTEM_STATE_0AE2 to determine appropriate actions.
+ *
+ * States handled:
+ *   - Event ctrl == 0x04: Call dispatch_057f, set bit6 on 0x92e1, clear bit6 on 0x92c2
+ *   - System state == 0x01: Call dispatch_057f, set bit6 on 0x92e1, clear bit6 on 0x92c2
+ *   - System state == 0x02: Clear bit1 on 0x91c0
+ *   - System state == 0x04: Various register operations
+ *
+ * Original disassembly:
+ *   ca0d: mov dptr, #0x09fa   ; G_EVENT_CTRL_09FA
+ *   ca10: movx a, @dptr       ; Read event control
+ *   ca11: cjne a, #0x04, ...  ; Check if == 4
+ *   ... complex state machine ...
+ *   ca70: ret
+ */
+void power_state_handler_ca0d(void)
+{
+    uint8_t event_ctrl = G_EVENT_CTRL_09FA;
+    uint8_t sys_state = G_SYSTEM_STATE_0AE2;
+    uint8_t val;
+
+    /* If event_ctrl == 4, perform special init sequence */
+    if (event_ctrl == 0x04) {
+        /* dispatch_057f(); - call through dispatch stub */
+        dispatch_057f();
+
+        /* Set bit 6 on 0x92e1, clear bit 6 on 0x92c2 */
+        reg_set_bit6((__xdata uint8_t *)0x92E1);
+        val = REG_POWER_STATUS;
+        val &= 0xBF;  /* Clear bit 6 */
+        REG_POWER_STATUS = val;
+        goto write_final;
+    }
+
+    /* Check system state */
+    if (sys_state == 0x01) {
+        dispatch_057f();
+        reg_set_bit6((__xdata uint8_t *)0x92E1);
+        val = REG_POWER_STATUS;
+        val &= 0xBF;
+        REG_POWER_STATUS = val;
+        goto write_final;
+    }
+
+    if (sys_state == 0x02) {
+        /* Clear bit 1 on 0x91c0 */
+        val = XDATA8(0x91C0);
+        val &= 0xFD;
+        XDATA8(0x91C0) = val;
+        goto write_final;
+    }
+
+    if (sys_state == 0x04) {
+        /* Complex register sequence */
+        val = XDATA8(0xCC30);
+        val &= 0xFE;  /* Clear bit 0 */
+        XDATA8(0xCC30) = val;
+
+        val = XDATA8(0xE710);
+        val = (val & 0xE0) | 0x1F;
+        XDATA8(0xE710) = val;
+
+        val = XDATA8(0x91C0);
+        val &= 0xFD;  /* Clear bit 1 */
+        XDATA8(0x91C0) = val;
+
+        reg_set_bit1((__xdata uint8_t *)0xCC3B);
+    }
+
+write_final:
+    /* Set system state to 0x10 */
+    G_SYSTEM_STATE_0AE2 = 0x10;
 }
 
 /*

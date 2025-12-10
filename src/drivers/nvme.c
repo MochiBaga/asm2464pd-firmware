@@ -11,6 +11,7 @@
 #include "globals.h"
 #include "drivers/dma.h"
 #include "drivers/usb.h"
+#include "drivers/cmd.h"
 #include "utils.h"
 #include "drivers/power.h"
 
@@ -2182,9 +2183,6 @@ void nvme_queue_helper(void)
 #define G_WORK_E409             XDATA_VAR8(0xE409)
 
 /* External function declarations */
-extern void cmd_param_setup(uint8_t param1, uint8_t param2);
-extern void cmd_engine_clear(void);
-extern void cmd_trigger_params(uint8_t param1, uint8_t param2);
 extern void wait_status_loop(void);
 
 /*

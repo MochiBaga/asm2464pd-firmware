@@ -39,7 +39,12 @@ void mul32(void) __naked;                       /* 0x0cb9-0x0d07 */
 void or32(void) __naked;                        /* 0x0d08-0x0d14 */
 void xor32(void) __naked;                       /* 0x0d15-0x0d21 */
 void shl32(void) __naked;                       /* 0x0d46-0x0d58 */
-void cmp32(void) __naked;                       /* 0x0d22-0x0d32 */
+uint8_t cmp32(void) __naked;                    /* 0x0d22-0x0d32 - returns 0 if equal */
+
+/* Naked load/store for inline assembly (DPTR already set) */
+void load_dword_r4r7(void) __naked;             /* 0x0d84-0x0d8f: load XDATA[DPTR] to R4-R7 */
+void load_dword_r0r3(void) __naked;             /* 0x0d9d-0x0da8: load XDATA[DPTR] to R0-R3 */
+void store_dword_r4r7(void) __naked;            /* 0x0dc5-0x0dd0: store R4-R7 to XDATA[DPTR] */
 
 /* Generic register bit operations */
 uint8_t reg_read_indexed_0a84(uint8_t offset, uint8_t base);/* 0xbb4f-0xbb5d */
@@ -87,6 +92,10 @@ void pdata_store_dword(__pdata uint8_t *ptr, uint32_t val); /* 0x0e4f-0x0e5a */
 void banked_store_dword(uint8_t dpl, uint8_t dph, uint8_t bank, uint32_t val);  /* 0x0ba9-0x0bc7 */
 uint8_t banked_load_byte(uint8_t addrlo, uint8_t addrhi, uint8_t memtype);      /* 0x0bc8-0x0bd4 */
 void banked_store_byte(uint8_t addrlo, uint8_t addrhi, uint8_t memtype, uint8_t val);  /* 0x0be6-0x0bfc */
+
+/* Banked register helper functions */
+void banked_store_and_load_bc9f(uint8_t val);          /* 0xbc9f-0xbca4: store val, then load */
+void banked_multi_store_bc63(uint8_t val);             /* 0xbc63-0xbc6f: multi-byte store sequence */
 
 /* Table search */
 void table_search_dispatch_alt(void) __naked;   /* 0x0def-0x0e14 */

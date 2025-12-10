@@ -5,10 +5,12 @@
  */
 
 #include "drivers/cmd.h"
+#include "drivers/pcie.h"
 #include "types.h"
 #include "sfr.h"
 #include "registers.h"
 #include "globals.h"
+#include "utils.h"
 
 /*
  * cmd_check_busy - Check if command engine is busy
@@ -509,7 +511,6 @@ void cmd_config_e40b(void)
  *   95b4: movx @dptr, a
  *   95b5: ret
  */
-extern void cmd_param_setup(uint8_t r7, uint8_t r5);  /* Command parameter setup at 0xe120 */
 void cmd_call_e120_setup(void)
 {
     /* Call cmd_param_setup with R5=2 - would set up R2 return value */
@@ -593,8 +594,6 @@ uint16_t cmd_calc_dptr_offset(uint8_t r2, uint8_t r3, uint8_t r5)
  *   95e9: movx @dptr, a
  *   95ea: ret
  */
-extern void cmd_engine_clear(void);
-extern void cmd_trigger_params(uint8_t r7, uint8_t r5);
 void cmd_call_e73a_setup(void)
 {
     cmd_engine_clear();
@@ -1448,21 +1447,6 @@ void cfg_write_b217(uint8_t val)
  *   0x9ab3 = pcie_set_byte_enables_0f
  *   0x9902/990c = pcie_init/pcie_init_alt (poll write status)
  */
-extern void pcie_set_0a5b_flag(__xdata uint8_t *ptr, uint8_t val);
-extern void pcie_inc_0a5b(void);
-extern uint8_t pcie_check_txn_count(void);
-extern __xdata uint8_t *pcie_lookup_r6_multiply(uint8_t idx);
-extern void pcie_store_r6_to_05a6(uint8_t val);
-extern __xdata uint8_t *pcie_config_table_lookup(void);
-extern void pcie_read_and_store_idata(__xdata uint8_t *ptr);
-extern void pcie_init_idata_65_63(void);
-extern void pcie_add_2_to_idata(uint8_t val);
-extern void pcie_set_byte_enables_0f(void);
-extern void or32(void);
-extern void shl32(void);
-extern uint8_t pcie_init(void);
-extern uint8_t pcie_init_alt(void);
-
 /*
  * cfg_pcie_ep_state_machine - PCIe Endpoint Configuration State Machine
  * Address: 0x9741-0x9901 (449 bytes)
