@@ -82,6 +82,7 @@ class HardwareState:
 
         # Flash - not busy
         self.regs[0xC8A9] = 0x00  # CSR - not busy
+        self.regs[0xC8B8] = 0x00  # Flash/DMA status - bit 0 clear (not busy)
 
         # UART - TX ready
         self.regs[0xC009] = 0x60  # LSR - TX empty
@@ -111,6 +112,9 @@ class HardwareState:
         self.regs[0xE7E3] = 0x80  # PHY link ready
         self.regs[0xB238] = 0x00  # Link trigger not busy
 
+        # PHY Extended registers
+        self.regs[0xC6B3] = 0x30  # PHY status - bits 4,5 set (main loop waits for these)
+
     def _setup_callbacks(self):
         """Setup special read/write callbacks."""
         # UART TX - capture output
@@ -128,6 +132,9 @@ class HardwareState:
 
         # DMA status - auto-complete
         self.read_callbacks[0xC8D6] = self._dma_status_read
+
+        # Flash/DMA busy registers - auto-clear after polling
+        self.read_callbacks[0xC8B8] = self._busy_reg_read
 
         # Timer CSRs
         for addr in [0xCC11, 0xCC17, 0xCC1D, 0xCC23]:
@@ -172,6 +179,22 @@ class HardwareState:
     def _dma_status_read(self, hw: 'HardwareState', addr: int) -> int:
         """DMA status - always done."""
         return 0x04  # Done flag
+
+    def _busy_reg_read(self, hw: 'HardwareState', addr: int) -> int:
+        """
+        Busy register read - auto-clear bit 0 after polling.
+
+        Pattern: firmware writes 1 to start operation, polls until bit 0 clears.
+        """
+        count = self.poll_counts.get(addr, 0)
+        value = self.regs.get(addr, 0)
+
+        # After 3 polls, clear bit 0 (operation complete)
+        if count >= 3 and (value & 0x01):
+            value &= ~0x01
+            self.regs[addr] = value
+
+        return value
 
     def _timer_csr_read(self, hw: 'HardwareState', addr: int) -> int:
         """Timer CSR read - auto-expire after polling."""
@@ -284,13 +307,16 @@ def create_hardware_hooks(memory: 'Memory', hw: HardwareState):
         (0x92C0, 0x9300),   # Power Management
         (0xB200, 0xB900),   # PCIe Passthrough
         (0xC000, 0xC100),   # UART
+        (0xC200, 0xC300),   # Link/PHY Control
         (0xC400, 0xC600),   # NVMe Interface
+        (0xC600, 0xC700),   # PHY Extended
         (0xC800, 0xC900),   # Interrupt/DMA/Flash
         (0xCA00, 0xCB00),   # CPU Mode
         (0xCC00, 0xCD00),   # Timer/CPU Control
         (0xCE00, 0xCF00),   # SCSI DMA
         (0xE300, 0xE400),   # PHY Debug
         (0xE400, 0xE500),   # Command Engine
+        (0xE600, 0xE700),   # Debug/Interrupt Extended
         (0xE700, 0xE800),   # System Status
         (0xEC00, 0xED00),   # NVMe Event
     ]
