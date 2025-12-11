@@ -2,4 +2,7 @@ usb-to-pcie-re
 fw.bin
 build
 .*.swp
-keil
+uartexact
+__pycache__
+*.asm
+ghidra-asmedia-8051
