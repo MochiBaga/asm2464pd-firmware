@@ -41,7 +41,7 @@ The ASM2464PD has ~98KB firmware but 8051 can only address 64KB.
 Banking is controlled via the DPX register (SFR 0x96):
 - 0x0000-0x7FFF: Always bank 0 (shared)
 - 0x8000-0xFFFF with DPX=0: Bank 0
-- 0x8000-0xFFFF with DPX=1: Bank 1 (file offset 0x10000+)
+- 0x8000-0xFFFF with DPX=1: Bank 1 (file offset 0xFF6B+)
 
 ## TODO
 

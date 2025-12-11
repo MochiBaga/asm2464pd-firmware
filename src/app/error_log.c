@@ -296,13 +296,13 @@ void error_log_process(void)
  * ERROR FLAG MANAGEMENT (from Bank 1)
  *
  * These functions handle error flag clearing and error condition handling.
- * They reside in Bank 1 (code offset 0x10000+) and are called via
+ * They reside in Bank 1 (code offset 0xFF6B+) and are called via
  * the bank switching mechanism (jump_bank_1 at 0x0311).
  *===========================================================================*/
 
 /*
  * error_clear_system_flags - Clear error flags in E760/E761 registers
- * Bank 1 Address: 0xE920 (file offset 0x16920)
+ * Bank 1 Address: 0xE920 (file offset 0x1688B)
  * Size: 50 bytes (0x16920-0x16951)
  *
  * Clears and sets specific error/event flag bits in the 0xE760-0xE763
@@ -350,7 +350,7 @@ void error_clear_system_flags(void)
 
 /*
  * error_handler_pcie_nvme - PCIe/NVMe error handler (mid-function entry point)
- * Bank 1 Address: 0xE911 (file offset 0x16911)
+ * Bank 1 Address: 0xE911 (file offset 0x1687C)
  * Size: 15 bytes (0x16911-0x1691f)
  *
  * Called when PCIe/NVMe status & 0x0F != 0.
@@ -377,7 +377,7 @@ void error_handler_pcie_nvme(void)
 
 /*
  * error_handler_recovery - Error recovery handler
- * Bank 1 Address: 0xB230 (file offset 0x13230)
+ * Bank 1 Address: 0xB230 (file offset 0x1319B)
  * Size: ~104 bytes (0x13230-0x13297+)
  *
  * Complex error handler that manipulates hardware registers and calls
@@ -399,7 +399,7 @@ void error_handler_recovery(void)
 
 /*
  * error_handler_pcie_bit5 - Error handler for PCIe status bit 5
- * Bank 1 Address: 0xA066 (file offset 0x12066)
+ * Bank 1 Address: 0xA066 (file offset 0x11FD1)
  * Size: ~115 bytes (0x12066-0x120D8+)
  *
  * Called when event flags & 0x83 and PCIe status bit 5 set.
@@ -419,7 +419,7 @@ void error_handler_pcie_bit5(void)
 
 /*
  * error_handler_system_timer - System timer error handler
- * Bank 1 Address: 0xEF4E (file offset 0x16F4E)
+ * Bank 1 Address: 0xEF4E (file offset 0x16EB9)
  *
  * Called when system status bit 4 is set.
  * NOTE: This address contains all NOPs in the original firmware.

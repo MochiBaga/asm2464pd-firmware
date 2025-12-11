@@ -39,7 +39,7 @@ make clean        # Remove build artifacts
 ### Code Banks
 ```
 Bank 0: 0x00000-0x0FFFF  (64KB, direct access)
-Bank 1: 0x10000-0x17F12  (32KB, via DPX register, mapped at 0x8000)
+Bank 1: 0xFF6B-0x17ED5  (32KB, via DPX register, mapped at 0x8000)
 ```
 
 ### XDATA Memory Map

@@ -3934,7 +3934,7 @@ __xdata uint8_t *usb_calc_dptr_from_0x3c(void)
 /*===========================================================================
  * Bank 1 USB Descriptor Setup Functions (0x897d-0x8a89)
  *
- * These functions are in Bank 1 (address 0x10000-0x17FFF mapped at 0x8000)
+ * These functions are in Bank 1 (address 0xFF6B-0x17ED5 mapped at 0x8000)
  * and handle USB descriptor setup, writing to the 0x59xx address space
  * for USB descriptor configuration.
  *===========================================================================*/
@@ -3951,7 +3951,7 @@ extern void usb_descriptor_helper_a655(uint8_t idx, uint8_t val);  /* 0xa655 */
 
 /*
  * usb_desc_setup_897d - USB descriptor setup with parameter
- * Bank 1 Address: 0x897d-0x8991 (21 bytes) [actual addr: 0x1097d]
+ * Bank 1 Address: 0x897d-0x8991 (21 bytes) [actual addr: 0x108E8]
  *
  * Sets up a USB descriptor by writing param to *param_ptr,
  * calling helper a648(1), clearing *param_ptr, then jumping to a644(0x58, 0x0d).
@@ -3972,7 +3972,7 @@ void usb_desc_setup_897d(uint8_t param, __xdata uint8_t *ptr)
 
 /*
  * usb_desc_setup_8992 - USB descriptor setup dispatch
- * Bank 1 Address: 0x8992-0x89ac (27 bytes) [actual addr: 0x10992]
+ * Bank 1 Address: 0x8992-0x89ac (27 bytes) [actual addr: 0x108FD]
  *
  * Dispatch to a644(0x58, 0x0e) - does not return.
  *
@@ -3986,7 +3986,7 @@ void usb_desc_setup_8992(void)
 
 /*
  * usb_desc_setup_89ad - USB descriptor setup dispatch 2
- * Bank 1 Address: 0x89ad-0x89bc (16 bytes) [actual addr: 0x109ad]
+ * Bank 1 Address: 0x89ad-0x89bc (16 bytes) [actual addr: 0x10918]
  *
  * Dispatch to a644(0x58, 0x10) - does not return.
  *
@@ -4000,7 +4000,7 @@ void usb_desc_setup_89ad(void)
 
 /*
  * usb_desc_setup_89bd - USB descriptor setup with serial number
- * Bank 1 Address: 0x89bd-0x89c5 (9 bytes header + body) [actual addr: 0x109bd]
+ * Bank 1 Address: 0x89bd-0x89c5 (9 bytes header + body) [actual addr: 0x10928]
  *
  * Complex descriptor setup that:
  * 1. Calls a637() to initialize
@@ -4057,7 +4057,7 @@ uint8_t usb_desc_setup_89bd(__xdata uint8_t *param)
 
 /*
  * usb_desc_setup_89c6 - USB descriptor setup with parameter and serial
- * Bank 1 Address: 0x89c6-0x8a39 (116 bytes) [actual addr: 0x109c6]
+ * Bank 1 Address: 0x89c6-0x8a39 (116 bytes) [actual addr: 0x10931]
  *
  * Similar to 89bd but takes an additional parameter that's written first.
  *
@@ -4097,7 +4097,7 @@ uint8_t usb_desc_setup_89c6(uint8_t param, __xdata uint8_t *ptr)
 
 /*
  * usb_xfer_nop_8a3a - No-op transfer function
- * Bank 1 Address: 0x8a3a-0x8a3c (3 bytes) [actual addr: 0x10a3a]
+ * Bank 1 Address: 0x8a3a-0x8a3c (3 bytes) [actual addr: 0x109A5]
  *
  * Empty function - just returns.
  */
@@ -4108,7 +4108,7 @@ void usb_xfer_nop_8a3a(void)
 
 /*
  * usb_xfer_finish_8a3d - USB transfer finish and return action code
- * Bank 1 Address: 0x8a3d-0x8a4d (17 bytes) [actual addr: 0x10a3d]
+ * Bank 1 Address: 0x8a3d-0x8a4d (17 bytes) [actual addr: 0x109A8]
  *
  * Checks 0x0AE5 and if zero, sets 0x07E9 = 1.
  * Returns value from 0x0A83.
@@ -4127,7 +4127,7 @@ uint8_t usb_xfer_finish_8a3d(void)
 
 /*
  * usb_xfer_setup_8a4e - USB transfer setup with parameters
- * Bank 1 Address: 0x8a4e-0x8a66 (25 bytes) [actual addr: 0x10a4e]
+ * Bank 1 Address: 0x8a4e-0x8a66 (25 bytes) [actual addr: 0x109B9]
  *
  * Sets up transfer parameters at 0x0ADE-0x0AE1, calls b402,
  * then stores param2 to 0x0A83.
@@ -4152,7 +4152,7 @@ void usb_xfer_setup_8a4e(uint8_t param1, uint8_t param2)
 
 /*
  * usb_xfer_setup_8a67 - USB transfer setup with address write
- * Bank 1 Address: 0x8a67-0x8a71 (11 bytes) [actual addr: 0x10a67]
+ * Bank 1 Address: 0x8a67-0x8a71 (11 bytes) [actual addr: 0x109D2]
  *
  * Writes param1 to [param2+1], calls b402, stores param3 to 0x0A83.
  *
@@ -4170,7 +4170,7 @@ void usb_xfer_setup_8a67(uint8_t param1, uint16_t addr, uint8_t param3)
 
 /*
  * usb_xfer_setup_8a72 - USB transfer setup with 0x12 write
- * Bank 1 Address: 0x8a72-0x8a7d (12 bytes) [actual addr: 0x10a72]
+ * Bank 1 Address: 0x8a72-0x8a7d (12 bytes) [actual addr: 0x109DD]
  *
  * Writes 0x12 to *param1, calls b402, stores param2 to 0x0A83.
  *
@@ -4188,7 +4188,7 @@ void usb_xfer_setup_8a72(__xdata uint8_t *ptr, uint8_t param2)
 
 /*
  * usb_xfer_setup_8a7e - USB transfer setup with address write (3-param variant)
- * Bank 1 Address: 0x8a7e-0x8a88 (11 bytes) [actual addr: 0x10a7e]
+ * Bank 1 Address: 0x8a7e-0x8a88 (11 bytes) [actual addr: 0x109E9]
  *
  * Writes param1 to [param2+1], calls b402, stores param3 to 0x0A83.
  * Similar to 8a67 - may be called with different DPTR context.
@@ -4212,7 +4212,7 @@ void usb_xfer_setup_8a7e(uint8_t param1)
 
 /*
  * usb_xfer_flash_dispatch_8a89 - USB transfer with flash dispatch
- * Bank 1 Address: 0x8a89-0x8d6d (~740 bytes) [actual addr: 0x10a89]
+ * Bank 1 Address: 0x8a89-0x8d6d (~740 bytes) [actual addr: 0x109F4]
  *
  * Stores param to 0x0A9D, then calls flash_func_0bc8(0xef, 0x4c, 0xff).
  * Does not return (jumps to flash dispatch).

@@ -24,7 +24,7 @@
  * ============================================================================
  *
  * Bank 0 addresses are CPU addresses (0x0000-0xFFFF).
- * Bank 1 file offsets: file_offset = 0x10000 + (bank1_addr - 0x8000)
+ * Bank 1 file offsets: file_offset = 0xFF6B + (bank1_addr - 0x8000)
  *
  * E0 (Config Read):
  *   - Dispatch: 0x1353 (cjne a, #0xe0, jump to 0x12e5)
@@ -1000,7 +1000,7 @@ void vendor_cmd_e3_fw_write_dispatch(void)
  * bank1_trampoline - Call Bank 1 function via ret trick
  * Address: 0x0311
  *
- * This trampoline enables calling functions in Bank 1 (file offset 0x10000+)
+ * This trampoline enables calling functions in Bank 1 (file offset 0x0FF6B+)
  * by pushing the return address, setting up the bank switch, and using RET.
  *
  * Disassembly:

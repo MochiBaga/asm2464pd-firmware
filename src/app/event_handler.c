@@ -1415,7 +1415,7 @@ handler_epilogue:
  * event_state_handler - Event handler
  * Address: 0x0494-0x0498 (5 bytes) -> dispatches to bank 1 0xE56F
  *
- * Function at 0xE56F (file offset 0x1656F):
+ * Function at 0xE56F (file offset 0x164DA):
  * Event state machine handler called when events & 0x81 is set.
  *
  * Algorithm:
@@ -1484,7 +1484,7 @@ void event_state_handler(void)
  * error_state_config - Error/State handler
  * Address: 0x0606-0x060a (5 bytes) -> dispatches to bank 1 0xB230
  *
- * Function at 0xB230 (file offset 0x13230):
+ * Function at 0xB230 (file offset 0x1319B):
  * Error and state management handler. Configures various control registers
  * for error handling and link state management.
  *

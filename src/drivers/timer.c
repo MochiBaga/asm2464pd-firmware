@@ -519,7 +519,7 @@ void system_interrupt_handler(void)
  * system_timer_handler - System Timer Handler
  * Address: 0x0642-0x0646 (5 bytes)
  *
- * Dispatches to bank 1 code at 0xEF4E (file offset 0x16F4E)
+ * Dispatches to bank 1 code at 0xEF4E (file offset 0x16EB9)
  * Called from ext1_isr when system status bit 4 is set.
  *
  * Original disassembly:

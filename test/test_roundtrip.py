@@ -173,7 +173,7 @@ def assemble_with_sdcc(asm_code, output_dir, bank_name, base_addr):
 
     # Convert Intel HEX to binary
     print(f"  Converting to binary...")
-    binary_data = bytearray(65536 if bank_name == 'bank0' else 32768)
+    binary_data = bytearray(65387 if bank_name == 'bank0' else 32619)
 
     with open(ihx_file, 'r') as f:
         base_addr_ext = 0

@@ -11,7 +11,7 @@
  *
  * BANK MAPPING:
  *   Bank 0: Physical 0x08000-0x0FFFF → Logical 0x8000-0xFFFF
- *   Bank 1: Physical 0x10000-0x17FFF → Logical 0x8000-0xFFFF
+ *   Bank 1: Physical 0xFF6B-0x17ED5 → Logical 0x8000-0xFFFF
  *
  * DISPATCH MECHANISM:
  *   Functions in the banked region cannot be called directly from

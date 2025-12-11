@@ -2691,7 +2691,7 @@ void pcie_set_interrupt_flag(void)
 /*===========================================================================
  * Bank 1 PCIe Address Helper Functions (0x839c-0x83b9)
  *
- * These functions are in Bank 1 (address 0x10000-0x17FFF mapped at 0x8000)
+ * These functions are in Bank 1 (address 0xFF6B-0x17ED5 mapped at 0x8000)
  * and handle PCIe address setup for transactions. They store 32-bit addresses
  * to the global G_PCIE_ADDR at 0x05AF.
  *===========================================================================*/
@@ -2701,7 +2701,7 @@ extern void pcie_bank1_helper_e902(void);  /* 0xe902 - Bank 1 setup */
 
 /*
  * pcie_addr_store_839c - Store PCIe address with offset adjustment
- * Bank 1 Address: 0x839c-0x83b8 (29 bytes) [actual addr: 0x1039c]
+ * Bank 1 Address: 0x839c-0x83b8 (29 bytes) [actual addr: 0x10307]
  *
  * Calls e902 helper, loads current address from 0x05AF,
  * then stores back adjusted address (param4 + 4 with borrow handling).
@@ -2743,7 +2743,7 @@ void pcie_addr_store_839c(uint8_t p1, uint8_t p2, uint8_t p3, uint8_t p4)
 
 /*
  * pcie_addr_store_83b9 - Store PCIe address with offset (variant)
- * Bank 1 Address: 0x83b9-0x83d5 (29 bytes) [actual addr: 0x103b9]
+ * Bank 1 Address: 0x83b9-0x83d5 (29 bytes) [actual addr: 0x10324]
  *
  * Identical to 839c - likely called in different context or a duplicate
  * for code alignment/bank purposes.
@@ -2785,7 +2785,7 @@ void pcie_addr_store_83b9(uint8_t p1, uint8_t p2, uint8_t p3, uint8_t p4)
 
 /*
  * pcie_state_clear_ed02 - Clear PCIe state and check transfer status
- * Bank 1 Address: 0xED02 (file offset 0x16D02)
+ * Bank 1 Address: 0xED02 (file offset 0x16C6D)
  * Size: ~38 bytes (0x16D02-0x16D27)
  *
  * Called by dispatch stub handler_063d. This handler:
@@ -2811,7 +2811,7 @@ void pcie_state_clear_ed02(void)
 
 /*
  * pcie_handler_unused_eef9 - PCIe handler (UNUSED)
- * Bank 1 Address: 0xEEF9 (file offset 0x16EF9)
+ * Bank 1 Address: 0xEEF9 (file offset 0x16E64)
  *
  * Called by handler_063d.
  * NOTE: This address contains all NOPs in the original firmware.
@@ -2894,7 +2894,7 @@ void pcie_nvme_event_handler(void)
  * pcie_error_dispatch - PCIe Error Dispatch
  * Address: 0x0570-0x0574 (5 bytes)
  *
- * Dispatches to bank 1 code at 0xE911 (file offset 0x16911)
+ * Dispatches to bank 1 code at 0xE911 (file offset 0x1687C)
  * Called from ext1_isr when PCIe/NVMe status & 0x0F != 0.
  *
  * Original disassembly:
@@ -2911,7 +2911,7 @@ void pcie_error_dispatch(void)
  * pcie_event_bit5_handler - PCIe Event Handler (bit 5)
  * Address: 0x061a-0x061e (5 bytes)
  *
- * Dispatches to bank 1 code at 0xA066 (file offset 0x12066)
+ * Dispatches to bank 1 code at 0xA066 (file offset 0x11FD1)
  * Called from ext1_isr when event flags & 0x83 and PCIe/NVMe status bit 5 set.
  *
  * Original disassembly:

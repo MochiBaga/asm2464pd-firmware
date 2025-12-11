@@ -764,14 +764,14 @@ loop_end:
  *   CPU Address   | DPX=0 (Bank 0)      | DPX=1 (Bank 1)
  *   --------------|---------------------|---------------------
  *   0x0000-0x7FFF | File 0x0000-0x7FFF  | File 0x0000-0x7FFF (shared)
- *   0x8000-0xFFFF | File 0x8000-0xFFFF  | File 0x10000-0x17F0C
+ *   0x8000-0xFFFF | File 0x8000-0xFFFF  | File 0xFF6B-0x17E77
  *
  * The lower 32KB (0x0000-0x7FFF) is always visible regardless of DPX.
  * This contains interrupt vectors, dispatch routines, and common code.
  *
  * The upper 32KB (0x8000-0xFFFF) is bank-switched:
  *   - DPX=0: Maps to file offset 0x08000-0x0FFFF (bank 0)
- *   - DPX=1: Maps to file offset 0x10000-0x17F0C (bank 1)
+ *   - DPX=1: Maps to file offset 0x0FF6B-0x17F0C (bank 1)
  *
  * DISPATCH MECHANISM:
  *   The handlers use a clever trampoline system:
@@ -782,7 +782,7 @@ loop_end:
  *
  * FILE OFFSET CALCULATION:
  *   For bank 0 (DPX=0): file_offset = addr
- *   For bank 1 (DPX=1): file_offset = addr + 0x8000
+ *   For bank 1 (DPX=1): file_offset = addr + 0x7F6B
  *
  * EXAMPLE:
  *   pcie_error_dispatch calls jump_bank_1(0xE911)
@@ -921,7 +921,7 @@ void main_polling_handler(void)
  * BANK 1 SYSTEM INITIALIZATION
  *
  * This function initializes system configuration from flash storage.
- * It resides in Bank 1 (code offset 0x10000+) and is called during boot.
+ * It resides in Bank 1 (code offset 0xFF6B+) and is called during boot.
  *===========================================================================*/
 
 /* UART functions declared in uart.h */

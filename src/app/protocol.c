@@ -2455,13 +2455,13 @@ void cmd_queue_status_handler(uint8_t param_1)
  * BANK 1 EVENT HANDLERS
  *
  * These functions handle events and status updates. They reside in Bank 1
- * (code offset 0x10000+) and are called via the bank switching mechanism
+ * (code offset 0xFF6B+) and are called via the bank switching mechanism
  * (jump_bank_1 at 0x0311).
  *===========================================================================*/
 
 /*
  * event_state_machine_e56f - Event state machine for 0x81 events
- * Bank 1 Address: 0xE56F (file offset 0x1656F)
+ * Bank 1 Address: 0xE56F (file offset 0x164DA)
  * Size: ~174 bytes (0x1656F-0x1661C)
  *
  * Called when events & 0x81 is set. This is a complex event state machine
@@ -2489,7 +2489,7 @@ void event_state_machine_e56f(void)
 
 /*
  * event_queue_process_e762 - Process event queue entries
- * Bank 1 Address: 0xE762 (file offset 0x16762)
+ * Bank 1 Address: 0xE762 (file offset 0x166CD)
  *
  * Handles events by managing state counters at 0x0AA2-0x0AA5.
  * Part of the event queue management system.
@@ -2522,7 +2522,7 @@ void event_queue_process_e762(void)
 
 /*
  * status_update_handler_e677 - Handle status updates
- * Bank 1 Address: 0xE677 (file offset 0x16677)
+ * Bank 1 Address: 0xE677 (file offset 0x165E2)
  *
  * Handles status updates by checking mode and performing
  * register operations via helper functions at 0xC244, 0xC247, etc.

@@ -734,7 +734,7 @@ void flash_erase_sector(uint32_t addr)
 /*===========================================================================
  * Bank 1 Flash Dispatch Stub Functions (0x873a-0x8d6e)
  *
- * These functions are in Bank 1 (address 0x10000-0x17FFF mapped at 0x8000)
+ * These functions are in Bank 1 (address 0xFF6B-0x17ED5 mapped at 0x8000)
  * and serve as dispatch stubs that call flash_func_0bc8 with 0xFF parameter.
  * These are error/fallback handlers that jump to flash error recovery.
  *
@@ -748,7 +748,7 @@ extern void flash_func_0bc8(uint8_t param);  /* 0x0bc8 - Main flash dispatcher *
 
 /*
  * flash_dispatch_stub_873a - Flash error dispatch stub
- * Bank 1 Address: 0x873a-0x8742 (9 bytes) [actual addr: 0x1073a]
+ * Bank 1 Address: 0x873a-0x8742 (9 bytes) [actual addr: 0x106A5]
  *
  * Calls flash_func_0bc8(0xff) which does not return.
  * This is an error fallback - jumps to flash error recovery.
@@ -764,7 +764,7 @@ void flash_dispatch_stub_873a(void)
 
 /*
  * flash_dispatch_stub_8743 - Flash error dispatch stub
- * Bank 1 Address: 0x8743-0x874b (9 bytes) [actual addr: 0x10743]
+ * Bank 1 Address: 0x8743-0x874b (9 bytes) [actual addr: 0x106AE]
  *
  * Identical to 873a - possibly for different state machine entry point.
  *
@@ -779,7 +779,7 @@ void flash_dispatch_stub_8743(void)
 
 /*
  * flash_dispatch_stub_874c - Flash error dispatch stub
- * Bank 1 Address: 0x874c-0x8754 (9 bytes) [actual addr: 0x1074c]
+ * Bank 1 Address: 0x874c-0x8754 (9 bytes) [actual addr: 0x106B7]
  *
  * Identical to 873a - possibly for different state machine entry point.
  *
@@ -794,7 +794,7 @@ void flash_dispatch_stub_874c(void)
 
 /*
  * flash_dispatch_stub_8d6e - Flash error dispatch stub
- * Bank 1 Address: 0x8d6e-0x8d76 (9 bytes) [actual addr: 0x10d6e]
+ * Bank 1 Address: 0x8d6e-0x8d76 (9 bytes) [actual addr: 0x10CD9]
  *
  * Identical to 873a - possibly for different state machine entry point.
  * This one is at the end of the Bank 1 function group before the debug init.
@@ -884,7 +884,7 @@ extern void sys_timer_handler_e957(void);
 
 /*
  * system_init_from_flash - Initialize system from flash configuration
- * Bank 1 Address: 0x8d77-0x8fe0+ (~617 bytes) [actual addr: 0x10d77]
+ * Bank 1 Address: 0x8d77-0x8fe0+ (~617 bytes) [actual addr: 0x10CE2]
  *
  * Complex initialization function that reads configuration from flash buffer
  * (0x70xx), validates checksum, and sets up system parameters.

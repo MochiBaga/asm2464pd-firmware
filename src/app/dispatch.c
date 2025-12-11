@@ -68,7 +68,7 @@ void jump_bank_0(uint16_t reg_addr)
  * R0 is set to 0x1B which may be used by target functions.
  *
  * Bank 1 functions handle error conditions and are at file offset
- * 0x10000-0x17F0C (CPU addresses 0x8000-0xFFFF with DPX=1).
+ * 0xFF6B-0x17E77 (CPU addresses 0x8000-0xFFFF with DPX=1).
  *
  * Original disassembly:
  *   0311: push 0x08
@@ -218,7 +218,7 @@ void dispatch_03a4(void) { jump_bank_0(0xCB37); }
 /*===========================================================================
  * Bank 1 Dispatch Functions (0x03A9-0x0411)
  * These all jump to 0x0311 (jump_bank_1)
- * Bank 1 CPU addr = file offset - 0x8000 (e.g., 0x89DB -> file 0x109DB)
+ * Bank 1 CPU addr = file offset - 0x7F6B (e.g., 0x89DB -> file 0x10946)
  *===========================================================================*/
 
 /* 0x03A9: Target Bank1:0x89DB (file 0x109DB) - handler_89db */
