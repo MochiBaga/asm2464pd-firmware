@@ -14,6 +14,14 @@ if TYPE_CHECKING:
 
 
 @dataclass
+class USBCommand:
+    """USB command queued for firmware processing."""
+    cmd: int           # Command type (0xE4=read, 0xE5=write, 0x8A=scsi)
+    addr: int          # Target XDATA address
+    data: bytes        # Data for write commands
+    response: bytes = b''  # Response data for read commands
+
+@dataclass
 class HardwareState:
     """
     Hardware state for ASM2464PD emulation.
@@ -44,6 +52,24 @@ class HardwareState:
     read_callbacks: Dict[int, Callable[['HardwareState', int], int]] = field(default_factory=dict)
     write_callbacks: Dict[int, Callable[['HardwareState', int, int], None]] = field(default_factory=dict)
 
+    # USB command queue
+    usb_cmd_queue: list = field(default_factory=list)
+    usb_cmd_pending: bool = False
+    usb_ep0_buf: bytearray = field(default_factory=lambda: bytearray(64))  # Control EP buffer
+    usb_ep0_len: int = 0
+    usb_data_buf: bytearray = field(default_factory=lambda: bytearray(4096))  # Data buffer
+    usb_data_len: int = 0
+
+    # Memory reference for E4/E5 commands (set by create_hardware_hooks)
+    memory: 'Memory' = None
+
+    # UART output buffer for line-based output
+    uart_buffer: str = ""
+
+    # USB command injection timing
+    usb_inject_delay: int = 10000  # Cycles after USB connect to inject command
+    usb_injected: bool = False
+
     def __post_init__(self):
         """Initialize hardware register defaults."""
         self._init_registers()
@@ -73,6 +99,7 @@ class HardwareState:
         self.regs[0x92C5] = 0x04  # PHY powered
         self.regs[0x92E0] = 0x02  # Power domain
         self.regs[0x92F7] = 0x40  # Power status
+        self.regs[0x92FB] = 0x01  # Power sequence complete (checked at 0x9C42)
 
         # ============================================
         # PCIe Registers (0xBxxx)
@@ -141,6 +168,10 @@ class HardwareState:
         self.regs[0xCC3D] = 0x00  # CPU control 3
         self.regs[0xCC3E] = 0x00  # CPU control 4
         self.regs[0xCC3F] = 0x00  # CPU control 5
+        self.regs[0xCC81] = 0x00  # Timer/DMA control
+        self.regs[0xCC82] = 0x00  # Timer/DMA address low
+        self.regs[0xCC83] = 0x00  # Timer/DMA address high
+        self.regs[0xCC89] = 0x00  # Timer/DMA status - bit 1 = complete
         self.regs[0xCD31] = 0x01  # PHY init status - bit 0 = ready
 
         # ============================================
@@ -170,6 +201,11 @@ class HardwareState:
         self.regs[0xE795] = 0x21  # Flash ready + USB state 3 flag (bit 5)
         self.regs[0xE7E3] = 0x80  # PHY link ready
 
+        # ============================================
+        # PHY Completion / Debug Registers (0xE3xx)
+        # ============================================
+        self.regs[0xE302] = 0x40  # PHY completion status - bit 6 = complete
+
     def _setup_callbacks(self):
         """Setup read/write callbacks for hardware with special behavior."""
         # UART TX - capture output
@@ -198,6 +234,9 @@ class HardwareState:
             self.read_callbacks[addr] = self._timer_csr_read
             self.write_callbacks[addr] = self._timer_csr_write
 
+        # Timer/DMA status register (0xCC89) - set complete bit after polling
+        self.read_callbacks[0xCC89] = self._timer_dma_status_read
+
         # PHY init status
         self.read_callbacks[0xCD31] = self._phy_status_read
 
@@ -208,14 +247,36 @@ class HardwareState:
         self.read_callbacks[0xCA0D] = self._pd_interrupt_read
         self.read_callbacks[0xCA0E] = self._pd_interrupt_read
 
+        # USB Endpoint 0 buffer (0x9E00-0x9E3F)
+        for addr in range(0x9E00, 0x9E40):
+            self.read_callbacks[addr] = self._usb_ep0_buf_read
+
+        # USB EP0 CSR (0x9E10)
+        self.read_callbacks[0x9E10] = self._usb_ep0_csr_read
+        self.write_callbacks[0x9E10] = self._usb_ep0_csr_write
+
     # ============================================
     # UART Callbacks
     # ============================================
     def _uart_tx(self, hw: 'HardwareState', addr: int, value: int):
-        """Handle UART transmit."""
+        """Handle UART transmit with message buffering."""
         if self.log_uart:
-            ch = chr(value) if 0x20 <= value < 0x7F else '.'
-            print(f"[UART] TX 0x{value:02X} '{ch}'", flush=True)
+            if value == 0x0A:  # Newline - print buffered line
+                if self.uart_buffer:
+                    print(f"[{self.cycles:8d}] [UART] {self.uart_buffer}")
+                    self.uart_buffer = ""
+            elif value == 0x0D:  # Carriage return - ignore
+                pass
+            elif 0x20 <= value < 0x7F:  # Printable ASCII
+                self.uart_buffer += chr(value)
+                # Flush on ']' to show complete [message] blocks
+                if chr(value) == ']':
+                    print(f"[{self.cycles:8d}] [UART] {self.uart_buffer}")
+                    self.uart_buffer = ""
+            # For very long lines, flush periodically
+            if len(self.uart_buffer) > 200:
+                print(f"[{self.cycles:8d}] [UART] {self.uart_buffer}")
+                self.uart_buffer = ""
         else:
             try:
                 if 0x20 <= value < 0x7F or value in (0x0A, 0x0D):
@@ -276,11 +337,13 @@ class HardwareState:
     # Timer Callbacks
     # ============================================
     def _timer_csr_read(self, hw: 'HardwareState', addr: int) -> int:
-        """Timer CSR - auto-expire after polling."""
+        """Timer CSR - auto-set ready bit after polling."""
         count = self.poll_counts.get(addr, 0)
         value = self.regs.get(addr, 0)
-        if (value & 0x01) and count >= 3:
-            value |= 0x02  # Set expired bit
+        # The firmware polls for bit 1 (0x02) to be set - indicating timer ready/complete
+        # Set bit 1 after a few polls to avoid infinite wait
+        if count >= 2:
+            value |= 0x02  # Set ready/complete bit
             self.regs[addr] = value
         return value
 
@@ -290,6 +353,16 @@ class HardwareState:
             value &= ~0x02
         self.regs[addr] = value
         self.poll_counts[addr] = 0
+
+    def _timer_dma_status_read(self, hw: 'HardwareState', addr: int) -> int:
+        """Timer/DMA status (0xCC89) - set complete bit after polling."""
+        count = self.poll_counts.get(addr, 0)
+        value = self.regs.get(addr, 0)
+        # The firmware polls for bit 1 (0x02) to be set - indicating DMA complete
+        if count >= 2:
+            value |= 0x02  # Set complete bit
+            self.regs[addr] = value
+        return value
 
     # ============================================
     # PHY/CPU Callbacks
@@ -307,6 +380,197 @@ class HardwareState:
             value &= ~0x01
             self.regs[addr] = value
         return value
+
+    # ============================================
+    # USB Command Injection
+    # ============================================
+    def queue_usb_command(self, cmd: int, addr: int, data: bytes = b''):
+        """
+        Queue a USB command for firmware processing.
+
+        Commands (from python/usb.py):
+        - 0xE4: Read from XDATA (addr = 0x5XXXXX maps to firmware XDATA)
+        - 0xE5: Write to XDATA
+        - 0x8A: SCSI write command
+
+        Address mapping: (addr & 0x1FFFF) | 0x500000 in usb.py
+        So 0x5XXXXX -> XDATA 0xXXXX (lower 17 bits)
+        """
+        usb_cmd = USBCommand(cmd=cmd, addr=addr, data=data)
+        self.usb_cmd_queue.append(usb_cmd)
+
+        if self.log_writes:
+            print(f"[USB] Queued cmd=0x{cmd:02X} addr=0x{addr:04X} len={len(data)}")
+
+        # Trigger USB interrupt to wake up firmware
+        self._trigger_usb_interrupt()
+
+    def queue_e4_read(self, xdata_addr: int, size: int = 1):
+        """
+        Queue an E4 read command (read XDATA).
+
+        Format from usb.py: struct.pack('>BBBHB', 0xE4, size, addr >> 16, addr & 0xFFFF, 0)
+        """
+        # Pack command into EP0 buffer format
+        cmd_bytes = bytes([
+            0xE4,                      # Command
+            size,                      # Size to read
+            (xdata_addr >> 16) & 0xFF, # High byte (usually 0x05 for XDATA)
+            (xdata_addr >> 8) & 0xFF,  # Mid byte
+            xdata_addr & 0xFF,         # Low byte
+            0x00                       # Reserved
+        ])
+        self.queue_usb_command(0xE4, xdata_addr & 0xFFFF, cmd_bytes)
+
+    def queue_e5_write(self, xdata_addr: int, value: int):
+        """
+        Queue an E5 write command (write XDATA).
+
+        Format from usb.py: struct.pack('>BBBHB', 0xE5, value, addr >> 16, addr & 0xFFFF, 0)
+        """
+        cmd_bytes = bytes([
+            0xE5,                      # Command
+            value & 0xFF,              # Value to write
+            (xdata_addr >> 16) & 0xFF, # High byte (usually 0x05 for XDATA)
+            (xdata_addr >> 8) & 0xFF,  # Mid byte
+            xdata_addr & 0xFF,         # Low byte
+            0x00                       # Reserved
+        ])
+        self.queue_usb_command(0xE5, xdata_addr & 0xFFFF, cmd_bytes)
+
+    def queue_init_sequence(self):
+        """
+        Queue the USB initialization sequence from usb.py.
+
+        Init sequence:
+        - WriteOp(0x54b, b' ')   -> write 0x20 to 0x054B
+        - WriteOp(0x54e, b'\x04') -> write 0x04 to 0x054E
+        - WriteOp(0x0, b'\x01')  -> write 0x01 to 0x0000
+        """
+        print("[USB] === QUEUING INIT SEQUENCE ===")
+        self.queue_e5_write(0x054B, 0x20)
+        self.queue_e5_write(0x054E, 0x04)
+        self.queue_e5_write(0x0000, 0x01)
+
+    def inject_usb_command(self, cmd_type: int, xdata_addr: int, value: int = 0, size: int = 1):
+        """
+        Inject a USB command through the USB endpoint buffer.
+        This simulates what the real USB host controller would do.
+
+        cmd_type: 0xE4 (read) or 0xE5 (write)
+        xdata_addr: Target XDATA address (will be mapped to 0x5XXXXX)
+        value: Value to write (for E5 commands)
+        size: Bytes to read (for E4 commands)
+        """
+        # Map address to USB format: (addr & 0x1FFFF) | 0x500000
+        usb_addr = (xdata_addr & 0x1FFFF) | 0x500000
+
+        # Build command packet: >BBBHB format (6 bytes)
+        # Byte 0: Command (0xE4 read, 0xE5 write)
+        # Byte 1: Size (for read) or Value (for write)
+        # Byte 2: Address high byte (0x50 for XDATA)
+        # Byte 3-4: Address low 16 bits
+        # Byte 5: Reserved (0)
+        cmd_bytes = bytes([
+            cmd_type,
+            size if cmd_type == 0xE4 else value,
+            (usb_addr >> 16) & 0xFF,
+            (usb_addr >> 8) & 0xFF,
+            usb_addr & 0xFF,
+            0x00
+        ])
+
+        # Copy to USB EP0 buffer (0x9E00)
+        for i, b in enumerate(cmd_bytes):
+            self.usb_ep0_buf[i] = b
+        self.usb_ep0_len = len(cmd_bytes)
+
+        print(f"[{self.cycles:8d}] [USB] Inject cmd=0x{cmd_type:02X} addr=0x{xdata_addr:04X} "
+              f"{'size' if cmd_type == 0xE4 else 'val'}=0x{cmd_bytes[1]:02X}")
+
+        # Set USB interrupt flags to trigger firmware processing
+        self.regs[0xC802] |= 0x01  # USB interrupt pending (EP0 data)
+        self.regs[0x9E10] = 0x01   # EP0 has data available
+        self.usb_cmd_pending = True
+
+    def _trigger_usb_interrupt(self):
+        """Trigger USB interrupt to process queued command."""
+        if not self.usb_connected:
+            return
+
+        # Set USB endpoint interrupt bits
+        # REG_INT_USB_STATUS (0xC802) bit 0 = endpoint 0 data ready
+        # REG_USB_STATUS (0x9000) bit 0 = USB active
+        self.regs[0xC802] |= 0x01  # EP0 data ready
+        self.regs[0x9000] |= 0x01  # USB active
+
+        # Set EP0 has data flag
+        # REG_USB_EP0_CSR (0x9E10) - EP0 control/status
+        self.regs[0x9E10] = 0x01  # Data available
+
+        self.usb_cmd_pending = True
+
+    def _process_usb_command(self):
+        """
+        Process next USB command in queue.
+        Called when firmware reads USB endpoint buffer.
+        """
+        if not self.usb_cmd_queue:
+            return None
+
+        cmd = self.usb_cmd_queue.pop(0)
+        print(f"[USB] Processing cmd=0x{cmd.cmd:02X} addr=0x{cmd.addr:04X}")
+
+        # Copy command to EP0 buffer
+        for i, b in enumerate(cmd.data[:64]):
+            self.usb_ep0_buf[i] = b
+        self.usb_ep0_len = len(cmd.data)
+
+        # Handle E4 read - prepare response data
+        if cmd.cmd == 0xE4 and self.memory:
+            size = cmd.data[1] if len(cmd.data) > 1 else 1
+            response = bytearray(size)
+            for i in range(size):
+                response[i] = self.memory.read_xdata(cmd.addr + i)
+            cmd.response = bytes(response)
+            print(f"[USB] E4 read response: {response.hex()}")
+
+        # Handle E5 write - perform the write directly
+        if cmd.cmd == 0xE5 and self.memory:
+            value = cmd.data[1] if len(cmd.data) > 1 else 0
+            self.memory.write_xdata(cmd.addr, value)
+            print(f"[USB] E5 wrote 0x{value:02X} to 0x{cmd.addr:04X}")
+
+        if not self.usb_cmd_queue:
+            self.usb_cmd_pending = False
+
+        return cmd
+
+    # ============================================
+    # USB Endpoint Callbacks
+    # ============================================
+    def _usb_ep0_buf_read(self, hw: 'HardwareState', addr: int) -> int:
+        """Read from USB EP0 buffer (0x9E00-0x9E3F)."""
+        offset = addr - 0x9E00
+        if offset < len(self.usb_ep0_buf):
+            return self.usb_ep0_buf[offset]
+        return 0x00
+
+    def _usb_ep0_csr_read(self, hw: 'HardwareState', addr: int) -> int:
+        """Read USB EP0 CSR - check if command pending."""
+        # Process next command when firmware reads CSR
+        if self.usb_cmd_pending and self.usb_cmd_queue:
+            self._process_usb_command()
+            return 0x01  # Data ready
+        return 0x00
+
+    def _usb_ep0_csr_write(self, hw: 'HardwareState', addr: int, value: int):
+        """Write USB EP0 CSR - acknowledge command."""
+        if value & 0x80:  # Clear data ready
+            self.regs[0x9E10] = 0x00
+            # Trigger next command if queued
+            if self.usb_cmd_queue:
+                self._trigger_usb_interrupt()
 
     # ============================================
     # Main Read/Write Interface
@@ -329,7 +593,7 @@ class HardwareState:
             value = 0x00
 
         if self.log_reads:
-            print(f"[HW] Read  0x{addr:04X} = 0x{value:02X}")
+            print(f"[{self.cycles:8d}] [HW] Read  0x{addr:04X} = 0x{value:02X}")
 
         return value
 
@@ -343,7 +607,7 @@ class HardwareState:
             return  # Should not be called for RAM
 
         if self.log_writes:
-            print(f"[HW] Write 0x{addr:04X} = 0x{value:02X}")
+            print(f"[{self.cycles:8d}] [HW] Write 0x{addr:04X} = 0x{value:02X}")
 
         if addr in self.write_callbacks:
             self.write_callbacks[addr](self, addr, value)
@@ -360,17 +624,19 @@ class HardwareState:
         # USB plug-in event after delay
         if not self.usb_connected and self.cycles > self.usb_connect_delay:
             self.usb_connected = True
-            print(f"\n[HW] === USB PLUG-IN EVENT at cycle {self.cycles} ===")
+            print(f"\n[{self.cycles:8d}] [HW] === USB PLUG-IN EVENT ===")
 
             # Update USB hardware registers
             self.regs[0x9000] = 0x81  # USB connected (bit 7) + active (bit 0)
             self.regs[0x90E0] = 0x02  # USB3 speed
             self.regs[0x9100] = 0x02  # USB link active
+            self.regs[0x9101] = 0x01  # USB connection status (checked at 0x0F4E)
             self.regs[0x9105] = 0xFF  # PHY active
 
             # Set USB interrupt for NVMe queue processing (triggers usb_ep_loop_180d)
-            # REG_INT_USB_STATUS bit 2 triggers the nvme_cmd_status_init path
-            self.regs[0xC802] = 0x04  # Bit 2 - NVMe queue processing
+            # REG_INT_USB_STATUS bit 0 triggers interrupt handler at 0x0E5A
+            # Bit 2 triggers the nvme_cmd_status_init path
+            self.regs[0xC802] = 0x05  # Bit 0 + Bit 2
 
             # Set NVMe queue busy - triggers the usb_ep_loop_180d(1) call
             self.regs[0xC471] = 0x01  # Bit 0 - queue busy
@@ -386,25 +652,32 @@ class HardwareState:
             self.regs[0xE40F] = 0x01  # PD event type
             self.regs[0xE410] = 0x00  # PD sub-event
 
-            print(f"[HW] USB: 0x9000=0x81, C802=0x04, C471=0x01, CA0D=0x08, C80A=0x40")
+            print(f"[{self.cycles:8d}] [HW] USB: 0x9000=0x81, C802=0x05, C471=0x01, CA0D=0x08")
+
+            # Trigger External Interrupt 0 to invoke the interrupt handler at 0x0E33
+            # This requires IE register (0xA8) to have EA (bit 7) and EX0 (bit 0) set
+            if cpu:
+                # Enable global interrupts (EA) and EX0 in IE register
+                ie = self.memory.read_sfr(0xA8) if self.memory else 0
+                ie |= 0x81  # EA (bit 7) + EX0 (bit 0)
+                if self.memory:
+                    self.memory.write_sfr(0xA8, ie)
+                cpu._ext0_pending = True
+                print(f"[{self.cycles:8d}] [HW] Triggered EX0 interrupt (IE=0x{ie:02X})")
 
         # Periodic timer interrupt
         if self.cycles % 1000 == 0:
             self.regs[0xC806] |= 0x01
 
-        # Simulate PD message reception after USB is connected
-        # This triggers the PD interrupt handling path
-        if self.usb_connected and self.cycles > self.usb_connect_delay + 10000:
-            if self.cycles == self.usb_connect_delay + 10001:
-                print(f"\n[HW] === PD SOURCE_CAP RECEIVED at cycle {self.cycles} ===")
-                # Set PD interrupt bits that indicate message received
-                self.regs[0xCA0D] = 0x0C  # Bits 2 and 3 - PD interrupts
-                self.regs[0xCA0E] = 0x04  # Bit 2 - PD interrupt type 2
-                # Simulate received message type in PD data registers
-                self.regs[0xCA06] = 0x61  # PD message type - Source_Capabilities
-                # Update event registers for debug output
-                self.regs[0xE40F] = 0x01  # Event type
-                self.regs[0xE410] = 0x00  # Sub-event
+        # Inject USB command after delay (disabled for now)
+        # if self.usb_connected and not self.usb_injected:
+        #     if self.cycles > self.usb_connect_delay + self.usb_inject_delay:
+        #         self.usb_injected = True
+        #         print(f"\n[{self.cycles:8d}] [HW] === INJECTING USB MEMORY READ ===")
+        #         # Inject E4 read command to read memory at 0x0000 (8 bytes)
+        #         self.inject_usb_command(0xE4, 0x0000, size=8)
+        pass
+
 
 
 def create_hardware_hooks(memory: 'Memory', hw: HardwareState):
@@ -416,8 +689,10 @@ def create_hardware_hooks(memory: 'Memory', hw: HardwareState):
     # Hardware register ranges (all >= 0x6000)
     # NOTE: 0x7000-0x7FFF is flash buffer RAM, NOT hardware registers
     mmio_ranges = [
+        (0x8000, 0x9000),   # USB/SCSI Data Buffer
         (0x9000, 0x9400),   # USB Interface
         (0x92C0, 0x9300),   # Power Management
+        (0x9E00, 0xA000),   # USB Control Buffer
         (0xB200, 0xB900),   # PCIe Passthrough
         (0xC000, 0xC100),   # UART
         (0xC400, 0xC600),   # NVMe Interface
@@ -425,9 +700,13 @@ def create_hardware_hooks(memory: 'Memory', hw: HardwareState):
         (0xC800, 0xC900),   # Interrupt/DMA/Flash
         (0xCA00, 0xCB00),   # PD Controller
         (0xCC00, 0xCF00),   # Timer/CPU/SCSI
+        (0xE300, 0xE400),   # PHY Completion / Debug
         (0xE400, 0xE500),   # Command Engine
         (0xE700, 0xE800),   # System Status
     ]
+
+    # Set memory reference for USB commands
+    hw.memory = memory
 
     def make_read_hook(hw_ref):
         def hook(addr):

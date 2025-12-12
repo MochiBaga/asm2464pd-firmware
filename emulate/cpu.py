@@ -54,6 +54,7 @@ class CPU8051:
     trace: bool = False
     breakpoints: set = field(default_factory=set)
     _timer0_pending: bool = False  # Timer 0 interrupt pending flag
+    _ext0_pending: bool = False     # External Interrupt 0 pending flag
     _ext1_pending: bool = False     # External Interrupt 1 pending flag
 
     # SFR addresses
@@ -246,6 +247,15 @@ class CPU8051:
         # Global interrupt enable (EA bit 7)
         if not (ie & 0x80):
             return
+
+        # Check External Interrupt 0 (EX0 bit 0)
+        # ASM2464PD uses EX0 (at 0x0003) for main ISR at 0x0E33
+        if ie & 0x01:  # EX0 enabled
+            if hasattr(self, '_ext0_pending') and self._ext0_pending:
+                self._ext0_pending = False
+                self.pc = 0x0003  # INT0 vector
+                self.in_interrupt = True
+                return
 
         # Check Timer 0 interrupt (ET0 bit 1)
         if ie & 0x02:  # ET0 enabled

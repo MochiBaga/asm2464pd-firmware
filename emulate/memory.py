@@ -27,6 +27,10 @@ class Memory:
     xdata_read_hooks: Dict[int, Callable[[int], int]] = field(default_factory=dict)
     xdata_write_hooks: Dict[int, Callable[[int, int], None]] = field(default_factory=dict)
 
+    # DMA/Timer sync flag polling counters (for RAM sync flags that need auto-clear)
+    # These flags are set by firmware and should be cleared by DMA/timer completion
+    sync_flag_polls: Dict[int, int] = field(default_factory=dict)
+
     # SFR read/write hooks
     sfr_read_hooks: Dict[int, Callable[[int], int]] = field(default_factory=dict)
     sfr_write_hooks: Dict[int, Callable[[int, int], None]] = field(default_factory=dict)
@@ -80,6 +84,11 @@ class Memory:
         """Write to IDATA."""
         self.idata[addr & 0xFF] = value & 0xFF
 
+    # Known DMA/timer sync flag addresses that need auto-clear when polled
+    # These are RAM flags that firmware sets and waits for hardware to clear
+    SYNC_FLAG_ADDRS = {0x1238}  # Timer/DMA sync flag at 0x1238
+    SYNC_FLAG_CLEAR_AFTER = 5   # Clear after this many polls
+
     def read_xdata(self, addr: int) -> int:
         """Read from XDATA with MMIO hooks."""
         addr &= 0xFFFF
@@ -87,6 +96,19 @@ class Memory:
         # Check for MMIO hooks
         if addr in self.xdata_read_hooks:
             return self.xdata_read_hooks[addr](addr)
+
+        # Handle DMA/timer sync flags - auto-clear after polling
+        # This simulates hardware completing the DMA/timer operation
+        if addr in self.SYNC_FLAG_ADDRS:
+            value = self.xdata[addr]
+            if value & 0x01:  # Flag is set, count polls
+                self.sync_flag_polls[addr] = self.sync_flag_polls.get(addr, 0) + 1
+                if self.sync_flag_polls[addr] >= self.SYNC_FLAG_CLEAR_AFTER:
+                    # Simulate DMA/timer completion by clearing the flag
+                    self.xdata[addr] = 0x00
+                    self.sync_flag_polls[addr] = 0
+                    return 0x00
+            return value
 
         # Check for range hooks (for efficiency, could use interval tree)
         # For now, direct array access
