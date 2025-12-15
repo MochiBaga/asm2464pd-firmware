@@ -209,6 +209,9 @@ uint8_t usb_set_xfer_mode_check_ctrl(uint8_t val, uint8_t compare);  /* 0x3420-0
 /* USB buffer dispatch */
 void usb_buffer_dispatch(void);                         /* 0xd852-0xd8ff */
 
+/* USB vendor command processing */
+void usb_vendor_command_processor(void);                /* 0x5333-0x5352 */
+
 /* USB descriptor handling */
 void usb_get_descriptor_length(uint8_t param);          /* 0xa637-0xa650 */
 void usb_convert_speed(uint8_t param);                  /* 0xa651-0xa6ff */

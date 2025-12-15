@@ -154,6 +154,13 @@
 #define REG_USB_PHY_STATUS_9105 XDATA_REG8(0x9105)  /* USB PHY status check (0xFF = active) */
 #define REG_USB_STAT_EXT_L      XDATA_REG8(0x910D)
 #define REG_USB_STAT_EXT_H      XDATA_REG8(0x910E)
+/* USB CDB (Command Descriptor Block) registers for vendor commands */
+#define REG_USB_CDB_CMD         XDATA_REG8(0x910D)  /* CDB byte 0: Command type (alias for STAT_EXT_L) */
+#define REG_USB_CDB_LEN         XDATA_REG8(0x910E)  /* CDB byte 1: Size/value (alias for STAT_EXT_H) */
+#define REG_USB_CDB_ADDR_HI     XDATA_REG8(0x910F)  /* CDB byte 2: Address high byte */
+#define REG_USB_CDB_ADDR_MID    XDATA_REG8(0x9110)  /* CDB byte 3: Address mid byte */
+#define REG_USB_CDB_ADDR_LO     XDATA_REG8(0x9111)  /* CDB byte 4: Address low byte */
+#define REG_USB_CDB_5           XDATA_REG8(0x9112)  /* CDB byte 5: Reserved */
 #define REG_USB_EP_STATUS       XDATA_REG8(0x9118)
 #define REG_USB_CBW_LEN_HI      XDATA_REG8(0x9119)  /* CBW length high byte */
 #define REG_USB_CBW_LEN_LO      XDATA_REG8(0x911A)  /* CBW length low byte */

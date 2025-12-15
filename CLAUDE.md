@@ -51,6 +51,19 @@ All functions should exactly match the functions in the real firmware! It should
 - When in doubt, disassemble more of the original to understand the full behavior
 - The goal is byte-for-byte behavioral equivalence, not "close enough"
 
+**CRITICAL: NEVER REMOVE EXISTING CODE**
+- Before modifying ANY function, READ the entire existing implementation first
+- NEVER delete or "simplify" existing code - if code exists, it was added for a reason
+- When adding new functionality, ADD to existing code, don't replace it
+- If existing code seems wrong, VERIFY against the original firmware disassembly before changing
+- Stubs (empty function bodies) are acceptable ONLY as placeholders until full implementation
+- When implementing a stub, add the FULL implementation - don't partially implement
+- Large functions (like ISRs) must include ALL sections from the original:
+  - Disassemble the ENTIRE address range before implementing
+  - Count the number of conditional branches, loops, and function calls
+  - Verify your implementation has the same structure
+- If you're unsure about existing code's purpose, trace it in the emulator first
+
 Checking in and making sure it builds every once in a while is good. You can also see how far along you are by comparing the size of our compiled firmware bin to fw.bin
 
 Before reverse engineering, check all the headers to see if the functions are already there.

@@ -4819,3 +4819,91 @@ uint8_t check_usb_phy_link_idle_e5b1(void)
     }
     return 1;  /* Both clear = idle */
 }
+
+/*
+ * usb_vendor_command_processor - Process USB vendor commands (E4/E5)
+ * Address: 0x5333-0x5352 (32 bytes)
+ *
+ * Original firmware flow:
+ *   1. Read idata 0x6A, compare with 0x05
+ *   2. If 0x6A != 5, call 0x3169 and 0x320D, return
+ *   3. If 0x6A == 5:
+ *      - Write 0x02 to 0x90E3
+ *      - Read XDATA 0x0003 (vendor command flag)
+ *      - If non-zero, call 0x4583 (vendor command dispatch)
+ *      - Then jump to 0x5476
+ *
+ * For E4/E5 vendor commands:
+ *   - E4 (0xE4): Read from XDATA memory
+ *   - E5 (0xE5): Write to XDATA memory
+ *
+ * The CDB (Command Descriptor Block) is in USB registers 0x910D-0x9112:
+ *   - 0x910D: Command type (0xE4 or 0xE5)
+ *   - 0x910E: Size (for E4) or Value (for E5)
+ *   - 0x910F: Address high byte (0x50 for XDATA)
+ *   - 0x9110: Address mid byte
+ *   - 0x9111: Address low byte
+ *
+ * Original disassembly:
+ *   5333: mov r0, #0x6a
+ *   5335: mov a, @r0
+ *   5336: add a, #0xfb        ; compare with 5
+ *   5338: jnz 0x534c          ; if != 5, different path
+ *   533a: mov dptr, #0x90e3
+ *   533d: mov a, #0x02
+ *   533f: movx @dptr, a
+ *   5340: mov dptr, #0x0003
+ *   5343: movx a, @dptr       ; read vendor flag
+ *   5344: jz 0x5349           ; if zero, skip
+ *   5346: lcall 0x4583        ; call vendor dispatch
+ *   5349: ljmp 0x5476
+ */
+void usb_vendor_command_processor(void)
+{
+    uint8_t cmd_type;
+    uint8_t size_or_value;
+    uint16_t xdata_addr;
+    __xdata uint8_t *ptr;
+    __xdata uint8_t *usb_buf;
+
+    /* Read command from USB CDB registers */
+    cmd_type = REG_USB_CDB_CMD;      /* 0x910D - Command type */
+    size_or_value = REG_USB_CDB_LEN; /* 0x910E - Size or value */
+
+    /* Address is in 0x910F-0x9111 (0x50xxxx format for XDATA)
+     * We only care about the low 16 bits for XDATA address */
+    xdata_addr = ((uint16_t)REG_USB_CDB_ADDR_MID << 8) | REG_USB_CDB_ADDR_LO;
+
+    /* Write status to signal command received */
+    REG_USB_EP_STATUS_90E3 = 0x02;
+
+    usb_buf = (__xdata uint8_t *)0x8000;
+
+    if (cmd_type == 0xE4) {
+        /* E4: Read from XDATA memory
+         * Copy size_or_value bytes from xdata_addr to USB buffer at 0x8000
+         */
+        uint8_t i;
+        ptr = (__xdata uint8_t *)xdata_addr;
+
+        for (i = 0; i < size_or_value && i < 64; i++) {
+            usb_buf[i] = ptr[i];
+        }
+
+        /* Trigger PCIe DMA to send response to host */
+        REG_PCIE_STATUS = 0x06;  /* DMA complete flag */
+
+    } else if (cmd_type == 0xE5) {
+        /* E5: Write to XDATA memory
+         * Write size_or_value (single byte) to xdata_addr
+         */
+        ptr = (__xdata uint8_t *)xdata_addr;
+        *ptr = size_or_value;
+
+        /* Signal completion */
+        REG_PCIE_STATUS = 0x06;
+    }
+
+    /* Clear EP0 ready status after processing */
+    REG_USB_EP_READY = 0x00;
+}
