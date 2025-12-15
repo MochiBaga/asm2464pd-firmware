@@ -217,6 +217,7 @@ __idata __at(0x72) uint8_t I_BUF_CTRL_GLOBAL; /* Buffer control global */
 #define G_EP_QUEUE_IDATA3       XDATA_VAR8(0x056B)  /* Endpoint queue IDATA byte 3 */
 #define G_LOG_PROCESS_STATE     XDATA_VAR8(0x0574)  /* Log processing state */
 #define G_LOG_ENTRY_VALUE       XDATA_VAR8(0x0575)  /* Log entry value */
+#define G_STATE_05A5            XDATA_VAR8(0x05A5)  /* State variable 0x05A5 - cleared in state init */
 #define G_PCIE_TXN_COUNT_LO     XDATA_VAR8(0x05A6)  /* PCIe transaction count low */
 #define G_PCIE_TXN_COUNT_HI     XDATA_VAR8(0x05A7)  /* PCIe transaction count high */
 #define G_EP_CONFIG_05A8        XDATA_VAR8(0x05A8)  /* EP config 0x05A8 */
@@ -414,6 +415,7 @@ __idata __at(0x72) uint8_t I_BUF_CTRL_GLOBAL; /* Buffer control global */
 #define G_USB_TRANSFER_FLAG     XDATA_VAR8(0x0B2E)  /* USB transfer flag */
 #define G_INTERFACE_READY_0B2F  XDATA_VAR8(0x0B2F)  /* Interface ready flag */
 #define G_STATE_0B39            XDATA_VAR8(0x0B39)  /* State control 0x0B39 */
+#define G_STATE_0B3A            XDATA_VAR8(0x0B3A)  /* State control 0x0B3A */
 #define G_TRANSFER_BUSY_0B3B    XDATA_VAR8(0x0B3B)  /* Transfer busy flag */
 #define G_STATE_CTRL_0B3C       XDATA_VAR8(0x0B3C)  /* State control 0x0B3C */
 #define G_USB_STATE_0B41        XDATA_VAR8(0x0B41)  /* USB state check */

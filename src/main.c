@@ -23,6 +23,7 @@
 #include "drivers/uart.h"
 #include "utils.h"
 #include "drivers/power.h"
+#include "drivers/pd.h"
 
 /* Forward declarations for app layer functions not in headers yet */
 extern void event_state_handler(void);         /* app/event_handler.c */
@@ -459,35 +460,35 @@ void main_loop(void)
     /* Clear loop state flag at entry */
     G_LOOP_STATE = 0x00;
 
-    while (1) {
-        /* Set bit 0 of REG_CPU_EXEC_STATUS - timer/system handler */
-        reg_set_bit_0_cpu_exec();
+    /* One-time initialization - called once before main loop (0x1F7C-0x1FAD) */
+    timer_link_status_handler();     /* 0x527a */
+    phy_config_link_params();        /* 0x04c6 */
+    reserved_stub_handler();         /* 0x52ef */
+    main_polling_handler();          /* 0x04a8 */
+    state_init_4ffb();               /* 0x4ffb -> Sets G_EVENT_FLAGS = 0x04, then 0x87 via dispatch_0520 */
+    usb_power_init();                /* 0x0327 */
 
-        /* Call dispatch stubs and handlers */
-        timer_link_status_handler();
-        phy_config_link_params();
-        reserved_stub_handler();
-        main_polling_handler();
-        usb_power_init();
-
-        /* Check event flags (0x2f9a-0x2fb1) */
-        events = G_EVENT_FLAGS;
-        if (events & EVENT_FLAGS_ANY) {  /* 0x83 mask */
-            if (events & (EVENT_FLAG_ACTIVE | EVENT_FLAG_PENDING)) {  /* 0x81 mask */
-                event_state_handler();
-            }
-            error_state_config();
-            phy_register_config();
-            flash_command_handler();
+    /* One-time event flags check (0x1F96-0x1FAD) - only runs on first pass */
+    events = G_EVENT_FLAGS;
+    if (events & EVENT_FLAGS_ANY) {  /* 0x83 mask */
+        if (events & (EVENT_FLAG_ACTIVE | EVENT_FLAG_PENDING)) {  /* 0x81 mask */
+            event_state_handler();       /* 0x048a */
         }
+        pd_debug_print_flp();            /* 0x05e3 -> Bank1:0xB103 */
+        error_state_config();            /* 0x0566 */
+        phy_register_config();           /* 0x050c */
+    }
 
-        /* Clear interrupt priority for EXT0 and EXT1 (0x2fb4-0x2fb6) */
-        IP &= ~0x05;    /* Clear bits 0,2: clr 0xB8.0, clr 0xB8.2 */
+    /* Clear interrupt priority for EXT0 and EXT1 (0x1FB0-0x1FB2) */
+    IP &= ~0x05;    /* Clear bits 0,2: clr 0xB8.0, clr 0xB8.2 */
 
-        /* Enable external interrupts (0x2fb8-0x2fbc) */
-        EX0 = 1;        /* setb 0xA8.0 */
-        EX1 = 1;        /* setb 0xA8.2 */
-        EA = 1;         /* setb 0xA8.7 */
+    /* Enable external interrupts (0x1FB4-0x1FB8) */
+    EX0 = 1;        /* setb 0xA8.0 */
+    EX1 = 1;        /* setb 0xA8.2 */
+    EA = 1;         /* setb 0xA8.7 */
+
+    /* Main loop starts at 0x1FBA - jumps back here, NOT to 0x1F7C */
+    while (1) {
 
         /* ===== Loop body starts at 0x2fbe ===== */
 
@@ -835,6 +836,144 @@ void main_polling_handler(void)
     buffer_dispatch_bf8e();        /* 0x0340 -> Bank0:0xBF8E (tail call) */
 }
 
+
+/*===========================================================================
+ * STATE INITIALIZATION
+ *
+ * These functions initialize the system state machine and set event flags.
+ *===========================================================================*/
+
+/*
+ * state_init_4bd4 - Clear state variables and set event flags
+ * Address: 0x4BD4-0x4C31 (94 bytes)
+ *
+ * Clears many state variables and then sets G_EVENT_FLAGS = 0x04.
+ * This is the core initialization that enables the event processing loop.
+ *
+ * Original disassembly:
+ *   4bd4: clr a
+ *   4bd5: mov dptr, #0x0ae1    ; G_TLP_BASE_LO
+ *   4bd8: movx @dptr, a        ; clear
+ *   4bd9: mov dptr, #0x07e4    ; G_SYS_FLAGS_BASE
+ *   4bdc: movx @dptr, a        ; clear
+ *   4bdd: mov dptr, #0x05a5    ; G_STATE_05A5
+ *   4be0: movx @dptr, a        ; clear
+ *   4be1: inc dptr             ; 0x05A6
+ *   4be2: movx @dptr, a        ; clear
+ *   ... (loop clears 0x05B0-0x06E0)
+ *   4c22: mov dptr, #0x09f9    ; G_EVENT_FLAGS
+ *   4c25: mov a, #0x04
+ *   4c27: movx @dptr, a        ; G_EVENT_FLAGS = 0x04
+ *   4c28: mov dptr, #0x09fa    ; G_EVENT_CTRL_09FA
+ *   4c2b: movx @dptr, a        ; G_EVENT_CTRL_09FA = 0x04
+ *   4c2c: clr a
+ *   ...
+ *   4c31: ret
+ */
+static void state_init_4bd4(void)
+{
+    uint16_t i;
+
+    /* Clear initial state variables */
+    G_TLP_BASE_LO = 0;          /* 0x0AE1 */
+    G_SYS_FLAGS_BASE = 0;       /* 0x07E4 */
+    G_STATE_05A5 = 0;           /* 0x05A5 */
+    G_PCIE_TXN_COUNT_LO = 0;    /* 0x05A6 */
+
+    /* Clear range 0x05B0-0x06E0 (loop in original) */
+    /* This clears PCIe transaction table and work area */
+    for (i = 0x05B0; i <= 0x06E0; i++) {
+        XDATA8(i) = 0;
+    }
+
+    /* Clear additional state variables */
+    G_STATE_0B3A = 0;           /* 0x0B3A */
+    G_STATE_0B39 = 0;           /* 0x0B39 */
+    G_TLP_BLOCK_SIZE_0ACC = 0;  /* 0x0ACC */
+    G_USB_DESC_FLAG_0ACD = 0x0F; /* 0x0ACD = 0x0F */
+    G_SYS_FLAGS_07EC = 0;       /* 0x07EC */
+    G_PD_FLAG_07B6 = 0;         /* 0x07B6 */
+    G_CMD_SLOT_INDEX = 0;       /* 0x07B7 */
+    G_FLASH_CMD_FLAG = 0;       /* 0x07B8 */
+
+    /* Set event flags - this enables event processing */
+    G_EVENT_FLAGS = 0x04;
+    G_EVENT_CTRL_09FA = 0x04;
+
+    /* Clear more state variables (after setting event flags) */
+    G_FLASH_STATUS_09FB = 0;    /* 0x09FB */
+}
+
+/*
+ * state_init_5372 - State initialization with PHY status
+ * Address: 0x5372-0x538D (28 bytes)
+ *
+ * Calls state_init_4bd4, reads PHY status, and sets initialization flag.
+ *
+ * Original disassembly:
+ *   5372: lcall 0x4bd4         ; state_init_4bd4
+ *   5375: mov dptr, #0xe795    ; REG_FLASH_READY_STATUS
+ *   5378: movx a, @dptr
+ *   5379: anl a, #0x01         ; bit 0 -> r7
+ *   537b: mov r7, a
+ *   537c: movx a, @dptr
+ *   537d: anl a, #0x02         ; bit 1 -> r5
+ *   537f: mov r5, a
+ *   5380: movx a, @dptr
+ *   5381: anl a, #0x20         ; bit 5 -> r3
+ *   5383: mov r3, a
+ *   5384: lcall 0x051b         ; dispatch with r3,r5,r7
+ *   5387: mov dptr, #0x07f6    ; G_STATE_07F6
+ *   538a: mov a, #0x01
+ *   538c: movx @dptr, a        ; G_STATE_07F6 = 1
+ *   538d: ret
+ */
+static void state_init_5372(void)
+{
+    uint8_t flash_status;
+
+    /* Initialize state variables and set event flags */
+    state_init_4bd4();
+
+    /* Read flash ready status and extract bits */
+    flash_status = REG_FLASH_READY_STATUS;
+    /* Bits 0, 1, 5 are extracted and passed to dispatch_051b */
+    /* For now, we just call the dispatcher */
+    dispatch_051b();
+
+    /* Set initialization complete flag */
+    G_SYS_FLAGS_07F6 = 1;
+}
+
+/*
+ * state_init_4ffb - Main initialization entry point
+ * Address: 0x4FFB-0x5010+ (variable)
+ *
+ * Called from main loop at 0x1F90. This is the main initialization
+ * function that sets up the state machine and event processing.
+ *
+ * Original disassembly:
+ *   4ffb: lcall 0x5372         ; state_init_5372
+ *   4ffe: lcall 0x04ad         ; dispatch
+ *   5001: lcall 0x04b2         ; reserved_stub_handler
+ *   5004: lcall 0x4c8d         ; dispatch
+ *   5007: lcall 0x032c         ; phy_power_config_handler
+ *   500a: lcall 0x0520         ; dispatch
+ *   500d: lcall 0x04e4         ; dispatch
+ *   5010: lcall 0x0615         ; dispatch
+ *   ...
+ */
+void state_init_4ffb(void)
+{
+    /* Initialize state and set G_EVENT_FLAGS = 0x04 */
+    state_init_5372();
+
+    /* Call additional initialization handlers */
+    dispatch_04ad();               /* 0x04ad dispatch */
+    reserved_stub_handler();       /* 0x04b2 -> stub */
+    phy_power_config_handler();    /* 0x032c -> Bank0:0x92C5 */
+    dispatch_0520();               /* 0x0520 -> system_init_from_flash (sets G_EVENT_FLAGS = 0x87) */
+}
 
 /*===========================================================================
  * BANK 1 SYSTEM INITIALIZATION

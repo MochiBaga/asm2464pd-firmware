@@ -28,7 +28,7 @@
  *   b10f: movx a, @dptr          ; read register
  *   b110: anl a, #0x01           ; mask bit 0
  *   b112: mov r7, a              ; value to print
- *   b113: lcall 0x520c           ; uart_putdigit
+ *   b113: lcall 0x520c           ; uart_puthex (2-digit hex output)
  *   b116: mov r3, #0xff
  *   b118: mov r2, #0x21
  *   b11a: mov r1, #0xb8          ; string addr = 0x21B8 "]"
@@ -42,9 +42,9 @@ void pd_debug_print_flp(void)
     /* Print "[flp=" */
     uart_puts("[flp=");
 
-    /* Read PHY vendor control bit 0 and print as digit */
+    /* Read PHY vendor control bit 0 and print as 2-digit hex */
     status = REG_PHY_VENDOR_CTRL_C6DB & 0x01;
-    uart_putdigit(status);
+    uart_puthex(status);
 
     /* Print "]" */
     uart_puts("]");

@@ -28,6 +28,8 @@
 #include "types.h"
 #include "sfr.h"
 #include "registers.h"
+#include "drivers/pd.h"
+#include "drivers/flash.h"
 
 /* External function declarations */
 extern void pcie_adapter_config(void);
@@ -82,9 +84,16 @@ void jump_bank_0(uint16_t reg_addr)
  */
 void jump_bank_1(uint16_t reg_addr)
 {
-    /* Bank 1 dispatch - target address is in bank 1 (file 0x10000+) */
+    /* Bank 1 dispatch - target address is in bank 1 (file 0x10000+)
+     *
+     * NOTE: Bank 1 code not yet implemented in our firmware.
+     * Setting DPX=1 would cause execution to read NOPs from unmapped
+     * memory and crash. Keeping DPX=0 makes this a no-op for now.
+     * Bank 1 handlers will need to be implemented in bank 0 or
+     * proper dual-bank firmware support added later.
+     */
     (void)reg_addr;
-    DPX = 0x01;
+    /* DPX = 0x01; -- DISABLED: No bank 1 code available */
 }
 
 /*
@@ -451,11 +460,11 @@ void dispatch_0516(void) { jump_bank_0(0xE96E); }
 /* 0x051B: Target 0xE1C6 - handler_e1c6 */
 void dispatch_051b(void) { jump_bank_0(0xE1C6); }
 
-/* 0x0520: Target 0xB4BA - timer_tick_handler */
-void dispatch_0520(void) { jump_bank_0(0xB4BA); }
+/* 0x0520: Target 0x8A81 - system_init_from_flash */
+void dispatch_0520(void) { system_init_from_flash(); }
 
 /* 0x0525: Target 0x8D77 - system_init_from_flash (NOTE: Bank 0 but address is in Bank 1 range!) */
-void dispatch_0525(void) { jump_bank_0(0x8D77); }
+void dispatch_0525(void) { system_init_from_flash(); }
 
 /* 0x052A: Target 0xE961 - handler_e961 (stub) */
 void dispatch_052a(void) { jump_bank_0(0xE961); }
@@ -568,8 +577,11 @@ void dispatch_05d9(void) { jump_bank_1(0xE175); }
 /* 0x05DE: Target Bank1:0xE282 (file 0x16282) - handler_e282 */
 void dispatch_05de(void) { jump_bank_1(0xE282); }
 
-/* 0x05E3: Target 0xDB80 - handler_db80 */
-void dispatch_05e3(void) { jump_bank_0(0xDB80); }
+/* 0x05E3: Target Bank1:0xB103 - pd_debug_print_flp
+ * Bank 1 Address: 0xB103-0xB148 (approx 70 bytes) [actual addr: 0x1306E]
+ * Original: mov dptr, #0xb103; ajmp 0x0311
+ */
+void dispatch_05e3(void) { pd_debug_print_flp(); }
 
 /* 0x05E8: Target Bank1:0x9D90 (file 0x11D90) - protocol_nop_handler */
 void dispatch_05e8(void) { jump_bank_1(0x9D90); }
