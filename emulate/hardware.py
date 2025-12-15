@@ -214,6 +214,38 @@ class USBController:
 
         print(f"[{self.hw.cycles:8d}] [USB_CTRL] MMIO registers configured")
 
+        # =====================================================
+        # USB Hardware DMA - populate RAM like real hardware
+        # =====================================================
+        # The USB controller populates these RAM locations via DMA
+        # before triggering the interrupt. This is how real hardware works.
+        if self.hw.memory:
+            # USB state = 5 (configured) - set by USB enumeration
+            self.hw.memory.idata[0x6A] = 5
+
+            # USB config check at 0x35C0 - must be 0 for vendor path
+            self.hw.memory.xdata[0x07EC] = 0x00
+
+            # CDB area - USB hardware writes CDB to XDATA[0x0002+]
+            # The SCSI handler at 0x32E4 reads CDB from this area
+            for i, b in enumerate(cdb):
+                self.hw.memory.xdata[0x0002 + i] = b
+
+            # Vendor command flag at 0x4583 - bit 3 enables vendor dispatch
+            # This overlaps with CDB area but has special meaning
+            self.hw.memory.xdata[0x0003] = 0x08
+
+            # Command type marker for table lookup at 0x35D8
+            if cmd_type == 0xE4:
+                self.hw.memory.xdata[0x05B1] = 0x04
+            elif cmd_type == 0xE5:
+                self.hw.memory.xdata[0x05B1] = 0x05
+
+            # Command index = 0 for table lookup at 0x1551
+            # 0x17B1 copies 0x05A5 to 0x05A3, so set both to 0
+            self.hw.memory.xdata[0x05A3] = 0x00
+            self.hw.memory.xdata[0x05A5] = 0x00
+
         return cdb
 
 
@@ -1392,154 +1424,6 @@ def create_hardware_hooks(memory: 'Memory', hw: HardwareState):
     hw.memory = memory
 
     # ============================================
-    # CDB Area Emulation (XDATA 0x0000-0x001F)
-    # ============================================
-    # The SCSI handler at 0x32E4 reads CDB from XDATA[0x0002].
-    # This hook emulates the hardware behavior where USB subsystem
-    # has populated the CDB area from the USB endpoint buffer.
-    # The CDB data comes from USB registers 0x910D-0x9112.
-    #
-    # NOTE: XDATA[0x0003] is handled by a separate MMIO-only hook below.
-    def make_cdb_read_hook(hw_ref, mem_ref):
-        def hook(addr):
-            # Only intercept when USB command is pending
-            if hw_ref.usb_cmd_pending:
-                # Map low XDATA to USB CDB registers
-                # XDATA[0x0002] = CDB byte 0 = 0x910D
-                # The SCSI handler at 0x32E4 reads CDB from XDATA[0x0002+]
-                if addr == 0x0002:
-                    value = hw_ref.regs.get(0x910D, 0x00)  # CDB byte 0
-                    print(f"[{hw_ref.cycles:8d}] [CDB] Read XDATA[0x{addr:04X}] = 0x{value:02X} (from USB reg 0x910D)")
-                    return value
-                # Skip 0x0003 - handled by MMIO-only hook below
-                elif 0x0004 <= addr <= 0x0010:
-                    # CDB bytes 2-14 from USB registers
-                    usb_reg = 0x910D + (addr - 0x0002)
-                    value = hw_ref.regs.get(usb_reg, 0x00)
-                    return value
-            # Fall through to actual RAM
-            return mem_ref.xdata[addr]
-        return hook
-
-    cdb_read_hook = make_cdb_read_hook(hw, memory)
-
-    # Hook low XDATA reads for CDB emulation
-    for addr in range(0x0000, 0x0020):
-        memory.xdata_read_hooks[addr] = cdb_read_hook
-
-    # ============================================
-    # Vendor Command RAM Read Hooks
-    # ============================================
-    # We emulate the hardware behavior where the USB subsystem populates
-    # RAM values. Instead of writing directly to RAM, we hook reads to
-    # return appropriate values when a command is pending.
-
-    def make_vendor_flag_read_hook(hw_ref, mem_ref):
-        """
-        Hook for XDATA[0x0003] - vendor flag.
-
-        At 0x4583, firmware reads this and checks bit 3 for vendor dispatch.
-        When USB command is pending, return 0x08 to enable vendor path.
-        """
-        def hook(addr):
-            if hw_ref.usb_cmd_pending:
-                # Vendor flag bit 3 enables vendor dispatch at 0x4583
-                value = 0x08
-                return value
-            return mem_ref.xdata[addr]
-        return hook
-
-    def make_cmd_index_read_hook(hw_ref, mem_ref):
-        """
-        Hook for XDATA[0x05A3] - command index.
-
-        At 0x1551, firmware reads this for command table lookup:
-        DPTR = 0x05B1 + (index * 0x22)
-        Return 0 so it reads from 0x05B1 where E4 marker is.
-        """
-        def hook(addr):
-            if hw_ref.usb_cmd_pending:
-                value = 0x00  # Index 0 -> reads from 0x05B1
-                return value
-            return mem_ref.xdata[addr]
-        return hook
-
-    def make_cmd_index_src_read_hook(hw_ref, mem_ref):
-        """
-        Hook for XDATA[0x05A5] - command index source.
-
-        At 0x17B1, firmware copies this to 0x05A3 (command index).
-        Return 0 so the copied index stays 0.
-        """
-        def hook(addr):
-            if hw_ref.usb_cmd_pending:
-                value = 0x00  # Index source = 0
-                return value
-            return mem_ref.xdata[addr]
-        return hook
-
-    def make_cmd_table_read_hook(hw_ref, mem_ref):
-        """
-        Hook for XDATA[0x05B1] - command table entry 0.
-
-        At 0x35D8, firmware reads this and checks if == 0x04 for E4 commands.
-        When E4 command pending, return 0x04 to enable E4 handler.
-        """
-        def hook(addr):
-            if hw_ref.usb_cmd_pending:
-                if hw_ref.usb_cmd_type == 0xE4:
-                    value = 0x04  # E4 marker
-                    return value
-                elif hw_ref.usb_cmd_type == 0xE5:
-                    value = 0x05  # E5 marker
-                    return value
-            return mem_ref.xdata[addr]
-        return hook
-
-    def make_usb_config_read_hook(hw_ref, mem_ref):
-        """
-        Hook for XDATA[0x07EC] - USB config check.
-
-        At 0x35C0, firmware reads this - must be 0 for vendor path.
-        """
-        def hook(addr):
-            if hw_ref.usb_cmd_pending:
-                value = 0x00  # Config check passes
-                return value
-            return mem_ref.xdata[addr]
-        return hook
-
-    # Register MMIO-only read hooks for XDATA
-    memory.xdata_read_hooks[0x0003] = make_vendor_flag_read_hook(hw, memory)
-    memory.xdata_read_hooks[0x05A3] = make_cmd_index_read_hook(hw, memory)
-    memory.xdata_read_hooks[0x05A5] = make_cmd_index_src_read_hook(hw, memory)
-    memory.xdata_read_hooks[0x05B1] = make_cmd_table_read_hook(hw, memory)
-    memory.xdata_read_hooks[0x07EC] = make_usb_config_read_hook(hw, memory)
-
-    # ============================================
-    # IDATA Hooks for USB State
-    # ============================================
-    # IDATA[0x6A] contains USB state (0-5). State 5 = CONFIGURED is required
-    # for vendor command processing. We return 5 when a USB command is pending
-    # to simulate enumerated device state.
-
-    def make_usb_state_read_hook(hw_ref, mem_ref):
-        """
-        Hook for IDATA[0x6A] - USB state.
-
-        Return 5 (CONFIGURED) when USB command is pending.
-        """
-        def hook(addr):
-            if hw_ref.usb_cmd_pending:
-                value = 5  # USBState.CONFIGURED
-                return value
-            return mem_ref.idata[addr]
-        return hook
-
-    # Register IDATA hooks
-    memory.idata_read_hooks[0x6A] = make_usb_state_read_hook(hw, memory)
-
-    # ============================================
     # XDATA Write Tracing
     # ============================================
     # Hook XDATA writes to trace firmware RAM updates.
@@ -1576,20 +1460,3 @@ def create_hardware_hooks(memory: 'Memory', hw: HardwareState):
             memory.xdata_read_hooks[addr] = read_hook
             memory.xdata_write_hooks[addr] = write_hook
 
-    # ============================================
-    # USB Transfer Completion Flag (XDATA 0x00E2)
-    # ============================================
-    # The firmware clears this flag at 0x3C9E before polling.
-    # When USB data transfer is complete, this should return 1.
-    # We simulate completion after a few poll cycles.
-    def make_usb_xfer_complete_hook(hw_ref, mem_ref):
-        poll_count = [0]  # Mutable counter in closure
-        def hook(addr):
-            poll_count[0] += 1
-            # Return 1 after 3 polls to signal transfer complete
-            if poll_count[0] >= 3:
-                return 0x01
-            return mem_ref.xdata[addr]
-        return hook
-
-    memory.xdata_read_hooks[0x00E2] = make_usb_xfer_complete_hook(hw, memory)
