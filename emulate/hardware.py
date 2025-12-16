@@ -1264,65 +1264,83 @@ class HardwareState:
         """
         PHY command register write (0xCD31).
 
-        The firmware writes to 0xCD31 during USB descriptor handling:
-        - Write 0x04: Prepare descriptor transfer
-        - Write 0x02: Execute descriptor transfer
+        This is a PHY/hardware control register. The firmware writes commands
+        to it during USB operations. The PHY command sequence 0x04, 0x02 triggers
+        USB data transfers.
 
-        For USB3 devices, the firmware skips the software DMA path at 0xD12A
-        and relies on hardware to DMA descriptors based on the setup packet.
-        When 0x02 is written during an active control transfer, we copy the
-        appropriate descriptor from ROM to XDATA 0x8000.
-
-        Descriptor locations in code ROM:
-        - Device descriptor: 0x0627 (18 bytes)
-        - Config descriptor: 0x58CF (44 bytes)
-        - String descriptor 0: 0x599D (4 bytes)
+        When this is written during a control transfer, we simulate the hardware
+        DMA that would transfer descriptor data to the USB endpoint.
         """
+        prev_value = self.regs.get(addr, 0)
         self.regs[addr] = value
 
-        # Check if this is a descriptor transfer trigger
-        if value == 0x02 and self.usb_control_transfer_active:
-            # Get the setup packet to determine which descriptor to send
-            bRequest = self.usb_ep0_buf[1]
-            wValue_lo = self.usb_ep0_buf[2]
-            wValue_hi = self.usb_ep0_buf[3]
-            wLength = self.usb_ep0_buf[6] | (self.usb_ep0_buf[7] << 8)
+        # Detect PHY command trigger: 0x04 followed by 0x02
+        # 0x04 selects the transfer type, 0x02 triggers it
+        if value == 0x02 and prev_value == 0x04:
+            if self.usb_control_transfer_active:
+                self._handle_usb_descriptor_transfer()
 
-            if bRequest == 0x06:  # GET_DESCRIPTOR
-                desc_type = wValue_hi
-                desc_index = wValue_lo
+    def _handle_usb_descriptor_transfer(self):
+        """
+        Handle USB descriptor DMA transfer triggered by PHY command.
 
-                if self.log_writes:
-                    print(f"[{self.cycles:8d}] [USB_DMA] GET_DESCRIPTOR type={desc_type} index={desc_index} len={wLength}")
+        When the firmware triggers the PHY command (0x04, 0x02) during a control
+        transfer, the hardware performs a DMA to transfer descriptor data to the
+        USB endpoint. We simulate this by reading the descriptor from ROM and
+        copying it to the USB buffer.
+        """
+        # Read setup packet to determine what's being requested
+        bmRequestType = self.usb_ep0_buf[0]
+        bRequest = self.usb_ep0_buf[1]
+        wValue = self.usb_ep0_buf[2] | (self.usb_ep0_buf[3] << 8)
+        wLength = self.usb_ep0_buf[6] | (self.usb_ep0_buf[7] << 8)
 
-                # Copy appropriate descriptor from code ROM to 0x8000
-                if desc_type == 0x01 and desc_index == 0:  # Device descriptor
-                    rom_addr = 0x0627
-                    desc_len = 18
-                elif desc_type == 0x02 and desc_index == 0:  # Config descriptor
-                    rom_addr = 0x58CF
-                    desc_len = min(wLength, 44)
-                elif desc_type == 0x03 and desc_index == 0:  # String descriptor 0
-                    rom_addr = 0x599D
-                    desc_len = 4
-                else:
-                    if self.log_writes:
-                        print(f"[{self.cycles:8d}] [USB_DMA] Unknown descriptor type={desc_type} index={desc_index}")
-                    return
+        # Only handle GET_DESCRIPTOR requests
+        if bRequest != 0x06:  # GET_DESCRIPTOR
+            return
 
-                # Copy from code ROM to XDATA 0x8000
-                copy_len = min(desc_len, wLength)
-                if self.memory and hasattr(self.memory, 'code') and self.memory.code:
-                    for i in range(copy_len):
-                        self.memory.xdata[0x8000 + i] = self.memory.code[rom_addr + i]
+        desc_type = (wValue >> 8) & 0xFF
+        desc_index = wValue & 0xFF
 
-                    if self.log_writes:
-                        data = bytes(self.memory.code[rom_addr:rom_addr+copy_len])
-                        print(f"[{self.cycles:8d}] [USB_DMA] Copied {copy_len} bytes from ROM 0x{rom_addr:04X} to XDATA 0x8000")
-                        print(f"[{self.cycles:8d}] [USB_DMA] Data: {data.hex()}")
+        # Descriptor locations in ROM (from README)
+        # Device descriptor: 0x0627 (18 bytes)
+        # Config descriptor: 0x58CF (44 bytes)
+        # String 0: 0x599D (4 bytes)
 
-                # Mark transfer complete
-                self.usb_control_transfer_active = False
+        desc_data = None
+        if desc_type == 0x01:  # Device descriptor
+            if self.memory:
+                desc_data = bytes(self.memory.code[0x0627:0x0627+18])
+                print(f"[{self.cycles:8d}] [USB_PHY] DMA: Device descriptor ({len(desc_data)} bytes)")
+        elif desc_type == 0x02:  # Configuration descriptor
+            if self.memory:
+                # Read full config descriptor (including interface/endpoint descriptors)
+                total_len = self.memory.code[0x58CF + 2] | (self.memory.code[0x58CF + 3] << 8)
+                total_len = min(total_len, wLength, 255)
+                desc_data = bytes(self.memory.code[0x58CF:0x58CF + total_len])
+                print(f"[{self.cycles:8d}] [USB_PHY] DMA: Config descriptor ({len(desc_data)} bytes)")
+        elif desc_type == 0x03:  # String descriptor
+            if desc_index == 0:
+                # Language IDs
+                if self.memory:
+                    desc_data = bytes(self.memory.code[0x599D:0x599D + 4])
+                    print(f"[{self.cycles:8d}] [USB_PHY] DMA: String 0 (language IDs)")
+            else:
+                # String descriptors 1, 2, 3 not found in ROM - return empty
+                print(f"[{self.cycles:8d}] [USB_PHY] DMA: String {desc_index} not in ROM")
+                # Don't set desc_data - will STALL
+
+        if desc_data:
+            # Copy descriptor to USB buffer at 0x8000
+            copy_len = min(len(desc_data), wLength)
+            if self.memory:
+                for i in range(copy_len):
+                    self.memory.xdata[0x8000 + i] = desc_data[i]
+                print(f"[{self.cycles:8d}] [USB_PHY] Copied {copy_len} bytes to 0x8000")
+                print(f"[{self.cycles:8d}] [USB_PHY] Data: {desc_data[:copy_len].hex()}")
+
+            # Mark control transfer as complete
+            self.usb_control_transfer_active = False
 
     def _cmd_engine_read(self, hw: 'HardwareState', addr: int) -> int:
         """Command engine - auto-clear bit 0 after polling."""

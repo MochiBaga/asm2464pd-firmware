@@ -282,6 +282,15 @@ class USBDevicePassthrough:
 
         # For IN transfers, read response from buffer
         if setup.bmRequestType & 0x80:  # Device-to-host
+            # Check if the control transfer was handled
+            # If usb_control_transfer_active is still True, firmware didn't handle it
+            if self.emu.hw.usb_control_transfer_active:
+                # Request not handled - return None to trigger STALL
+                print(f"[USB_PASS] Request not handled (type=0x{setup.bmRequestType:02X} "
+                      f"req=0x{setup.bRequest:02X} val=0x{setup.wValue:04X}) - will STALL")
+                self.emu.hw.usb_control_transfer_active = False
+                return None  # Will trigger STALL
+
             response = self.read_response(setup.wLength)
             # Check if we got a valid response (not all zeros)
             if any(b != 0 for b in response):
@@ -365,6 +374,10 @@ class USBDevicePassthrough:
                 if len(response) > 0:
                     print(f"[USB_PASS] Response ({len(response)} bytes): {response[:32].hex()}...")
                 self.gadget.ep0_write(response)
+            elif setup.bmRequestType & 0x80:
+                # IN transfer but no response - STALL
+                print(f"[USB_PASS] STALLing unsupported IN request")
+                self.gadget.ep0_stall()
             else:
                 # OUT transfer - ACK with zero-length read
                 self.gadget.ep0_read(0)
