@@ -1,3 +1,9 @@
+**CRITICAL: NO HARDCODED ROM ADDRESSES IN EMULATOR**
+- NEVER hardcode ROM addresses (like descriptor locations 0x0627, 0x58CF, 0x599D, etc.) in the emulator
+- The emulator must read addresses from DMA controller registers that the firmware configures
+- USB descriptor addresses must come from DMA address registers, not hardcoded Python values
+- If you need to find a descriptor, read the address the firmware wrote to DMA registers
+
 We are reimplementing the firmware of the ASM2464PD chip in C in the src/ directory. The official firmware is in fw.bin.
 
 We are trying to match each function in the original firmware to ours, giving good names to the functions and registers and structuring the src/ directory well.
@@ -122,6 +128,23 @@ The emulator MUST behave like real hardware. This means:
 Example:
 - BAD: `memory.xdata[0x05B1] = 0x04` (directly writing RAM)
 - GOOD: Set MMIO registers that cause firmware to write 0x04 to 0x05B1 during normal processing
+
+### CRITICAL: USB Descriptor Handling
+
+**The emulator must NEVER search for USB descriptors in ROM or XDATA.**
+
+The FIRMWARE is responsible for handling GET_DESCRIPTOR requests:
+1. Firmware reads setup packet from MMIO (0x9E00-0x9E07)
+2. Firmware looks up descriptor in its own code ROM
+3. Firmware writes descriptor to USB transmit buffer via MMIO
+4. USB hardware DMA sends the data to host
+
+If you find yourself implementing `_find_descriptor_in_xdata()` or similar functions that search memory for USB descriptors, **you are doing something WRONG**. Instead, fix the MMIO emulation so the firmware's USB handler can complete successfully.
+
+The emulator's job for USB:
+- Provide correct MMIO register values for firmware to read
+- Capture data that firmware writes to USB output registers
+- Signal completion via status registers
 
 ### Debugging firmware execution:
 - Add trace points and PC tracking features directly to the emulator (emulate/emu.py, emulate/hardware.py)
