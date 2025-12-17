@@ -54,7 +54,10 @@ class Emulator:
         # Hardware emulation (replaces simple stubs)
         self.hw = HardwareState(log_reads=log_hw, log_writes=log_hw, log_uart=log_uart)
         self.hw.usb_connect_delay = usb_delay
+        self.hw._memory = self.memory  # Give hardware access to XDATA for USB descriptors
         create_hardware_hooks(self.memory, self.hw)
+        # Store CPU reference for PC tracing in hardware callbacks
+        self.hw._cpu_ref = self.cpu
 
         # Statistics
         self.inst_count = 0

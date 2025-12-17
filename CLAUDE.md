@@ -1,8 +1,11 @@
-**CRITICAL: NO HARDCODED ROM ADDRESSES IN EMULATOR**
-- NEVER hardcode ROM addresses (like descriptor locations 0x0627, 0x58CF, 0x599D, etc.) in the emulator
-- The emulator must read addresses from DMA controller registers that the firmware configures
-- USB descriptor addresses must come from DMA address registers, not hardcoded Python values
-- If you need to find a descriptor, read the address the firmware wrote to DMA registers
+**CRITICAL: USB EMULATION MUST BE PURE DMA - ZERO PYTHON PROCESSING**
+- The emulator must NOT parse, process, or understand USB control messages
+- USB hardware DMAs in the request (setup packet) to MMIO registers
+- Firmware reads setup packet, determines response, configures DMA source address registers
+- USB hardware DMAs out the response from the address FIRMWARE configured
+- ZERO addresses should be determined by Python code - all addresses come from firmware register writes
+- The emulator just moves bytes between addresses the firmware specifies
+- If something doesn't work, the fix is in the FIRMWARE, not adding logic to the emulator
 
 We are reimplementing the firmware of the ASM2464PD chip in C in the src/ directory. The official firmware is in fw.bin.
 
