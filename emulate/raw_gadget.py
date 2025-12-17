@@ -22,10 +22,17 @@ Usage:
 import os
 import fcntl
 import ctypes
+import ctypes.util
 import struct
 from enum import IntEnum
 from typing import Optional, Tuple, List
 from dataclasses import dataclass
+
+# Load libc for direct ioctl call
+_libc = ctypes.CDLL(ctypes.util.find_library("c"), use_errno=True)
+_ioctl = _libc.ioctl
+_ioctl.argtypes = [ctypes.c_int, ctypes.c_ulong, ctypes.c_void_p]
+_ioctl.restype = ctypes.c_int
 
 # ============================================
 # Constants from raw_gadget.h
@@ -39,6 +46,9 @@ USB_RAW_EP_ADDR_ANY = 0xFF
 # IO flags
 USB_RAW_IO_FLAGS_ZERO = 0x0001
 USB_RAW_IO_FLAGS_MASK = 0x0001
+
+# USB_RAW_EP_ADDR_ANY tells kernel to find any matching endpoint
+USB_RAW_EP_ADDR_ANY = 0xFF
 
 # USB speeds
 class USBSpeed(IntEnum):
@@ -120,8 +130,9 @@ USB_RAW_IOCTL_EVENT_FETCH = _IOR('U', 2, 8)
 # struct usb_raw_ep_io: u16 ep + u16 flags + u32 length + flexible array = 8 bytes base
 USB_RAW_IOCTL_EP0_WRITE = _IOW('U', 3, 8)
 USB_RAW_IOCTL_EP0_READ = _IOWR('U', 4, 8)
-# struct usb_endpoint_descriptor is 7 bytes
-USB_RAW_IOCTL_EP_ENABLE = _IOW('U', 5, 7)
+# struct usb_endpoint_descriptor is 9 bytes with padding on this kernel
+# (7 bytes of data + 2 bytes padding for alignment)
+USB_RAW_IOCTL_EP_ENABLE = _IOW('U', 5, 9)
 USB_RAW_IOCTL_EP_DISABLE = _IOW('U', 6, 4)
 USB_RAW_IOCTL_EP_WRITE = _IOW('U', 7, 8)
 USB_RAW_IOCTL_EP_READ = _IOWR('U', 8, 8)
@@ -446,7 +457,8 @@ class RawGadget:
         """
         Enable an endpoint.
 
-        ep_addr: Endpoint address (e.g., 0x81 for EP1 IN)
+        ep_addr: Endpoint address (e.g., 0x81 for EP1 IN, 0x02 for EP2 OUT)
+                 Use USB_RAW_EP_ADDR_ANY (0xFF) with direction bit to let kernel choose
         ep_type: Endpoint type (1=iso, 2=bulk, 3=interrupt)
         max_packet: Maximum packet size
 
@@ -462,23 +474,55 @@ class RawGadget:
         #     __u8 bmAttributes;
         #     __le16 wMaxPacketSize;
         #     __u8 bInterval;
+        #     // 2 bytes padding on 64-bit systems
         # }
-        desc = struct.pack('<BBBBHB',
+        # For bulk endpoints, bInterval should be 0 (ignored per USB spec)
+        # For interrupt endpoints, it specifies the polling interval
+        interval = 0 if ep_type == 0x02 else 1  # 0x02 = bulk
+        # Pack with 2 bytes padding at the end to match kernel struct size (9 bytes)
+        desc = bytearray(struct.pack('<BBBBHBBB',
             7,  # bLength
             USB_DT_ENDPOINT,  # bDescriptorType
             ep_addr,
             ep_type,
             max_packet,
-            1  # bInterval
-        )
+            interval,  # bInterval
+            0, 0  # padding
+        ))
 
-        try:
-            result = fcntl.ioctl(self.fd, USB_RAW_IOCTL_EP_ENABLE, desc)
-            ep_num = result if isinstance(result, int) else 0
-            self._enabled_eps[ep_addr] = ep_num
-            return ep_num
-        except OSError as e:
-            raise RawGadgetError(f"EP_ENABLE failed: {e}")
+        print(f"[RAW_GADGET] ep_enable: descriptor bytes = {desc.hex()}")
+        print(f"[RAW_GADGET] ep_enable: fd={self.fd}, ioctl=0x{USB_RAW_IOCTL_EP_ENABLE:08X}")
+
+        # Use ctypes for direct ioctl call like C does
+        # This matches how the C code calls: ioctl(fd, USB_RAW_IOCTL_EP_ENABLE, &ep_desc)
+        desc_array = (ctypes.c_uint8 * len(desc)).from_buffer(desc)
+        print(f"[RAW_GADGET] ep_enable: desc_array ptr = {ctypes.addressof(desc_array):x}")
+        ret = _ioctl(self.fd, USB_RAW_IOCTL_EP_ENABLE, ctypes.byref(desc_array))
+        print(f"[RAW_GADGET] ep_enable: ret={ret}, errno={ctypes.get_errno()}")
+
+        if ret < 0:
+            errno = ctypes.get_errno()
+            raise RawGadgetError(f"EP_ENABLE failed: [Errno {errno}] {os.strerror(errno)}")
+
+        ep_num = ret
+        self._enabled_eps[ep_addr] = ep_num
+        return ep_num
+
+    def ep_enable_any(self, direction_in: bool, ep_type: int, max_packet: int) -> int:
+        """
+        Enable any endpoint matching direction and type.
+
+        Uses USB_RAW_EP_ADDR_ANY to let kernel find a suitable endpoint.
+
+        direction_in: True for IN endpoint, False for OUT
+        ep_type: Endpoint type (1=iso, 2=bulk, 3=interrupt)
+        max_packet: Maximum packet size
+
+        Returns the endpoint handle assigned by the kernel.
+        """
+        # For ANY address, set direction bit only
+        addr = 0x80 if direction_in else 0x00
+        return self.ep_enable(addr, ep_type, max_packet)
 
     def ep_disable(self, ep_num: int):
         """Disable an endpoint."""
@@ -508,10 +552,13 @@ class RawGadget:
         struct.pack_into('<HHI', io_buf, 0, ep_num, 0, len(data))
         io_buf[8:8+len(data)] = data
 
-        try:
-            fcntl.ioctl(self.fd, USB_RAW_IOCTL_EP_WRITE, io_buf, True)
-        except OSError as e:
-            raise RawGadgetError(f"EP_WRITE failed: {e}")
+        # Use ctypes for direct ioctl call (more reliable than fcntl)
+        io_array = (ctypes.c_uint8 * len(io_buf)).from_buffer(io_buf)
+        ret = _ioctl(self.fd, USB_RAW_IOCTL_EP_WRITE, ctypes.byref(io_array))
+
+        if ret < 0:
+            errno = ctypes.get_errno()
+            raise RawGadgetError(f"EP_WRITE failed: [Errno {errno}] {os.strerror(errno)}")
 
         return len(data)
 
@@ -527,10 +574,13 @@ class RawGadget:
         buf = bytearray(8 + length)
         struct.pack_into('<HHI', buf, 0, ep_num, 0, length)
 
-        try:
-            fcntl.ioctl(self.fd, USB_RAW_IOCTL_EP_READ, buf, True)
-        except OSError as e:
-            raise RawGadgetError(f"EP_READ failed: {e}")
+        # Use ctypes for direct ioctl call (more reliable than fcntl)
+        io_array = (ctypes.c_uint8 * len(buf)).from_buffer(buf)
+        ret = _ioctl(self.fd, USB_RAW_IOCTL_EP_READ, ctypes.byref(io_array))
+
+        if ret < 0:
+            errno = ctypes.get_errno()
+            raise RawGadgetError(f"EP_READ failed: [Errno {errno}] {os.strerror(errno)}")
 
         actual_len = struct.unpack_from('<I', buf, 4)[0]
         return bytes(buf[8:8+actual_len])

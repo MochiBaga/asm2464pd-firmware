@@ -479,8 +479,27 @@ class USBController:
                 print(f"[{cycles:8d}] [USB_CTRL] GET_DESCRIPTOR: type=0x{(wValue >> 8):02X} index=0x{(wValue & 0xFF):02X} len={wLength}")
             print(f"[{cycles:8d}] [USB_CTRL] Standard request - setting 0x9101=0x0B, 0x9301=0x40")
             self.hw.write(0x9301, 0x40)  # Triggers _usb_9301_ep0_arm_write callback for DMA
+        elif request_type == 0x20:
+            # Class request (USB Mass Storage)
+            # Handle GET_MAX_LUN (bRequest=0xFE) and BULK_ONLY_RESET (bRequest=0xFF)
+            # directly at MMIO level as hardware would
+            if bRequest == 0xFE:  # GET_MAX_LUN
+                # Return max LUN = 0 (single LUN device) via USB buffer
+                print(f"[{cycles:8d}] [USB_CTRL] GET_MAX_LUN - responding with LUN 0")
+                if self.hw.memory:
+                    self.hw.memory.xdata[0x8000] = 0x00  # Max LUN = 0
+                self.hw.usb_control_transfer_active = False
+                return  # Response ready in buffer
+            elif bRequest == 0xFF:  # BULK_ONLY_RESET
+                print(f"[{cycles:8d}] [USB_CTRL] BULK_ONLY_RESET - acknowledging")
+                self.hw.usb_control_transfer_active = False
+                return  # No data, just acknowledge
+            else:
+                # Unknown class request - let firmware handle
+                self.hw.regs[0x9101] = 0x21
+                print(f"[{cycles:8d}] [USB_CTRL] Class request 0x{bRequest:02X} - passing to firmware")
         else:
-            # Vendor or class request
+            # Vendor request
             # Path: 0x0E33 → 0x0E64 → 0x0EF4 → 0x5333 (when 0x9101 bit 5 SET)
             self.hw.regs[0x9101] = 0x21  # Bit 0 = EP0 control, bit 5 SET (vendor path)
             print(f"[{cycles:8d}] [USB_CTRL] Vendor request - setting 0x9101=0x21")
@@ -1881,46 +1900,93 @@ class HardwareState:
         USB endpoint 0 arm/control write (0x9301).
 
         When bit 6 (0x40) is written, this arms EP0 for data transfer.
-        For GET_DESCRIPTOR, the USB hardware DMA engine automatically
-        transfers descriptor data from firmware ROM to the USB buffer.
-
-        This is hardware emulation - the USB controller parses the setup
-        packet, looks up the descriptor, and DMAs it to 0x8000.
+        The firmware handles GET_DESCRIPTOR by setting up DMA, but if the
+        DMA emulation doesn't work properly, we assist by reading descriptors
+        from the firmware binary directly.
         """
         self.regs[addr] = value
 
-        # When EP0 is armed (bit 6 set), check if this is GET_DESCRIPTOR
         if value & 0x40:
+            print(f"[{self.cycles:8d}] [USB] EP0 armed (9301=0x{value:02X})")
+
+            # Check if this is GET_DESCRIPTOR and buffer is still empty
+            bmRequestType = self.regs.get(0x9E00, 0)
             bRequest = self.regs.get(0x9E01, 0)
 
-            # GET_DESCRIPTOR (bRequest = 0x06)
-            if bRequest == 0x06:
+            if bmRequestType == 0x80 and bRequest == 0x06:  # GET_DESCRIPTOR
                 desc_type = self.regs.get(0x9E03, 0)
                 desc_index = self.regs.get(0x9E02, 0)
                 wLength = self.regs.get(0x9E06, 0) | (self.regs.get(0x9E07, 0) << 8)
 
-                # Get descriptor data from firmware ROM
-                desc_data = self._usb_get_descriptor_data(desc_type, desc_index)
-
-                if desc_data:
-                    # Limit to requested length
-                    data_len = min(len(desc_data), wLength)
-
-                    # DMA descriptor data to USB buffer at 0x8000
-                    if self.memory:
+                # Assist by reading from firmware binary
+                # The firmware's DMA doesn't work in emulation, so we help
+                if self.memory:
+                    desc_data = self._read_descriptor_from_firmware(desc_type, desc_index)
+                    if desc_data:
+                        data_len = min(len(desc_data), wLength)
+                        # Clear buffer first
+                        for i in range(min(wLength, 256)):
+                            self.memory.xdata[0x8000 + i] = 0
+                        # Write descriptor data
                         for i in range(data_len):
                             self.memory.xdata[0x8000 + i] = desc_data[i]
+                        print(f"[{self.cycles:8d}] [USB_HW] Assisted GET_DESCRIPTOR: "
+                              f"type=0x{desc_type:02X} index={desc_index} -> {data_len} bytes")
 
-                    print(f"[{self.cycles:8d}] [USB_HW] GET_DESCRIPTOR: type=0x{desc_type:02X} "
-                          f"index={desc_index} -> DMA {data_len} bytes to 0x8000")
+            # Mark control transfer complete for IN transfers
+            if bmRequestType & 0x80:
+                self.usb_control_transfer_active = False
 
-                    # Clear control transfer active - DMA is complete
-                    self.usb_control_transfer_active = False
-                else:
-                    print(f"[{self.cycles:8d}] [USB_HW] GET_DESCRIPTOR: type=0x{desc_type:02X} "
-                          f"index={desc_index} -> UNKNOWN (will STALL)")
+    def _read_descriptor_from_firmware(self, desc_type: int, desc_index: int) -> bytes:
+        """
+        Read USB descriptor from firmware binary.
 
-            print(f"[{self.cycles:8d}] [USB] EP0 armed (9301=0x{value:02X})")
+        Descriptor offsets in fw.bin (determined by analysis):
+        - Device descriptor: 0x0627 (18 bytes)
+        - Config descriptor: 0x5948 (BBB mode, 32 bytes)
+        - String descriptors: various offsets
+        """
+        # Try to read from firmware code memory
+        if not self.memory or not hasattr(self.memory, 'code'):
+            return None
+
+        code = self.memory.code
+
+        if desc_type == 0x01:  # Device descriptor
+            if 0x0627 + 18 <= len(code):
+                return bytes(code[0x0627:0x0627 + 18])
+
+        elif desc_type == 0x02:  # Configuration descriptor
+            # BBB-only config from firmware data (no UAS to avoid uas driver binding)
+            # Config header at 0x5948 (9 bytes)
+            # BBB interface (alt 0) at 0x5951 (23 bytes: 9 + 7 + 7)
+            # Total: 9 + 23 = 32 bytes
+            if 0x5948 + 32 <= len(code):
+                return bytes(code[0x5948:0x5948 + 32])
+
+        elif desc_type == 0x03:  # String descriptor
+            # String descriptors handled with placeholders
+            if desc_index == 0:
+                return bytes([0x04, 0x03, 0x09, 0x04])  # Language ID
+            elif desc_index == 1:
+                s = "00000000"  # Serial number
+                return bytes([2 + len(s)*2, 0x03] + [b for c in s for b in [ord(c), 0]])
+            elif desc_index == 2:
+                s = "ASMedia"  # Manufacturer
+                return bytes([2 + len(s)*2, 0x03] + [b for c in s for b in [ord(c), 0]])
+            elif desc_index == 3:
+                s = "ASM2464PD"  # Product
+                return bytes([2 + len(s)*2, 0x03] + [b for c in s for b in [ord(c), 0]])
+
+        elif desc_type == 0x0F:  # BOS descriptor
+            # USB 2.0/3.0 BOS - minimal
+            return bytes([
+                0x05, 0x0F, 0x16, 0x00, 0x02,  # BOS header
+                0x07, 0x10, 0x02, 0x02, 0x00, 0x00, 0x00,  # USB 2.0 ext
+                0x0A, 0x10, 0x03, 0x00, 0x0E, 0x00, 0x01, 0x0A, 0xFF, 0x07  # SuperSpeed
+            ])
+
+        return None
 
     def _usb_get_descriptor_data(self, desc_type: int, desc_index: int) -> bytes:
         """
@@ -1950,18 +2016,20 @@ class HardwareState:
             ])
 
         elif desc_type == 0x02:  # Configuration descriptor
-            # Return minimal configuration descriptor (for now)
-            # Real descriptor is more complex, but this gets enumeration started
+            # Configuration with two alternate settings:
+            # Alt 0: BBB (Bulk-Only) with 2 endpoints
+            # Alt 1: UAS (USB Attached SCSI) with 4 endpoints
             return bytes([
+                # Configuration descriptor header
                 0x09, 0x02,  # bLength, bDescriptorType
-                0x20, 0x00,  # wTotalLength = 32
+                0x57, 0x00,  # wTotalLength = 87 (9 + 9 + 7 + 7 + 9 + 7 + 7 + 7 + 7 + 4 + 4 + 4 + 4)
                 0x01,  # bNumInterfaces
                 0x01,  # bConfigurationValue
                 0x00,  # iConfiguration
                 0xC0,  # bmAttributes (self-powered)
                 0x00,  # bMaxPower
 
-                # Interface descriptor
+                # Interface descriptor - Alt Setting 0 (BBB)
                 0x09, 0x04,  # bLength, bDescriptorType
                 0x00,  # bInterfaceNumber
                 0x00,  # bAlternateSetting
@@ -1971,19 +2039,81 @@ class HardwareState:
                 0x50,  # bInterfaceProtocol (BBB)
                 0x00,  # iInterface
 
-                # Endpoint 1 IN (Bulk)
+                # BBB Endpoint 1 IN (Bulk)
                 0x07, 0x05,  # bLength, bDescriptorType
                 0x81,  # bEndpointAddress (EP1 IN)
                 0x02,  # bmAttributes (Bulk)
                 0x00, 0x02,  # wMaxPacketSize = 512
                 0x00,  # bInterval
 
-                # Endpoint 2 OUT (Bulk)
+                # BBB Endpoint 2 OUT (Bulk)
                 0x07, 0x05,  # bLength, bDescriptorType
                 0x02,  # bEndpointAddress (EP2 OUT)
                 0x02,  # bmAttributes (Bulk)
                 0x00, 0x02,  # wMaxPacketSize = 512
                 0x00,  # bInterval
+
+                # Interface descriptor - Alt Setting 1 (UAS)
+                0x09, 0x04,  # bLength, bDescriptorType
+                0x00,  # bInterfaceNumber
+                0x01,  # bAlternateSetting
+                0x04,  # bNumEndpoints
+                0x08,  # bInterfaceClass (Mass Storage)
+                0x06,  # bInterfaceSubClass (SCSI)
+                0x62,  # bInterfaceProtocol (UAS)
+                0x00,  # iInterface
+
+                # UAS Endpoint 1 IN (Bulk) - Command Status
+                0x07, 0x05,  # bLength, bDescriptorType
+                0x81,  # bEndpointAddress (EP1 IN)
+                0x02,  # bmAttributes (Bulk)
+                0x00, 0x02,  # wMaxPacketSize = 512
+                0x00,  # bInterval
+
+                # UAS Pipe Usage descriptor for EP1 IN
+                0x04,  # bLength
+                0x24,  # bDescriptorType (CS_INTERFACE - UAS pipe)
+                0x01,  # bPipeID (Status pipe)
+                0x00,  # bReserved
+
+                # UAS Endpoint 2 OUT (Bulk) - Command
+                0x07, 0x05,  # bLength, bDescriptorType
+                0x02,  # bEndpointAddress (EP2 OUT)
+                0x02,  # bmAttributes (Bulk)
+                0x00, 0x02,  # wMaxPacketSize = 512
+                0x00,  # bInterval
+
+                # UAS Pipe Usage descriptor for EP2 OUT
+                0x04,  # bLength
+                0x24,  # bDescriptorType (CS_INTERFACE - UAS pipe)
+                0x02,  # bPipeID (Command pipe)
+                0x00,  # bReserved
+
+                # UAS Endpoint 3 IN (Bulk) - Data IN
+                0x07, 0x05,  # bLength, bDescriptorType
+                0x83,  # bEndpointAddress (EP3 IN)
+                0x02,  # bmAttributes (Bulk)
+                0x00, 0x02,  # wMaxPacketSize = 512
+                0x00,  # bInterval
+
+                # UAS Pipe Usage descriptor for EP3 IN
+                0x04,  # bLength
+                0x24,  # bDescriptorType (CS_INTERFACE - UAS pipe)
+                0x03,  # bPipeID (Data-In pipe)
+                0x00,  # bReserved
+
+                # UAS Endpoint 4 OUT (Bulk) - Data OUT
+                0x07, 0x05,  # bLength, bDescriptorType
+                0x04,  # bEndpointAddress (EP4 OUT)
+                0x02,  # bmAttributes (Bulk)
+                0x00, 0x02,  # wMaxPacketSize = 512
+                0x00,  # bInterval
+
+                # UAS Pipe Usage descriptor for EP4 OUT
+                0x04,  # bLength
+                0x24,  # bDescriptorType (CS_INTERFACE - UAS pipe)
+                0x04,  # bPipeID (Data-Out pipe)
+                0x00,  # bReserved
             ])
 
         elif desc_type == 0x03:  # String descriptor
