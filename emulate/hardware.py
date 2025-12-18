@@ -66,6 +66,9 @@ class USBController:
         self.state_machine_reads = 0
         self.enumeration_step = 0
 
+        # Pending descriptor request from GET_DESCRIPTOR
+        self.pending_descriptor_request = None
+
     def connect(self):
         """
         Simulate USB cable connection via MMIO registers.
@@ -476,7 +479,15 @@ class USBController:
             # 0x9301: Bit 6 triggers interrupt dispatch and DMA
             # Use write() to trigger the callback which handles descriptor DMA
             if bRequest == 0x06:  # GET_DESCRIPTOR
-                print(f"[{cycles:8d}] [USB_CTRL] GET_DESCRIPTOR: type=0x{(wValue >> 8):02X} index=0x{(wValue & 0xFF):02X} len={wLength}")
+                desc_type = (wValue >> 8) & 0xFF
+                desc_index = wValue & 0xFF
+                print(f"[{cycles:8d}] [USB_CTRL] GET_DESCRIPTOR: type=0x{desc_type:02X} index=0x{desc_index:02X} len={wLength}")
+                # Store the pending descriptor request for later DMA handling
+                self.pending_descriptor_request = {
+                    'type': desc_type,
+                    'index': desc_index,
+                    'length': wLength
+                }
             print(f"[{cycles:8d}] [USB_CTRL] Standard request - setting 0x9101=0x0B, 0x9301=0x40")
             self.hw.write(0x9301, 0x40)  # Triggers _usb_9301_ep0_arm_write callback for DMA
         elif request_type == 0x20:
@@ -544,6 +555,11 @@ class USBController:
             # At 0x35D4-0x35DF: Firmware checks this and clears 0x0AF7 if state == 4
             self.hw.memory.xdata[0x05A3] = 0x00  # Port index = 0
             self.hw.memory.xdata[0x05B1] = 0x03  # Port 0 state = 3 (link up, not 4)
+            # USB descriptor handler state at 0x07E1
+            # Main loop at 0xD088 checks: if 0x07E1 == 0x05, calls 0xA57A (descriptor handler)
+            # This value is normally set by init_bda4 (0xBDA4), but we skip that during
+            # control transfers to preserve 0x0AF7. Set it directly here.
+            self.hw.memory.xdata[0x07E1] = 0x05
 
         # PCIe link state - 0xB480 bit 0 must be SET to prevent firmware at 0x20DA from
         # clearing XDATA[0x0AF7] to 0
@@ -638,11 +654,10 @@ class HardwareState:
     # USB control transfer active flag - affects 0x92C2 callback timing for ISR->main loop
     usb_control_transfer_active: bool = False
 
-    # USB descriptor DMA state
-    # When firmware handles GET_DESCRIPTOR, it sets up DMA from descriptor ROM.
-    # The emulator tracks the request and returns descriptor data.
-    usb_descriptor_request: int = 0  # wValue from GET_DESCRIPTOR (type << 8 | index)
-    usb_descriptor_length: int = 0   # wLength from control transfer
+    # USB descriptor state
+    # NOTE: The emulator does NOT track descriptor requests or generate responses.
+    # The firmware handles GET_DESCRIPTOR by reading from code ROM and DMAing
+    # the response to the USB buffer. See "USB Descriptor Handling Philosophy" above.
     usb_ep0_response: bytearray = field(default_factory=bytearray)  # Response data for host
     usb_transfer_complete: bool = False  # Set when firmware signals transfer complete
 
@@ -1213,6 +1228,7 @@ class HardwareState:
                 # Clear command pending after successful DMA
                 if self.usb_cmd_pending:
                     self.usb_cmd_pending = False
+                    self.usb_cmd_type = 0  # Reset command type
                     print(f"[{self.cycles:8d}] [PCIe] USB command completed, clearing pending flag")
 
     def _perform_pcie_dma(self, source_addr: int, size: int):
@@ -1359,10 +1375,12 @@ class HardwareState:
             if self.usb_ce89_read_count >= 3:
                 value |= 0x01
 
-            # Bit 1 - MUST STAY CLEAR (0)
-            # At 0x3493: jnb acc.1, 0x3499 means if bit 1 CLEAR, take good path
-            # If bit 1 is SET, firmware jumps to 0x35A1 (failure)
-            # So we NEVER set bit 1
+            # Bit 1 - E5 path control
+            # At 0x1862: jb acc.1, 0x1884 - if bit 1 SET, take E5 path
+            # For E5 commands, we SET bit 1 to direct firmware to the E5 handler
+            # For E4 commands, we keep bit 1 CLEAR to take the E4 path
+            if self.usb_cmd_type == 0xE5:
+                value |= 0x02  # Set bit 1 for E5 path
 
             # Bit 2 - DMA/transfer busy status
             # SET during counts 5-14 to allow state transitions
@@ -1832,7 +1850,46 @@ class HardwareState:
         """
         self.regs[addr] = value
 
-        if value == 0x04:
+        if value == 0x01:
+            # Descriptor send trigger - firmware wrote 0x01 to 0x9092
+            # Firmware should have already configured:
+            #   0x905B/0x905C = DMA source address (code ROM address of descriptor)
+            #   0x9004 = transfer length
+            # We DMA from the firmware-specified address to USB buffer at 0x8000
+
+            # Read DMA source address from firmware-configured registers
+            dma_addr_hi = self.regs.get(0x905B, 0)
+            dma_addr_lo = self.regs.get(0x905C, 0)
+            dma_src_addr = (dma_addr_hi << 8) | dma_addr_lo
+
+            # Read transfer length from firmware-configured register
+            dma_len = self.regs.get(0x9004, 0)
+            if dma_len == 0:
+                dma_len = 64  # Default max packet size
+
+            print(f"[{self.cycles:8d}] [USB] Descriptor DMA trigger (0x9092=0x01): src=0x{dma_src_addr:04X} len={dma_len}")
+
+            if self.memory and dma_src_addr > 0 and dma_len > 0:
+                # Read from code ROM at the firmware-specified address
+                desc_data = bytes(self.memory.code[dma_src_addr:dma_src_addr + dma_len])
+
+                if len(desc_data) > 0:
+                    # Copy to USB buffer at 0x8000
+                    for i, b in enumerate(desc_data):
+                        self.memory.xdata[0x8000 + i] = b
+                    print(f"[{self.cycles:8d}] [USB] DMA'd {len(desc_data)} bytes from code 0x{dma_src_addr:04X} to 0x8000: {desc_data[:min(32, len(desc_data))].hex()}")
+                else:
+                    print(f"[{self.cycles:8d}] [USB] WARNING: No data at code ROM address 0x{dma_src_addr:04X}")
+            elif dma_src_addr == 0:
+                print(f"[{self.cycles:8d}] [USB] WARNING: DMA source address not configured (0x905B/0x905C = 0)")
+
+            # Clear the pending request if there is one
+            usb_ctrl = self.usb_controller
+            if usb_ctrl and hasattr(usb_ctrl, 'pending_descriptor_request'):
+                usb_ctrl.pending_descriptor_request = None
+            self.usb_control_transfer_active = False
+
+        elif value == 0x04:
             # DMA trigger - read length from 0x9003-0x9004
             len_lo = self.regs.get(0x9003, 0)
             len_hi = self.regs.get(0x9004, 0)
@@ -1900,16 +1957,16 @@ class HardwareState:
         USB endpoint 0 arm/control write (0x9301).
 
         When bit 6 (0x40) is written, this arms EP0 for data transfer.
-        The firmware handles GET_DESCRIPTOR by setting up DMA, but if the
-        DMA emulation doesn't work properly, we assist by reading descriptors
-        from the firmware binary directly.
+        The firmware handles GET_DESCRIPTOR by setting up DMA from its code ROM.
+        The emulator does NOT assist with descriptor reading - the firmware must
+        do all the work itself via proper MMIO/DMA emulation.
         """
         self.regs[addr] = value
 
         if value & 0x40:
             print(f"[{self.cycles:8d}] [USB] EP0 armed (9301=0x{value:02X})")
 
-            # Check if this is GET_DESCRIPTOR and buffer is still empty
+            # Log the request type for debugging (but don't process it!)
             bmRequestType = self.regs.get(0x9E00, 0)
             bRequest = self.regs.get(0x9E01, 0)
 
@@ -1917,252 +1974,47 @@ class HardwareState:
                 desc_type = self.regs.get(0x9E03, 0)
                 desc_index = self.regs.get(0x9E02, 0)
                 wLength = self.regs.get(0x9E06, 0) | (self.regs.get(0x9E07, 0) << 8)
+                print(f"[{self.cycles:8d}] [USB] GET_DESCRIPTOR: type=0x{desc_type:02X} "
+                      f"index={desc_index} len={wLength} (firmware will handle via DMA)")
+                # NOTE: The emulator does NOT populate the buffer here!
+                # The firmware reads descriptors from its code ROM and sets up DMA.
+                # If descriptors aren't appearing, fix the firmware DMA path, not here.
 
-                # Assist by reading from firmware binary
-                # The firmware's DMA doesn't work in emulation, so we help
-                if self.memory:
-                    desc_data = self._read_descriptor_from_firmware(desc_type, desc_index)
-                    if desc_data:
-                        data_len = min(len(desc_data), wLength)
-                        # Clear buffer first
-                        for i in range(min(wLength, 256)):
-                            self.memory.xdata[0x8000 + i] = 0
-                        # Write descriptor data
-                        for i in range(data_len):
-                            self.memory.xdata[0x8000 + i] = desc_data[i]
-                        print(f"[{self.cycles:8d}] [USB_HW] Assisted GET_DESCRIPTOR: "
-                              f"type=0x{desc_type:02X} index={desc_index} -> {data_len} bytes")
-
-            # Mark control transfer complete for IN transfers
+            # Mark control transfer complete
+            # - IN transfers (bit 7 set): Complete when EP0 armed for data stage
+            # - OUT transfers (bit 7 clear): Complete when EP0 armed for status stage
+            wLength = self.regs.get(0x9E06, 0) | (self.regs.get(0x9E07, 0) << 8)
             if bmRequestType & 0x80:
+                # IN transfer - complete
                 self.usb_control_transfer_active = False
+            else:
+                # OUT transfer - complete if no data stage (wLength=0)
+                # or firmware has processed the data
+                if wLength == 0:
+                    # No-data OUT transfer (SET_ADDRESS, SET_CONFIGURATION, etc.)
+                    self.usb_control_transfer_active = False
+                    self.usb_cmd_pending = False
+                    print(f"[{self.cycles:8d}] [USB] OUT transfer complete (no data stage)")
 
-    def _read_descriptor_from_firmware(self, desc_type: int, desc_index: int) -> bytes:
-        """
-        Read USB descriptor from firmware binary.
+    # ============================================================
+    # DEPRECATED: _read_descriptor_from_firmware
+    # This function violates the pure DMA principle documented above.
+    # The firmware must handle descriptor reading itself via DMA.
+    # DO NOT USE THIS FUNCTION - it only exists to document the
+    # descriptor offsets found during analysis.
+    #
+    # Known descriptor offsets in fw.bin:
+    # - Device descriptor: 0x0627 (18 bytes)
+    # - Config descriptor: 0x5948 (BBB mode, 32 bytes)
+    # ============================================================
 
-        Descriptor offsets in fw.bin (determined by analysis):
-        - Device descriptor: 0x0627 (18 bytes)
-        - Config descriptor: 0x5948 (BBB mode, 32 bytes)
-        - String descriptors: various offsets
-        """
-        # Try to read from firmware code memory
-        if not self.memory or not hasattr(self.memory, 'code'):
-            return None
-
-        code = self.memory.code
-
-        if desc_type == 0x01:  # Device descriptor
-            if 0x0627 + 18 <= len(code):
-                return bytes(code[0x0627:0x0627 + 18])
-
-        elif desc_type == 0x02:  # Configuration descriptor
-            # BBB-only config from firmware data (no UAS to avoid uas driver binding)
-            # Config header at 0x5948 (9 bytes)
-            # BBB interface (alt 0) at 0x5951 (23 bytes: 9 + 7 + 7)
-            # Total: 9 + 23 = 32 bytes
-            if 0x5948 + 32 <= len(code):
-                return bytes(code[0x5948:0x5948 + 32])
-
-        elif desc_type == 0x03:  # String descriptor
-            # String descriptors handled with placeholders
-            if desc_index == 0:
-                return bytes([0x04, 0x03, 0x09, 0x04])  # Language ID
-            elif desc_index == 1:
-                s = "00000000"  # Serial number
-                return bytes([2 + len(s)*2, 0x03] + [b for c in s for b in [ord(c), 0]])
-            elif desc_index == 2:
-                s = "ASMedia"  # Manufacturer
-                return bytes([2 + len(s)*2, 0x03] + [b for c in s for b in [ord(c), 0]])
-            elif desc_index == 3:
-                s = "ASM2464PD"  # Product
-                return bytes([2 + len(s)*2, 0x03] + [b for c in s for b in [ord(c), 0]])
-
-        elif desc_type == 0x0F:  # BOS descriptor
-            # USB 2.0/3.0 BOS - minimal
-            return bytes([
-                0x05, 0x0F, 0x16, 0x00, 0x02,  # BOS header
-                0x07, 0x10, 0x02, 0x02, 0x00, 0x00, 0x00,  # USB 2.0 ext
-                0x0A, 0x10, 0x03, 0x00, 0x0E, 0x00, 0x01, 0x0A, 0xFF, 0x07  # SuperSpeed
-            ])
-
-        return None
-
-    def _usb_get_descriptor_data(self, desc_type: int, desc_index: int) -> bytes:
-        """
-        Get USB descriptor data from firmware ROM.
-
-        Descriptor offsets in fw.bin:
-        - Device descriptor: 0x0627 (18 bytes)
-        - Config descriptor: varies by configuration
-
-        Returns bytes of descriptor data, or None if unknown.
-        """
-        if not self.memory:
-            return None
-
-        if desc_type == 0x01:  # Device descriptor
-            # Device descriptor at offset 0x0627 in fw.bin (18 bytes)
-            return bytes([
-                0x12, 0x01,  # bLength, bDescriptorType
-                0x10, 0x02,  # bcdUSB = 2.10
-                0x00, 0x00, 0x00,  # bDeviceClass/SubClass/Protocol
-                0x40,  # bMaxPacketSize0 = 64
-                0x4C, 0x17,  # idVendor = 0x174C (ASMedia)
-                0x62, 0x24,  # idProduct = 0x2462 (ASM2464PD)
-                0x01, 0x00,  # bcdDevice = 0.01
-                0x02, 0x03, 0x01,  # iManufacturer, iProduct, iSerialNumber
-                0x01  # bNumConfigurations
-            ])
-
-        elif desc_type == 0x02:  # Configuration descriptor
-            # Configuration with two alternate settings:
-            # Alt 0: BBB (Bulk-Only) with 2 endpoints
-            # Alt 1: UAS (USB Attached SCSI) with 4 endpoints
-            return bytes([
-                # Configuration descriptor header
-                0x09, 0x02,  # bLength, bDescriptorType
-                0x57, 0x00,  # wTotalLength = 87 (9 + 9 + 7 + 7 + 9 + 7 + 7 + 7 + 7 + 4 + 4 + 4 + 4)
-                0x01,  # bNumInterfaces
-                0x01,  # bConfigurationValue
-                0x00,  # iConfiguration
-                0xC0,  # bmAttributes (self-powered)
-                0x00,  # bMaxPower
-
-                # Interface descriptor - Alt Setting 0 (BBB)
-                0x09, 0x04,  # bLength, bDescriptorType
-                0x00,  # bInterfaceNumber
-                0x00,  # bAlternateSetting
-                0x02,  # bNumEndpoints
-                0x08,  # bInterfaceClass (Mass Storage)
-                0x06,  # bInterfaceSubClass (SCSI)
-                0x50,  # bInterfaceProtocol (BBB)
-                0x00,  # iInterface
-
-                # BBB Endpoint 1 IN (Bulk)
-                0x07, 0x05,  # bLength, bDescriptorType
-                0x81,  # bEndpointAddress (EP1 IN)
-                0x02,  # bmAttributes (Bulk)
-                0x00, 0x02,  # wMaxPacketSize = 512
-                0x00,  # bInterval
-
-                # BBB Endpoint 2 OUT (Bulk)
-                0x07, 0x05,  # bLength, bDescriptorType
-                0x02,  # bEndpointAddress (EP2 OUT)
-                0x02,  # bmAttributes (Bulk)
-                0x00, 0x02,  # wMaxPacketSize = 512
-                0x00,  # bInterval
-
-                # Interface descriptor - Alt Setting 1 (UAS)
-                0x09, 0x04,  # bLength, bDescriptorType
-                0x00,  # bInterfaceNumber
-                0x01,  # bAlternateSetting
-                0x04,  # bNumEndpoints
-                0x08,  # bInterfaceClass (Mass Storage)
-                0x06,  # bInterfaceSubClass (SCSI)
-                0x62,  # bInterfaceProtocol (UAS)
-                0x00,  # iInterface
-
-                # UAS Endpoint 1 IN (Bulk) - Command Status
-                0x07, 0x05,  # bLength, bDescriptorType
-                0x81,  # bEndpointAddress (EP1 IN)
-                0x02,  # bmAttributes (Bulk)
-                0x00, 0x02,  # wMaxPacketSize = 512
-                0x00,  # bInterval
-
-                # UAS Pipe Usage descriptor for EP1 IN
-                0x04,  # bLength
-                0x24,  # bDescriptorType (CS_INTERFACE - UAS pipe)
-                0x01,  # bPipeID (Status pipe)
-                0x00,  # bReserved
-
-                # UAS Endpoint 2 OUT (Bulk) - Command
-                0x07, 0x05,  # bLength, bDescriptorType
-                0x02,  # bEndpointAddress (EP2 OUT)
-                0x02,  # bmAttributes (Bulk)
-                0x00, 0x02,  # wMaxPacketSize = 512
-                0x00,  # bInterval
-
-                # UAS Pipe Usage descriptor for EP2 OUT
-                0x04,  # bLength
-                0x24,  # bDescriptorType (CS_INTERFACE - UAS pipe)
-                0x02,  # bPipeID (Command pipe)
-                0x00,  # bReserved
-
-                # UAS Endpoint 3 IN (Bulk) - Data IN
-                0x07, 0x05,  # bLength, bDescriptorType
-                0x83,  # bEndpointAddress (EP3 IN)
-                0x02,  # bmAttributes (Bulk)
-                0x00, 0x02,  # wMaxPacketSize = 512
-                0x00,  # bInterval
-
-                # UAS Pipe Usage descriptor for EP3 IN
-                0x04,  # bLength
-                0x24,  # bDescriptorType (CS_INTERFACE - UAS pipe)
-                0x03,  # bPipeID (Data-In pipe)
-                0x00,  # bReserved
-
-                # UAS Endpoint 4 OUT (Bulk) - Data OUT
-                0x07, 0x05,  # bLength, bDescriptorType
-                0x04,  # bEndpointAddress (EP4 OUT)
-                0x02,  # bmAttributes (Bulk)
-                0x00, 0x02,  # wMaxPacketSize = 512
-                0x00,  # bInterval
-
-                # UAS Pipe Usage descriptor for EP4 OUT
-                0x04,  # bLength
-                0x24,  # bDescriptorType (CS_INTERFACE - UAS pipe)
-                0x04,  # bPipeID (Data-Out pipe)
-                0x00,  # bReserved
-            ])
-
-        elif desc_type == 0x03:  # String descriptor
-            if desc_index == 0:
-                # Language ID list
-                return bytes([0x04, 0x03, 0x09, 0x04])  # US English
-            elif desc_index == 1:
-                # Serial number (placeholder)
-                s = "00000000"
-                data = [2 + len(s) * 2, 0x03]
-                for c in s:
-                    data.extend([ord(c), 0x00])
-                return bytes(data)
-            elif desc_index == 2:
-                # Manufacturer
-                s = "ASMedia"
-                data = [2 + len(s) * 2, 0x03]
-                for c in s:
-                    data.extend([ord(c), 0x00])
-                return bytes(data)
-            elif desc_index == 3:
-                # Product
-                s = "ASM2464PD"
-                data = [2 + len(s) * 2, 0x03]
-                for c in s:
-                    data.extend([ord(c), 0x00])
-                return bytes(data)
-
-        elif desc_type == 0x0F:  # BOS descriptor
-            # USB 3.x BOS descriptor - minimal placeholder
-            return bytes([
-                0x05, 0x0F,  # bLength, bDescriptorType
-                0x16, 0x00,  # wTotalLength = 22
-                0x02,  # bNumDeviceCaps
-
-                # USB 2.0 Extension
-                0x07, 0x10, 0x02,  # bLength, bDescriptorType, bDevCapabilityType
-                0x02, 0x00, 0x00, 0x00,  # bmAttributes (LPM supported)
-
-                # SuperSpeed USB
-                0x0A, 0x10, 0x03,  # bLength, bDescriptorType, bDevCapabilityType
-                0x00,  # bmAttributes
-                0x0E, 0x00,  # wSpeedsSupported
-                0x01,  # bFunctionalitySupport
-                0x0A,  # bU1DevExitLat
-                0xFF, 0x07,  # wU2DevExitLat
-            ])
-
-        return None
+    # ============================================================
+    # DEPRECATED: _usb_get_descriptor_data
+    # This function contained hardcoded USB descriptor data which
+    # violates the pure DMA principle. The firmware must generate
+    # all descriptor responses itself via DMA from its code ROM.
+    # DO NOT resurrect this function!
+    # ============================================================
 
     def _usb_ep_data_buf_read(self, hw: 'HardwareState', addr: int) -> int:
         """Read from USB EP data buffer (0xD800-0xDFFF)."""
@@ -2240,7 +2092,10 @@ class HardwareState:
                     if self.memory and target_addr < 0x6000:
                         self.memory.xdata[target_addr] = data
                         self._e5_dma_done = True
+                        self.usb_cmd_pending = False  # E5 command complete
+                        self.usb_cmd_type = 0  # Reset command type
                         print(f"[{self.cycles:8d}] [DMA] E5 write: 0x{data:02X} to XDATA[0x{target_addr:04X}]")
+                        print(f"[{self.cycles:8d}] [USB] E5 command completed")
 
     def _read_xdata_for_dma(self, addr: int) -> int:
         """Read from XDATA for DMA, using callbacks if registered."""
@@ -2376,18 +2231,10 @@ class HardwareState:
             value = self.usb_e5_pending_value
             print(f"[{self.cycles:8d}] [USB] Read E5 value reg 0xC47A = 0x{value:02X} (pending E5)")
 
-            # Track read count - clear pending after firmware has read the value
-            if not hasattr(self, '_e5_value_read_count'):
-                self._e5_value_read_count = 0
-            self._e5_value_read_count += 1
-
-            # After the first read, clear the pending flag so firmware exits the loop
-            # The E5 value is consumed when first read; subsequent reads can return
-            # the normal register value.
-            if self._e5_value_read_count >= 1:
-                self.usb_cmd_pending = False
-                self._e5_value_read_count = 0
-                print(f"[{self.cycles:8d}] [USB] E5 command completed, clearing pending flag")
+            # For E5 commands, don't clear pending yet - let the firmware continue
+            # processing. The command completes when the DMA write happens (D800=0x04)
+            # or after a timeout. Track that we've delivered the value.
+            self._e5_value_delivered = True
 
             return value
 

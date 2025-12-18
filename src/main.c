@@ -24,6 +24,7 @@
 #include "utils.h"
 #include "drivers/power.h"
 #include "drivers/pd.h"
+#include "drivers/usb_descriptors.h"
 
 /* Forward declarations for app layer functions not in headers yet */
 extern void event_state_handler(void);         /* app/event_handler.c */
@@ -557,6 +558,52 @@ check_loop_state:
 state_ready:
         /* Enable interrupts and continue processing (0x303f) */
         EA = 1;
+
+        /*
+         * USB Status Handler - Check for pending descriptor requests
+         * Original firmware: 0xCDF5-0xCE0B
+         *
+         * Checks 0x9002 bit 1 (should be CLEAR) and 0x9091 bit 1 (should be SET)
+         * If conditions met, calls descriptor handler (0xD088) which checks 0x07E1
+         */
+        if (!(REG_USB_CONFIG & 0x02)) {  /* 0x9002 bit 1 is CLEAR */
+            if (REG_INT_FLAGS_EX0 & 0x02) {  /* 0x9091 bit 1 is SET */
+                /* Descriptor handler - check 0x07E1 (0xD088-0xD093) */
+                if (XDATA8(0x07E1) == 0x05) {
+                    /* Read setup packet from MMIO to get descriptor request */
+                    uint8_t desc_type = XDATA_REG8(0x9E03);  /* wValue high = descriptor type */
+                    uint8_t desc_index = XDATA_REG8(0x9E02); /* wValue low = descriptor index */
+                    uint8_t req_len = XDATA_REG8(0x9E06);    /* wLength low */
+                    uint8_t desc_len;
+                    __code const uint8_t *desc_ptr;
+
+                    /* Look up the descriptor in code ROM */
+                    desc_ptr = usb_get_descriptor(desc_type, desc_index, &desc_len);
+
+                    if (desc_ptr != 0) {
+                        /* Use minimum of requested length and descriptor length */
+                        if (req_len < desc_len) {
+                            desc_len = req_len;
+                        }
+
+                        /* Configure DMA source address (code ROM address of descriptor) */
+                        REG_USB_EP_BUF_HI = (uint8_t)((uint16_t)desc_ptr >> 8);
+                        REG_USB_EP_BUF_LO = (uint8_t)((uint16_t)desc_ptr & 0xFF);
+
+                        /* Configure transfer length */
+                        REG_USB_EP0_LEN_L = desc_len;
+                    }
+
+                    /* Trigger USB descriptor send (0xA57A-0xA580) */
+                    XDATA_REG8(0x9092) = 0x01;
+
+                    /* Clear descriptor pending state */
+                    XDATA8(0x07E1) = 0x00;
+                }
+                /* Acknowledge the interrupt by writing 0x02 to 0x9091 */
+                REG_INT_FLAGS_EX0 = 0x02;
+            }
+        }
 
         /* Call event handler (0x3041) */
         dispatch_0507();  /* 0x0507 -> handler_e50d */

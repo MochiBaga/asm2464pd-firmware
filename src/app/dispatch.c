@@ -176,8 +176,125 @@ void dispatch_034f(void) { jump_bank_0(0xE94D); }
 /* 0x0354: Target 0xE925 - handler_e925 (stub) */
 void dispatch_0354(void) { jump_bank_0(0xE925); }
 
-/* 0x0359: Target 0xDEE3 - handler_dee3 */
-void dispatch_0359(void) { jump_bank_0(0xDEE3); }
+/*
+ * helper_cc60 - Set link status bits 0-1 to 0b11
+ * Address: 0xCC60-0xCC69 (10 bytes)
+ *
+ * Modifies REG_LINK_STATUS_E716: clears bits 0-1 then sets them to 0b11.
+ *
+ * Original disassembly:
+ *   cc60: mov dptr, #0xe716
+ *   cc63: movx a, @dptr
+ *   cc64: anl a, #0xfc
+ *   cc66: orl a, #0x03
+ *   cc68: movx @dptr, a
+ *   cc69: ret
+ */
+static void helper_cc60(void)
+{
+    uint8_t val = REG_LINK_STATUS_E716;
+    val = (val & 0xFC) | 0x03;
+    REG_LINK_STATUS_E716 = val;
+}
+
+/*
+ * init_bda4 - State initialization function
+ * Address: 0xBDA4-0xBE20 (125 bytes)
+ *
+ * Called when power status bit 6 is clear. Clears many XDATA state variables
+ * and calls several initialization functions.
+ *
+ * Original disassembly (partial):
+ *   bda4: clr a
+ *   bda5: mov dptr, #0x07ed
+ *   bda8: movx @dptr, a        ; clear 0x07ed
+ *   bda9: mov dptr, #0x07ee
+ *   bdac: movx @dptr, a        ; clear 0x07ee
+ *   ... (clears many more locations)
+ *   bdfa: lcall 0x54bb
+ *   bdfd: lcall 0xcc56
+ *   ... (more init calls)
+ *   be20: ljmp 0x494d
+ *
+ * TODO: Full implementation requires reversing all helper functions.
+ * For now, implement the state clearing portion.
+ */
+static void init_bda4(void)
+{
+    /* Clear state variables */
+    XDATA8(0x07ED) = 0;
+    XDATA8(0x07EE) = 0;
+    XDATA8(0x0AF5) = 0;
+    XDATA8(0x07EB) = 0;
+    XDATA8(0x0AF1) = 0;
+    XDATA8(0x0ACA) = 0;
+    XDATA8(0x07E1) = 0x05;  /* Special value */
+    XDATA8(0x0B2E) = 0;
+    XDATA8(0x0ACB) = 0;
+    XDATA8(0x07E3) = 0;
+    XDATA8(0x07E6) = 0;
+    XDATA8(0x07E7) = 0;
+    XDATA8(0x07E9) = 0;
+    XDATA8(0x0B2D) = 0;
+    XDATA8(0x07E2) = 0;
+    XDATA8(0x0003) = 0;
+    XDATA8(0x0006) = 0;
+    XDATA8(0x07E8) = 0;
+    XDATA8(0x07E5) = 0;
+    XDATA8(0x0B3B) = 0;
+    XDATA8(0x07EA) = 0;
+
+    /* TODO: Call helper functions
+     * lcall 0x54bb
+     * lcall 0xcc56
+     * Then modify 0x92C8, write to 0xCD31, call more helpers...
+     * ljmp 0x494d
+     */
+}
+
+/*
+ * handler_e423 - Status check and conditional init handler
+ * Address: 0xE423-0xE437 (21 bytes)
+ *
+ * Called via dispatch_0359. Checks power status and initializes if needed.
+ *
+ * Original disassembly:
+ *   e423: lcall 0xcc60         ; call helper (set link status bits)
+ *   e426: mov dptr, #0x92c2
+ *   e429: movx a, @dptr        ; read REG_POWER_STATUS
+ *   e42a: anl a, #0x40         ; isolate bit 6
+ *   e42c: mov r7, a            ; save to R7
+ *   e42d: swap a               ; swap nibbles: 0x40 -> 0x04
+ *   e42e: rrc a                ; rotate right: 0x04 -> 0x02
+ *   e42f: rrc a                ; rotate right: 0x02 -> 0x01
+ *   e430: anl a, #0x03         ; mask to bits 0-1
+ *   e432: jnz 0xe437           ; if non-zero (bit 6 was set), skip init
+ *   e434: lcall 0xbda4         ; call init function
+ *   e437: ret
+ *
+ * Logic: If (REG_POWER_STATUS & 0x40) == 0, call init_bda4()
+ */
+static void handler_e423(void)
+{
+    uint8_t status;
+
+    /* Call helper to set link status bits */
+    helper_cc60();
+
+    /* Read power status and check bit 6 */
+    status = REG_POWER_STATUS & 0x40;
+
+    /* If bit 6 is clear, call init function */
+    if (status == 0) {
+        init_bda4();
+    }
+}
+
+/* 0x0359: Target 0xE423 - status check and init handler */
+void dispatch_0359(void)
+{
+    handler_e423();
+}
 
 /* 0x035E: Target 0xE6BD - handler_e6bd */
 void dispatch_035e(void) { jump_bank_0(0xE6BD); }
