@@ -310,9 +310,10 @@ class USBDevicePassthrough:
 
         # Run firmware to process request - run in smaller chunks to let bulk thread run
         # This is critical: running too many cycles blocks the GIL and starves the bulk thread
+        # Need enough cycles for firmware to complete descriptor DMA (tests use 500000)
         import time as _time
-        remaining_cycles = 50000
-        chunk_size = 5000  # Run in smaller chunks
+        remaining_cycles = 200000
+        chunk_size = 10000  # Run in 10k chunks for responsiveness
         is_get_descriptor = (setup.bmRequestType == 0x80 and setup.bRequest == USB_REQ_GET_DESCRIPTOR)
         while remaining_cycles > 0:
             try:
@@ -361,7 +362,7 @@ class USBDevicePassthrough:
             hw.regs[0x9091] = 0x02  # Bit 1 SET to trigger descriptor handler
             if self.emu.memory:
                 self.emu.memory.xdata[0x07E1] = 0x05  # Descriptor request pending
-            self.run_firmware_cycles(max_cycles=50000)
+            self.run_firmware_cycles(max_cycles=200000)
             return self.read_response(setup.wLength)
 
         return None
@@ -438,11 +439,24 @@ class USBDevicePassthrough:
 
         if event.type == USBRawEventType.CONNECT:
             raw_speed = event.data[0] if event.data else 0
-            print(f"[USB_PASS] Connect event (raw_speed={raw_speed}, emu_speed={self._emu_speed})")
-            # Initialize emulator USB state with our configured speed
-            self.emu.hw.usb_controller.connect(speed=self._emu_speed)
-            # Run firmware boot sequence
-            self.emu.run(max_cycles=100000)
+            # Map kernel USB speed to our internal format
+            # Kernel: LOW=1, FULL=2, HIGH=3, SUPER=5, SUPER_PLUS=6
+            # Internal: Full=0, High=1, Super=2, Super+=3
+            kernel_to_internal = {
+                1: 0,  # LOW -> Full
+                2: 0,  # FULL -> Full
+                3: 1,  # HIGH -> High
+                5: 2,  # SUPER -> Super
+                6: 3,  # SUPER_PLUS -> Super+
+            }
+            # Use actual negotiated speed, not requested speed
+            actual_speed = kernel_to_internal.get(raw_speed, self._emu_speed)
+            self._emu_speed = actual_speed  # Update our speed to match actual
+            print(f"[USB_PASS] Connect event (kernel_speed={raw_speed}, emu_speed={actual_speed})")
+            # Initialize emulator USB state with actual negotiated speed
+            self.emu.hw.usb_controller.connect(speed=actual_speed)
+            # Run firmware to process USB connect (use relative cycles from current)
+            self.emu.run(max_cycles=self.emu.cpu.cycles + 100000)
 
         elif event.type == USBRawEventType.CONTROL:
             self._handle_control_event(event.data)
@@ -990,6 +1004,97 @@ class USBDevicePassthrough:
             # Sync cache - just return success
             return b'', 0
 
+        # ================================================================
+        # VENDOR COMMANDS (0xE0-0xE8)
+        # These are ASMedia-specific commands used by patch.py for
+        # firmware updates. Per CLAUDE.md, these should go through
+        # firmware via MMIO injection.
+        # ================================================================
+        elif opcode == 0xE0:
+            # E0 - Config Read: Read 128-byte config blocks
+            print(f"[SCSI] VENDOR E0 (Config Read): cdb={cdb.hex()}")
+            # CDB format: E0 50 index ...
+            # index = cdb[2]
+            config_index = cdb[2] if len(cdb) > 2 else 0
+            # TODO: Inject via MMIO and let firmware handle
+            # For now return empty config (all 0xFF)
+            config_data = bytes([0xFF] * min(data_length, 128))
+            return config_data, 0
+
+        elif opcode == 0xE1:
+            # E1 - Config Write: Write 128-byte config blocks
+            print(f"[SCSI] VENDOR E1 (Config Write): cdb={cdb.hex()}")
+            # CDB format: E1 50 index ...
+            config_index = cdb[2] if len(cdb) > 2 else 0
+            # Read data from host
+            if self.ep_data_out and data_length > 0:
+                config_data = self.gadget.ep_read(self.ep_data_out, data_length)
+                print(f"[SCSI] E1 received {len(config_data)} bytes config (index={config_index})")
+                # TODO: Inject via MMIO to firmware
+                # Store for emulation
+                if not hasattr(self, '_vendor_config'):
+                    self._vendor_config = {}
+                self._vendor_config[config_index] = config_data
+            return b'', 0
+
+        elif opcode == 0xE2:
+            # E2 - Flash Read: Read N bytes from SPI flash
+            print(f"[SCSI] VENDOR E2 (Flash Read): cdb={cdb.hex()}")
+            # TODO: Inject via MMIO
+            return bytes([0xFF] * min(data_length, 4096)), 0
+
+        elif opcode == 0xE3:
+            # E3 - Firmware Write: Flash firmware to SPI
+            print(f"[SCSI] VENDOR E3 (Firmware Write): cdb={cdb.hex()}")
+            # CDB format: E3 50/D0 length(4 bytes)
+            # 0x50 = part1 (bank0), 0xD0 = part2 (bank1)
+            part_type = cdb[1] if len(cdb) > 1 else 0
+            fw_length = struct.unpack('>I', cdb[2:6])[0] if len(cdb) >= 6 else data_length
+            print(f"[SCSI] E3 part=0x{part_type:02X} length={fw_length}")
+            # Read firmware data from host
+            if self.ep_data_out and fw_length > 0:
+                fw_data = self.gadget.ep_read(self.ep_data_out, fw_length)
+                print(f"[SCSI] E3 received {len(fw_data)} bytes firmware")
+                # TODO: Inject via MMIO to firmware's flash handler
+                # Store for emulation
+                if not hasattr(self, '_vendor_firmware'):
+                    self._vendor_firmware = {}
+                self._vendor_firmware[part_type] = fw_data
+            return b'', 0
+
+        elif opcode == 0xE4:
+            # E4 - XDATA Read: Read from XDATA memory
+            print(f"[SCSI] VENDOR E4 (XDATA Read): cdb={cdb.hex()}")
+            # This is already handled via control transfers, but can also come via SCSI
+            # CDB format varies
+            # TODO: Inject via MMIO
+            return bytes(data_length), 0
+
+        elif opcode == 0xE5:
+            # E5 - XDATA Write: Write to XDATA memory
+            print(f"[SCSI] VENDOR E5 (XDATA Write): cdb={cdb.hex()}")
+            # TODO: Inject via MMIO
+            if self.ep_data_out and data_length > 0:
+                write_data = self.gadget.ep_read(self.ep_data_out, data_length)
+                print(f"[SCSI] E5 received {len(write_data)} bytes")
+            return b'', 0
+
+        elif opcode == 0xE6:
+            # E6 - NVMe Admin: Passthrough NVMe admin commands
+            print(f"[SCSI] VENDOR E6 (NVMe Admin): cdb={cdb.hex()}")
+            # TODO: Inject via MMIO
+            return bytes(data_length) if is_data_in else b'', 0
+
+        elif opcode == 0xE8:
+            # E8 - Reset/Commit: System reset or commit flashed firmware
+            print(f"[SCSI] VENDOR E8 (Reset/Commit): cdb={cdb.hex()}")
+            # CDB format: E8 51 ...
+            sub_cmd = cdb[1] if len(cdb) > 1 else 0
+            print(f"[SCSI] E8 sub-command=0x{sub_cmd:02X}")
+            # For firmware commit (0x51), we would trigger the commit sequence
+            # TODO: Inject via MMIO to firmware
+            return b'', 0
+
         else:
             print(f"[SCSI] Unknown opcode: 0x{opcode:02X}")
             return b'', 1  # Check condition
@@ -1080,7 +1185,7 @@ def main():
     parser.add_argument('--device', default='dummy_udc.0',
                        help='UDC device name (default: dummy_udc.0)')
     parser.add_argument('--speed', choices=['low', 'full', 'high', 'super'],
-                       default='high', help='USB speed (default: high)')
+                       default='super', help='USB speed (default: super)')
     parser.add_argument('--verbose', '-v', action='store_true',
                        help='Enable verbose logging')
     args = parser.parse_args()

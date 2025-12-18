@@ -426,6 +426,111 @@ class USBController:
 
         return cdb
 
+    def inject_scsi_vendor_command(self, opcode: int, cdb: bytes, data: bytes = b'',
+                                    is_write: bool = False):
+        """
+        Inject a SCSI vendor command (E0-E8) via MMIO registers.
+
+        This sets up the MMIO registers needed for the firmware to process
+        vendor-specific SCSI commands used by patch.py for firmware updates.
+
+        Vendor opcodes:
+            0xE0 - Config Read (128 bytes)
+            0xE1 - Config Write (128 bytes)
+            0xE2 - Flash Read
+            0xE3 - Firmware Write (to SPI flash)
+            0xE4 - XDATA Read
+            0xE5 - XDATA Write
+            0xE6 - NVMe Admin passthrough
+            0xE8 - Reset/Commit
+
+        Args:
+            opcode: SCSI vendor opcode (0xE0-0xE8)
+            cdb: Complete CDB bytes (16 bytes max)
+            data: Data for write commands (E1, E3, E5)
+            is_write: True if this is a write command with data phase
+        """
+        cycles = self.hw.cycles
+        print(f"[{cycles:8d}] [USB_CTRL] === INJECT SCSI VENDOR COMMAND ===")
+        print(f"[{cycles:8d}] [USB_CTRL] Opcode=0x{opcode:02X} CDB={cdb.hex()}")
+        if is_write and data:
+            print(f"[{cycles:8d}] [USB_CTRL] Write data: {len(data)} bytes")
+
+        # Pad CDB to 16 bytes
+        cdb_padded = (cdb + bytes(16))[:16]
+
+        # =====================================================
+        # MMIO REGISTER SETUP FOR SCSI VENDOR COMMAND
+        # =====================================================
+
+        # Write CDB to USB interface registers (0x910D-0x911C)
+        for i, b in enumerate(cdb_padded):
+            self.hw.regs[0x910D + i] = b
+
+        # Also write to alternate CDB locations firmware may check
+        for i, b in enumerate(cdb_padded):
+            self.hw.regs[0x911F + i] = b
+
+        # USB endpoint buffers
+        for i, b in enumerate(cdb_padded):
+            self.hw.usb_ep_data_buf[i] = b
+            self.hw.usb_ep0_buf[i] = b
+        self.hw.usb_ep0_len = len(cdb_padded)
+
+        # USB connection and interrupt status
+        self.hw.regs[0x9000] = 0x81  # Connected, USB active
+        self.hw.regs[0x9101] = 0x21  # Bit 5 triggers command handler
+        self.hw.regs[0xC802] = 0x05  # USB interrupt pending
+        self.hw.regs[0x9096] = 0x01  # EP0 has data
+        self.hw.regs[0x90E2] = 0x01  # Endpoint status
+
+        # Store command state
+        self.hw.usb_cmd_type = opcode
+        self.hw.usb_cmd_size = len(data) if is_write else 0
+        self.hw.usb_cmd_pending = True
+        self.vendor_cmd_active = True
+
+        # Reset state machine
+        self.hw.usb_ce89_read_count = 0
+
+        # =====================================================
+        # RAM SETUP - populate like USB hardware DMA
+        # =====================================================
+        if self.hw.memory:
+            # USB state = 2 (state for SCSI bulk commands)
+            # Value 2 triggers the SCSI handler path at 0x32EE
+            self.hw.memory.idata[0x6A] = 2
+
+            # CDB area - write to XDATA[0x0002+] where firmware reads it
+            for i, b in enumerate(cdb_padded):
+                self.hw.memory.xdata[0x0002 + i] = b
+
+            # Vendor command flags
+            self.hw.memory.xdata[0x0003] = 0x08  # Enable vendor dispatch
+
+            # Set state for vendor command handling
+            # 0x0B02 = state machine: 0=idle, 1=E2 read, 2=E3 write
+            if opcode == 0xE2:
+                self.hw.memory.xdata[0x0B02] = 1
+            elif opcode == 0xE3:
+                self.hw.memory.xdata[0x0B02] = 2
+            else:
+                self.hw.memory.xdata[0x0B02] = 0
+
+            # Magic value for vendor commands
+            self.hw.memory.xdata[0xEA90] = 0x5A
+
+            # Write data to USB buffer at 0x8000 for write commands
+            if is_write and data:
+                for i, b in enumerate(data):
+                    if 0x8000 + i < 0x10000:
+                        self.hw.memory.xdata[0x8000 + i] = b
+                self.hw.usb_data_len = len(data)
+                print(f"[{cycles:8d}] [USB_CTRL] Wrote {len(data)} bytes to USB buffer at 0x8000")
+
+        print(f"[{cycles:8d}] [USB_CTRL] MMIO configured for vendor opcode 0x{opcode:02X}")
+        return cdb_padded
+
     def inject_control_transfer(self, bmRequestType: int, bRequest: int, wValue: int,
                                   wIndex: int, wLength: int, data: bytes = b''):
         """
@@ -1769,6 +1874,37 @@ class HardwareState:
 
         print(f"[{self.cycles:8d}] [USB] SCSI write command ready, triggering interrupt")
 
+    def inject_scsi_vendor_cmd(self, opcode: int, cdb: bytes, data: bytes = b'',
+                                is_write: bool = False):
+        """
+        Inject a SCSI vendor command (E0-E8) through MMIO registers.
+
+        This sets up the firmware's vendor SCSI command path for commands
+        used by patch.py for firmware updates.
+
+        Args:
+            opcode: SCSI vendor opcode (0xE0-0xE8)
+            cdb: Complete CDB bytes (16 bytes max)
+            data: Data for write commands (E1, E3, E5)
+            is_write: True if this is a write command with data phase
+        """
+        # Ensure USB is connected before injecting a command
+        if not self.usb_connected:
+            self.usb_connected = True
+            self.usb_controller.connect()
+            print(f"[{self.cycles:8d}] [USB] Auto-connected USB for SCSI vendor command")
+
+        # Use USBController for the MMIO setup
+        cdb_padded = self.usb_controller.inject_scsi_vendor_command(
+            opcode, cdb, data, is_write
+        )
+
+        # Trigger USB interrupt
+        self._pending_usb_interrupt = True
+
+        print(f"[{self.cycles:8d}] [USB] SCSI vendor command 0x{opcode:02X} ready, triggering interrupt")
+        return cdb_padded
+
     def _trigger_usb_interrupt(self):
         """Trigger USB interrupt to process queued command."""
         if not self.usb_connected:
@@ -2025,8 +2161,9 @@ class HardwareState:
                 print(f"[{self.cycles:8d}] [USB] DMA'd {dma_len} bytes from EP0 buffer 0x9E00 to 0x8000: {desc_data[:min(32, dma_len)].hex()}")
 
             self.usb_control_transfer_active = False
-            # Clear captured config descriptor after use
-            self.usb_captured_config_desc = bytearray()
+            # NOTE: Don't clear usb_captured_config_desc here - firmware may trigger
+            # DMA multiple times for one request. Capture is reset when new config
+            # descriptor is written (offset 0 with value 0x09).
 
         elif value == 0x04:
             # DMA trigger - read length from 0x9003-0x9004
