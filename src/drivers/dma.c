@@ -26,7 +26,7 @@ extern void endpoint_config_init(uint8_t slot);
 /* Forward declarations */
 void dma_set_scsi_param3(void);
 void dma_set_scsi_param1(void);
-void transfer_func_1633(uint16_t addr);
+void dma_set_register_bit0(uint16_t addr);
 
 /*
  * dma_copy_idata_6b_to_6f - Copy 32-bit value from IDATA[0x6B] to IDATA[0x6F]
@@ -407,7 +407,7 @@ uint8_t scsi_get_tag_count_status(void)
     uint8_t count;
 
     count = REG_SCSI_DMA_TAG_COUNT & SCSI_DMA_TAG_MASK;
-    I_WORK_40 = count;
+    I_XFER_STATUS = count;
 
     /* Return 1 if count >= 16, 0 otherwise */
     return (count >= 0x10) ? 1 : 0;
@@ -486,7 +486,7 @@ uint8_t scsi_get_queue_status(void)
     uint8_t status;
 
     status = REG_SCSI_DMA_QUEUE_STAT & SCSI_DMA_QUEUE_MASK;
-    I_WORK_40 = status;
+    I_XFER_STATUS = status;
 
     /* Return 1 if status >= 8, 0 otherwise */
     return (status >= 0x08) ? 1 : 0;
@@ -776,7 +776,7 @@ uint8_t dma_shift_rrc2_mask(uint8_t val)
  */
 __xdata uint8_t *dma_calc_addr_00c2(void)
 {
-    uint8_t offset = I_WORK_52;
+    uint8_t offset = I_POLL_STATUS;
     return (__xdata uint8_t *)(0x00C2 + offset);
 }
 
@@ -826,7 +826,7 @@ void dma_store_to_0a7d(uint8_t val)
  */
 void dma_calc_scsi_index(void)
 {
-    uint8_t idx = I_WORK_40;
+    uint8_t idx = I_XFER_STATUS;
     uint8_t offset = 3 - idx;
     __xdata uint8_t *reg = (__xdata uint8_t *)(0xCE40 + offset);
     *reg = 0xFF;
@@ -892,7 +892,7 @@ void dma_init_channel_with_config(uint8_t config)
  */
 uint8_t dma_write_to_scsi_ce96(void)
 {
-    uint8_t val41 = I_WORK_41;
+    uint8_t val41 = I_SLOT_START_INDEX;
     uint8_t val47 = I_PRODUCT_CAP;
     uint8_t reg_val;
 
@@ -943,7 +943,7 @@ __xdata uint8_t *dma_calc_ep_config_ptr(void)
  */
 void dma_write_to_scsi_ce6e(void)
 {
-    uint8_t val = I_WORK_41;
+    uint8_t val = I_SLOT_START_INDEX;
     REG_SCSI_DMA_STATUS = val;
     REG_SCSI_DMA_STATUS = val + 1;
 }
@@ -1025,7 +1025,7 @@ __xdata uint8_t *dma_calc_addr_0456(uint8_t offset)
  */
 void dma_write_idata_to_dptr(__xdata uint8_t *ptr)
 {
-    uint8_t val = I_WORK_41;
+    uint8_t val = I_SLOT_START_INDEX;
     *ptr = val + 2;
     *ptr = val + 3;  /* Note: Same address, second write */
 }
@@ -1181,7 +1181,7 @@ uint16_t transfer_set_dptr_0464_offset(void)
 uint16_t transfer_calc_work43_offset(__xdata uint8_t *dptr)
 {
     /* Write IDATA 0x41 to caller's DPTR first */
-    *dptr = I_WORK_41;
+    *dptr = I_SLOT_START_INDEX;
     /* Return computed address */
     return 0x007C + I_CMD_SLOT_INDEX;
 }
@@ -1209,7 +1209,7 @@ uint16_t transfer_calc_work53_offset(void)
     uint8_t val;
     uint16_t addr;
 
-    val = I_WORK_53;
+    val = I_QUEUE_STATUS;
     addr = 0x0477 + (val * 4);
     return addr;
 }
@@ -1260,7 +1260,7 @@ uint16_t transfer_calc_work55_offset(void)
 {
     uint16_t addr;
 
-    addr = 0x04B7 + I_WORK_55;
+    addr = 0x04B7 + I_VENDOR_STATE;
     return addr;
 }
 
@@ -1287,7 +1287,7 @@ uint16_t transfer_calc_work55_offset(void)
 /* This is an internal calculation helper, handled inline */
 
 /*
- * transfer_func_16b0 - Write value to SCSI DMA status register
+ * dma_write_scsi_status_pair - Write value to SCSI DMA status register
  * Address: 0x16b0-0x16b6 (7 bytes)
  *
  * Disassembly:
@@ -1299,13 +1299,13 @@ uint16_t transfer_calc_work55_offset(void)
  *
  * Writes param to REG_SCSI_DMA_STATUS_L, then writes param+1 to same location.
  */
-void transfer_func_16b0(uint8_t param)
+void dma_write_scsi_status_pair(uint8_t param)
 {
     REG_SCSI_DMA_STATUS_L = param;
     REG_SCSI_DMA_STATUS_L = param + 1;
 }
 
-/* transfer_func_1633 and usb_calc_indexed_addr are forward declarations from this file and usb.h */
+/* dma_set_register_bit0 and usb_calc_indexed_addr are forward declarations from this file and usb.h */
 
 /*
  * dma_interrupt_handler - DMA/Queue endpoint handler
@@ -1325,7 +1325,7 @@ void dma_interrupt_handler(void)
     /* 0x2608: Call transfer_get_ep_queue_addr, read endpoint index */
     ptr = (__xdata uint8_t *)transfer_get_ep_queue_addr();
     work53 = *ptr;
-    I_WORK_53 = work53;
+    I_QUEUE_STATUS = work53;
 
     /* 0x260e: Call dma_calc_addr_0466 with index, read result */
     ptr = dma_calc_addr_0466(G_SYS_STATUS_PRIMARY);
@@ -1335,17 +1335,17 @@ void dma_interrupt_handler(void)
 loop_start:
     /* 0x2616: Check G_SYS_STATUS_PRIMARY */
     if (G_SYS_STATUS_PRIMARY != 0) {
-        work56 = I_WORK_53 + 0x20;
+        work56 = I_QUEUE_STATUS + 0x20;
     } else {
-        work56 = I_WORK_53;
+        work56 = I_QUEUE_STATUS;
     }
-    I_WORK_56 = work56;
+    I_DMA_QUEUE_INDEX = work56;
 
     /* 0x2627: Set bit 0 of REG_DMA_STATUS */
-    transfer_func_1633(0xC8D6);
+    dma_set_register_bit0(0xC8D6);
 
     /* 0x262d: Write slot index to REG_DMA_QUEUE_IDX */
-    REG_DMA_QUEUE_IDX = I_WORK_56;
+    REG_DMA_QUEUE_IDX = I_DMA_QUEUE_INDEX;
 
     /* 0x2633: Read queue flags, mask bit 0 */
     flags_lo = REG_PCIE_QUEUE_FLAGS_LO & PCIE_QUEUE_FLAG_VALID;
@@ -1359,9 +1359,9 @@ loop_start:
 
     /* 0x264b: Read queue index low/high */
     work51 = REG_PCIE_QUEUE_INDEX_LO;
-    I_WORK_51 = work51;
+    I_LOOP_COUNTER = work51;
     work52 = REG_PCIE_QUEUE_INDEX_HI;
-    I_WORK_52 = work52;
+    I_POLL_STATUS = work52;
 
     /* 0x2655: Clear G_BUFFER_STATE_0AA6 */
     G_BUFFER_STATE_0AA6 = 0;
@@ -1413,7 +1413,7 @@ check_state:
     r7 = 0;
 
     /* 0x26bb: Read from 0x009F + work52 */
-    ptr = (__xdata uint8_t *)(0x009F + I_WORK_52);
+    ptr = (__xdata uint8_t *)(0x009F + I_POLL_STATUS);
     val = *ptr;
 
     if (val == 0x01) {
@@ -1443,31 +1443,31 @@ check_state:
 
     if (!(I_WORK_54 & 0x40)) {
         if (G_SCSI_CTRL > 0) {
-            I_WORK_55 = 0;
+            I_VENDOR_STATE = 0;
             do {
                 ptr = (__xdata uint8_t *)transfer_calc_work55_offset();
                 val = *ptr;
                 if (val == 0xFF) {
-                    I_WORK_55++;
-                    if (I_WORK_55 == 0x20) {
+                    I_VENDOR_STATE++;
+                    if (I_VENDOR_STATE == 0x20) {
                         goto process_transfer;
                     }
                     continue;
                 }
                 ptr = (__xdata uint8_t *)transfer_calc_work55_offset();
-                *ptr = I_WORK_51;
+                *ptr = I_LOOP_COUNTER;
                 r6 = G_NVME_STATE_053B;
-                if (I_WORK_55 < r6) {
-                    G_NVME_STATE_053B = I_WORK_55;
+                if (I_VENDOR_STATE < r6) {
+                    G_NVME_STATE_053B = I_VENDOR_STATE;
                 }
                 goto process_transfer;
             } while (1);
         }
-        ptr = (__xdata uint8_t *)(0x00C2 + I_WORK_52);
+        ptr = (__xdata uint8_t *)(0x00C2 + I_POLL_STATUS);
         r6 = *ptr;
     } else {
-        G_DMA_ENDPOINT_0578 = I_WORK_51;
-        ptr = (__xdata uint8_t *)(0x009F + I_WORK_52);
+        G_DMA_ENDPOINT_0578 = I_LOOP_COUNTER;
+        ptr = (__xdata uint8_t *)(0x009F + I_POLL_STATUS);
         val = *ptr;
         if (val != r6) {
             goto process_transfer;
@@ -1495,11 +1495,11 @@ process_transfer:
         scsi_csw_write_residue();
         REG_USB_SIGNAL_90A1 = 0x01;
         *(__idata uint8_t *)0x6A = 0x05;
-        I_WORK_55 = 0;
-        while (I_WORK_55 < G_NVME_STATE_053B) {
+        I_VENDOR_STATE = 0;
+        while (I_VENDOR_STATE < G_NVME_STATE_053B) {
             ptr = (__xdata uint8_t *)transfer_calc_work55_offset();
             *ptr = 0xFF;
-            I_WORK_55++;
+            I_VENDOR_STATE++;
         }
         goto check_completion;
     }
@@ -1521,12 +1521,12 @@ process_transfer:
 
 check_completion:
     if (I_WORK_54 & 0x04) {
-        scsi_buffer_threshold_config(I_WORK_52);
+        scsi_buffer_threshold_config(I_POLL_STATUS);
     }
 
-    work53 = I_WORK_53;
+    work53 = I_QUEUE_STATUS;
     work53 = (work53 + 1) & 0x1F;
-    I_WORK_53 = work53;
+    I_QUEUE_STATUS = work53;
 
     if (work53 != 0) {
         goto loop_start;
@@ -1540,13 +1540,13 @@ handle_match_end:
     ptr = (__xdata uint8_t *)(0x045A + val);
     val = *ptr;
 
-    if (val == I_WORK_53) {
+    if (val == I_QUEUE_STATUS) {
         return;
     }
 
-    endpoint_config_init(I_WORK_53);
+    endpoint_config_init(I_QUEUE_STATUS);
     ptr = (__xdata uint8_t *)transfer_get_ep_queue_addr();
-    *ptr = I_WORK_53;
+    *ptr = I_QUEUE_STATUS;
     r6 = G_BUFFER_STATE_0AA7;
     ptr = dma_calc_addr_0466(G_SYS_STATUS_PRIMARY);
     *ptr = r6;
@@ -1559,7 +1559,7 @@ handle_match_end:
  * ============================================================ */
 
 /*
- * transfer_func_1633 - Set bit 0 at specified register address
+ * dma_set_register_bit0 - Set bit 0 at specified register address
  * Address: 0x1633-0x1639 (7 bytes)
  *
  * Disassembly:
@@ -1571,7 +1571,7 @@ handle_match_end:
  *
  * Sets bit 0 of the register at the specified address.
  */
-void transfer_func_1633(uint16_t addr)
+void dma_set_register_bit0(uint16_t addr)
 {
     __xdata uint8_t *ptr = (__xdata uint8_t *)addr;
     uint8_t val = *ptr;

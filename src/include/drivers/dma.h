@@ -142,8 +142,8 @@ uint16_t transfer_calc_work43_offset(__xdata uint8_t *dptr);    /* 0x1668-0x1676
 uint16_t transfer_calc_work53_offset(void);     /* 0x1677-0x1686 */
 uint16_t transfer_get_ep_queue_addr(void);      /* 0x1687-0x1695 */
 uint16_t transfer_calc_work55_offset(void);     /* 0x1696-0x16a1 */
-void transfer_func_16b0(uint8_t param);         /* 0x16b0-0x16b6 */
-void transfer_func_1633(uint16_t addr);         /* 0x1633-0x1639 */
+void dma_write_scsi_status_pair(uint8_t param); /* 0x16b0-0x16b6 */
+void dma_set_register_bit0(uint16_t addr);      /* 0x1633-0x1639 */
 
 /* DMA handlers */
 void dma_interrupt_handler(void);               /* 0x2608-0x2809 */

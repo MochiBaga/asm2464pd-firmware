@@ -1682,7 +1682,7 @@ uint8_t usb_dec_indexed_counter(void)
 }
 
 /*
- * usb_func_1b14 - Address calculation and store helper
+ * usb_copy_xdata_to_idata12 - Address calculation and store helper
  * Address: 0x1b14-0x1b13 (bytes overlap - actually 0x1b14-0x1b2a, 23 bytes)
  *
  * Takes R1:R2 (address), stores to DPTR, calls 0x0D84, then calls
@@ -1702,7 +1702,7 @@ uint8_t usb_dec_indexed_counter(void)
  *   1b29: mov a, r1
  *   1b2a: ret
  */
-/* Note: usb_func_1b14 is now in event_handler.c with correct signature for protocol.c */
+/* Note: usb_copy_xdata_to_idata12 is now in event_handler.c with correct signature for protocol.c */
 
 void usb_xdata_copy_with_offset(uint8_t addr_lo, uint8_t addr_hi)
 {

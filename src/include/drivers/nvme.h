@@ -239,16 +239,16 @@ void nvme_submit_cmd(void);                     /* 0x4b60-0x4bff */
 void nvme_io_handler(uint8_t param);            /* 0x4c00-0x4cff */
 
 /* NVMe helper functions */
-uint8_t nvme_func_1b07(void);                   /* 0x1b07-0x1b0a */
-uint8_t nvme_func_1b0b(uint8_t param);          /* 0x1b0b-0x1b13 */
+uint8_t nvme_get_queue_slot_value(void);        /* 0x1b07-0x1b0a */
+uint8_t nvme_read_xdata_0100(uint8_t param);    /* 0x1b0b-0x1b13 */
 uint8_t nvme_check_threshold_r5(uint8_t val);   /* 0x1b2b-0x1b2c */
 uint8_t nvme_check_threshold_0x3e(void);        /* 0x1b38-0x1b3d */
-uint8_t nvme_func_1c2a(uint8_t param);          /* 0x1c2a-0x1c2f */
-void nvme_func_1c43(uint8_t param);             /* 0x1c43-0x1c49 */
-uint8_t nvme_func_1c55(void);                   /* 0x1c55-0x1c5c */
-void nvme_func_1c7e(void);                      /* 0x1c7e-0x1c87 */
-uint8_t nvme_func_1c9f(void);                   /* 0x1c9f-0x1cad */
-void nvme_func_1cf0(void);                      /* 0x1cf0-0x1cff */
+uint8_t nvme_get_table_5cad_entry(uint8_t param);  /* 0x1c2a-0x1c2f */
+void nvme_store_masked_01b4(uint8_t param);     /* 0x1c43-0x1c49 */
+uint8_t nvme_get_dev_status_bits(void);         /* 0x1c55-0x1c5c */
+void nvme_load_idata_dword_0e(void);            /* 0x1c7e-0x1c87 */
+uint8_t nvme_dispatch_and_check(void);          /* 0x1c9f-0x1cad */
+void nvme_clear_pcie_state(void);               /* 0x1cf0-0x1cff */
 
 /* USB check functions (in nvme.c) */
 void usb_check_status(uint8_t param_1, __xdata uint8_t *param_2);  /* 0x1b4d-0x1b5c */

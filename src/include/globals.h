@@ -58,8 +58,8 @@ __idata __at(0x3C) uint8_t I_WORK_3C;         /* Work variable 0x3C */
 __idata __at(0x3D) uint8_t I_WORK_3D;         /* Work variable 0x3D */
 __idata __at(0x3E) uint8_t I_WORK_3E;         /* Work variable 0x3E */
 __idata __at(0x3F) uint8_t I_TRANSFER_COUNT;   /* Transfer count */
-__idata __at(0x40) uint8_t I_WORK_40;         /* Work variable 0x40 */
-__idata __at(0x41) uint8_t I_WORK_41;         /* Work variable 0x41 */
+__idata __at(0x40) uint8_t I_XFER_STATUS;      /* Transfer status from REG_XFER_STATUS_CE60 */
+__idata __at(0x41) uint8_t I_SLOT_START_INDEX; /* Slot start index for calculations */
 __idata __at(0x42) uint8_t I_TAG_STATUS;       /* Command tag status */
 __idata __at(0x43) uint8_t I_CMD_SLOT_INDEX;   /* Command slot index */
 __idata __at(0x44) uint8_t I_MULTIPLIER;       /* Multiplier value */
@@ -67,14 +67,14 @@ __idata __at(0x45) uint8_t I_CHAIN_INDEX;      /* DMA chain index */
 __idata __at(0x46) uint8_t I_CHAIN_FLAG;       /* DMA chain flag */
 __idata __at(0x47) uint8_t I_PRODUCT_CAP;      /* Product capabilities */
 __idata __at(0x4D) uint8_t I_FLASH_STATE_4D;  /* Flash state dispatch value */
-__idata __at(0x51) uint8_t I_WORK_51;         /* Work variable 0x51 */
+__idata __at(0x51) uint8_t I_LOOP_COUNTER;     /* Loop counter / status index */
+__idata __at(0x52) uint8_t I_POLL_STATUS;      /* Poll status / DMA offset */
+__idata __at(0x53) uint8_t I_QUEUE_STATUS;     /* Queue status / system status copy */
+__idata __at(0x54) uint8_t I_WORK_54;          /* Work variable 0x54 */
+__idata __at(0x55) uint8_t I_VENDOR_STATE;     /* Vendor state/mode */
+__idata __at(0x56) uint8_t I_DMA_QUEUE_INDEX;  /* DMA queue index */
 __idata __at(0x61) uint8_t I_PCIE_TXN_DATA_0;  /* PCIe transaction data byte 0 */
 __idata __at(0x62) uint8_t I_PCIE_TXN_DATA_1;  /* PCIe transaction data byte 1 */
-__idata __at(0x52) uint8_t I_WORK_52;         /* Work variable 0x52 */
-__idata __at(0x53) uint8_t I_WORK_53;         /* Work variable 0x53 */
-__idata __at(0x54) uint8_t I_WORK_54;         /* Work variable 0x54 */
-__idata __at(0x55) uint8_t I_WORK_55;         /* Work variable 0x55 */
-__idata __at(0x56) uint8_t I_WORK_56;         /* Work variable 0x56 */
 __idata __at(0x57) uint8_t I_VENDOR_CDB_ADDR_LO;   /* Vendor CDB address low byte */
 __idata __at(0x58) uint8_t I_VENDOR_CDB_VALUE;     /* Vendor CDB value / address mid */
 __idata __at(0x59) uint8_t I_VENDOR_CDB_ADDR_HI1;  /* Vendor CDB address high byte 1 */

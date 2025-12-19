@@ -141,12 +141,12 @@ extern void flash_func_0bc8(void);  /* Note: does not return in original firmwar
 extern void reg_wait_bit_clear(uint16_t addr, uint8_t mask, uint8_t flags, uint8_t timeout);
 
 /*
- * usb_func_1b14, usb_func_1b20, usb_func_1b23 - USB helper functions
+ * USB helper functions from event_handler.c
  * Address: 0x1b14, 0x1b20, 0x1b23 (external)
  */
-extern uint8_t usb_func_1b14(uint8_t param);
-extern uint8_t usb_func_1b20(uint8_t param);
-extern uint8_t usb_func_1b23(void);
+extern uint8_t usb_copy_xdata_to_idata12(uint8_t param);
+extern uint8_t usb_store_idata_at_offset(uint8_t param);
+extern uint8_t usb_get_boot_status(void);
 
 /*
  * xdata_load_dword_noarg - Load 32-bit value from XDATA (DPTR set by caller)

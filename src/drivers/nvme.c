@@ -1314,7 +1314,7 @@ void nvme_init_registers(void)
 }
 
 /*
- * nvme_func_1b07 - Get IDATA calculated address value
+ * nvme_get_queue_slot_value - Get IDATA calculated address value
  * Address: 0x1b07-0x1b0a (4 bytes)
  *
  * Returns value from address calculated from IDATA[0x3E].
@@ -1326,7 +1326,7 @@ void nvme_init_registers(void)
  *   1b0b: mov dpl, a
  *   ...
  */
-uint8_t nvme_func_1b07(void)
+uint8_t nvme_get_queue_slot_value(void)
 {
     uint8_t offset = *(__idata uint8_t *)0x3E;
     uint16_t addr;
@@ -1342,7 +1342,7 @@ uint8_t nvme_func_1b07(void)
 }
 
 /*
- * nvme_func_1b0b - Get IDATA value from parameter address
+ * nvme_read_xdata_0100 - Get IDATA value from parameter address
  * Address: 0x1b0b-0x1b13 (9 bytes)
  *
  * Returns value from 0x01XX address where XX is the parameter.
@@ -1355,7 +1355,7 @@ uint8_t nvme_func_1b07(void)
  *   1b12: movx a, @dptr
  *   1b13: ret
  */
-uint8_t nvme_func_1b0b(uint8_t param)
+uint8_t nvme_read_xdata_0100(uint8_t param)
 {
     /* Simple read from 0x01XX address */
     return *(__xdata uint8_t *)(0x0100 + param);
@@ -1486,7 +1486,7 @@ void usb_data_handler(__xdata uint8_t *ptr)
 }
 
 /*
- * nvme_func_1c2a - Get table entry from 0x5CAD table
+ * nvme_get_table_5cad_entry - Get table entry from 0x5CAD table
  * Address: 0x1c2a-0x1c2f (6 bytes)
  *
  * Reads from table at 0x5CAD indexed by IDATA[0x3C] * 2 + param.
@@ -1500,7 +1500,7 @@ void usb_data_handler(__xdata uint8_t *ptr)
  *   1c35: add a, dpl
  *   ...
  */
-uint8_t nvme_func_1c2a(uint8_t param)
+uint8_t nvme_get_table_5cad_entry(uint8_t param)
 {
     uint8_t idx = *(__idata uint8_t *)0x3C;
     uint16_t addr = 0x5CAD + (idx * 2) + param;
@@ -1508,7 +1508,7 @@ uint8_t nvme_func_1c2a(uint8_t param)
 }
 
 /*
- * nvme_func_1c43 - Store masked value to 0x01B4
+ * nvme_store_masked_01b4 - Store masked value to 0x01B4
  * Address: 0x1c43-0x1c49 (7 bytes)
  *
  * Masks parameter to 5 bits and stores to 0x01B4.
@@ -1519,25 +1519,25 @@ uint8_t nvme_func_1c2a(uint8_t param)
  *   1c48: movx @dptr, a
  *   1c49: ret
  */
-void nvme_func_1c43(uint8_t param)
+void nvme_store_masked_01b4(uint8_t param)
 {
     G_USB_WORK_01B4 = param & 0x1F;
 }
 
 /*
- * nvme_func_1c55 - Get device status upper bits (alias)
+ * nvme_get_dev_status_bits - Get device status upper bits (alias)
  * Address: 0x1c55-0x1c5c (8 bytes)
  *
  * Same as nvme_get_dev_status_upper but as separate entry point.
  * Returns upper 2 bits of REG_NVME_DEV_STATUS.
  */
-uint8_t nvme_func_1c55(void)
+uint8_t nvme_get_dev_status_bits(void)
 {
     return REG_NVME_DEV_STATUS & NVME_DEV_STATUS_MASK;
 }
 
 /*
- * nvme_func_1c7e - Load IDATA dword and read register dword
+ * nvme_load_idata_dword_0e - Load IDATA dword and read register dword
  * Address: 0x1c7e-0x1c87 (10 bytes)
  *
  * Calls idata_load_dword(0x0E), then reg_read_dword(3).
@@ -1548,7 +1548,7 @@ uint8_t nvme_func_1c55(void)
  *   1c83: mov r7, #0x03
  *   1c85: ljmp 0x0de5         ; reg_read_dword
  */
-void nvme_func_1c7e(void)
+void nvme_load_idata_dword_0e(void)
 {
     /* Load IDATA dword from offset 0x0E */
     uint32_t val;
@@ -1563,7 +1563,7 @@ void nvme_func_1c7e(void)
 }
 
 /*
- * nvme_func_1c9f - Process command and check result
+ * nvme_dispatch_and_check - Process command and check result
  * Address: 0x1c9f-0x1cad (15 bytes)
  *
  * Calls scsi_core_dispatch and FUN_CODE_4e6d, returns OR of R6 and R7.
@@ -1576,7 +1576,7 @@ void nvme_func_1c7e(void)
  *   1ca8: mov r7, a
  *   1ca9: ret
  */
-uint8_t nvme_func_1c9f(void)
+uint8_t nvme_dispatch_and_check(void)
 {
     /* This would call scsi_core_dispatch() and FUN_CODE_4e6d() */
     /* Returns combined status from R6 | R7 */
@@ -1604,7 +1604,7 @@ __xdata uint8_t *nvme_get_addr_012b(void)
 }
 
 /*
- * nvme_func_1cf0 - Clear buffer and state registers
+ * nvme_clear_pcie_state - Clear buffer and state registers
  * Address: 0x1cf0-0x1d23 (52 bytes)
  *
  * Clears multiple XDATA locations for state reset.
@@ -1615,7 +1615,7 @@ __xdata uint8_t *nvme_get_addr_012b(void)
  *   1cf4: movx @dptr, a
  *   ...
  */
-void nvme_func_1cf0(void)
+void nvme_clear_pcie_state(void)
 {
     /* Clear state registers */
     G_PCIE_ADDR_1 = 0;           /* 0x05B0 */
@@ -3616,8 +3616,8 @@ void nvme_queue_state_update(uint8_t param)
     status = G_SYS_STATUS_PRIMARY;
     get_sys_status_ptr_0456(status);
 
-    I_WORK_51 = G_SYS_STATUS_PRIMARY;
-    new_val = (I_WORK_51 + param) & 0x1F;
+    I_LOOP_COUNTER = G_SYS_STATUS_PRIMARY;
+    new_val = (I_LOOP_COUNTER + param) & 0x1F;
 
     get_sys_status_ptr_0400(status + 0x56);  /* 'V' = 0x56 */
     G_SYS_STATUS_PRIMARY = new_val;

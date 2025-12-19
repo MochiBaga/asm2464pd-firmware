@@ -124,9 +124,9 @@
 /*
  * IDATA work variables used by vendor handlers
  * These are defined in globals.h:
- *   I_WORK_51 (0x51) - loop counter
- *   I_WORK_55 (0x55) - state/mode
- *   I_WORK_56 (0x56) - secondary state
+ *   I_LOOP_COUNTER (0x51) - loop counter
+ *   I_VENDOR_STATE (0x55) - state/mode
+ *   I_DMA_QUEUE_INDEX (0x56) - secondary state / queue index
  *   I_VENDOR_CDB_ADDR_LO (0x57) - CDB addr low
  *   I_VENDOR_CDB_VALUE (0x58) - CDB value/addr mid
  *   I_VENDOR_CDB_ADDR_HI1 (0x59) - CDB addr high byte 1
@@ -417,10 +417,10 @@ static uint8_t loop_store_params(__xdata uint8_t *ptr, uint8_t r7_val, uint8_t r
     *ptr = r7_val;
 
     /* Increment loop counter */
-    I_WORK_51++;
+    I_LOOP_COUNTER++;
 
     /* Check if reached 0x64 (100) iterations */
-    if (I_WORK_51 != 0x64) {
+    if (I_LOOP_COUNTER != 0x64) {
         return 0;  /* Continue looping */
     }
 
@@ -435,7 +435,7 @@ static uint8_t loop_store_params(__xdata uint8_t *ptr, uint8_t r7_val, uint8_t r
     }
 
     /* Clear loop counter */
-    I_WORK_51 = 0;
+    I_LOOP_COUNTER = 0;
 
     /* Return for table lookup phase */
     return 1;
@@ -521,8 +521,8 @@ void vendor_cmd_e5_xdata_write(void)
     uint8_t value;
     __xdata uint8_t *ctrl_reg;
 
-    /* Get state from I_WORK_55 */
-    state = I_WORK_55;
+    /* Get state from I_VENDOR_STATE */
+    state = I_VENDOR_STATE;
 
     /* Check if bit 1 is set */
     if (!(state & 0x02)) {
@@ -671,8 +671,8 @@ void vendor_cmd_e4_xdata_read(void)
     ptr = &G_VENDOR_CDB_BASE;
     state = shift_merge_store(ptr, I_VENDOR_CDB_VALUE);
 
-    /* Store state to I_WORK_55 */
-    I_WORK_55 = state;
+    /* Store state to I_VENDOR_STATE */
+    I_VENDOR_STATE = state;
 
     /* State machine: check state value */
     if (state == 0) {
@@ -686,7 +686,7 @@ void vendor_cmd_e4_xdata_read(void)
         sec_state = 1;
     }
 
-    I_WORK_56 = sec_state;
+    I_DMA_QUEUE_INDEX = sec_state;
 
     /* Select register pair based on secondary state */
     if (sec_state == 0) {

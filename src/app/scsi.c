@@ -71,20 +71,20 @@ extern void pcie_tunnel_enable(void);
 extern void protocol_param_handler(uint8_t param);
 extern void pcie_txn_array_calc(void);
 extern void protocol_dispatch(uint8_t param);
-extern void transfer_func_1633(uint16_t param);
+extern void dma_set_register_bit0(uint16_t addr);
 extern void power_check_status(uint8_t param);
 
 /* Functions in event_handler.c - not yet in headers */
-extern uint8_t usb_func_1b20(uint8_t param);
-extern uint8_t usb_func_1b14(uint8_t param);
-extern uint8_t usb_func_1b23(void);
+extern uint8_t usb_store_idata_at_offset(uint8_t param);
+extern uint8_t usb_copy_xdata_to_idata12(uint8_t param);
+extern uint8_t usb_get_boot_status(void);
 extern void xdata_load_dword_noarg(void);
 extern void pcie_txn_index_load(void);
 extern uint8_t usb_get_sys_status_offset(void);
 extern void nvme_call_and_signal_3219(void);
 extern uint8_t queue_idx_get_3291(void);
 extern void nvme_init_step(void);
-extern void transfer_func_16b0(uint8_t param);
+extern void dma_write_scsi_status_pair(uint8_t param);
 extern void get_sys_status_ptr_0456(uint8_t param);
 extern void get_sys_status_ptr_0400(uint8_t param);
 extern void nvme_util_advance_queue(void);
@@ -332,7 +332,7 @@ void scsi_setup_action(uint8_t param)
     G_BUFFER_LENGTH_HIGH = 0;
 
     reg_poll(setup_result);
-    I_WORK_52 |= reg_poll(setup_result);
+    I_POLL_STATUS |= reg_poll(setup_result);
 
     scsi_process_transfer(0, 0);
 }
@@ -652,7 +652,7 @@ void scsi_transfer_dispatch(void)
     val = G_DMA_MODE_0A8E;
 
     if (val == 0x80) {
-        transfer_func_1633(0xB480);
+        dma_set_register_bit0(0xB480);
         protocol_dispatch(G_PCIE_TXN_COUNT_LO);
         scsi_pcie_send_status(0);
         pcie_txn_index_load();
@@ -869,9 +869,9 @@ void scsi_sys_status_update(uint8_t param)
 
     status = G_SYS_STATUS_PRIMARY;
     get_sys_status_ptr_0456(status);
-    I_WORK_51 = G_SYS_STATUS_PRIMARY;
+    I_LOOP_COUNTER = G_SYS_STATUS_PRIMARY;
 
-    status = (I_WORK_51 + param) & 0x1F;
+    status = (I_LOOP_COUNTER + param) & 0x1F;
     get_sys_status_ptr_0400(status + 0x56);
     G_SYS_STATUS_PRIMARY = status;
 }
@@ -1125,7 +1125,7 @@ void scsi_queue_dispatch(uint8_t param)
 
     status = REG_SCSI_DMA_QUEUE;
     if ((status & mask_table[param]) != 0) {
-        transfer_func_16b0(param);
+        dma_write_scsi_status_pair(param);
         REG_SCSI_DMA_QUEUE = param + 2;
         REG_SCSI_DMA_QUEUE = param + 3;
     }
@@ -1339,10 +1339,10 @@ void scsi_endpoint_queue_process(void)
     /* Get primary system status */
     status = G_SYS_STATUS_PRIMARY;
     xdata_read_044e(status);
-    I_WORK_53 = G_SYS_STATUS_PRIMARY;
+    I_QUEUE_STATUS = G_SYS_STATUS_PRIMARY;
 
     /* Calculate next index: (status + 1) & 0x03 */
-    r6_val = (I_WORK_53 + 1) & 0x03;
+    r6_val = (I_QUEUE_STATUS + 1) & 0x03;
 
     /* Setup endpoint parameters */
     xdata_write_0400(status + 0x4E, r6_val);
@@ -1375,8 +1375,8 @@ void scsi_endpoint_queue_process(void)
 
         dptr_calc_work53_x4();
         if (G_SYS_STATUS_PRIMARY != 0) {
-            usb_calc_queue_addr(I_WORK_53);
-            usb_calc_queue_addr_next(I_WORK_53);
+            usb_calc_queue_addr(I_QUEUE_STATUS);
+            usb_calc_queue_addr_next(I_QUEUE_STATUS);
             return;
         }
     }
@@ -1730,7 +1730,7 @@ uint8_t scsi_queue_check_52c7(uint8_t index)
     status = REG_SCSI_DMA_QUEUE;  /* 0xCE5F approximation */
     if ((status & mask) != 0) {
         /* Call transfer helper */
-        transfer_func_16b0(index);
+        dma_write_scsi_status_pair(index);
         /* Store to DPTR: index+2, index+3 */
         return 1;
     }
@@ -2599,7 +2599,7 @@ void scsi_send_csw(uint8_t status, uint8_t param)
  * Input: param in R7 (0 = initialize, non-0 = active transfer check)
  * Output: result in R7 (0 = not ready, 1 = ready/success)
  *
- * Uses: I_TRANSFER_COUNT (transfer count), I_WORK_40-46 (work vars)
+ * Uses: I_TRANSFER_COUNT (transfer count), I_XFER_STATUS-46 (work vars)
  * Reads: CE51/CE55/CE60/CE6E (SCSI DMA registers)
  * Writes: G_0470-0476 (command state), G_053A (NVMe param)
  */
@@ -2727,28 +2727,28 @@ uint8_t scsi_dma_transfer_process(uint8_t param)
 
     /* Check if I_TRANSFER_COUNT == 1 (single transfer) */
     if (I_TRANSFER_COUNT == 1) {
-        /* Read CE60 into I_WORK_40 */
-        I_WORK_40 = REG_XFER_STATUS_CE60;
+        /* Read CE60 into I_XFER_STATUS */
+        I_XFER_STATUS = REG_XFER_STATUS_CE60;
 
         /* Check range */
-        if (I_WORK_40 >= 0x40) {
+        if (I_XFER_STATUS >= 0x40) {
             return 0;
         }
 
         /* Write to SCSI DMA status register */
-        REG_SCSI_DMA_STATUS_L = I_WORK_40;
-        G_STATE_HELPER_41 = I_WORK_40;
-        G_STATE_HELPER_42 = I_WORK_40 + I_TRANSFER_COUNT;
+        REG_SCSI_DMA_STATUS_L = I_XFER_STATUS;
+        G_STATE_HELPER_41 = I_XFER_STATUS;
+        G_STATE_HELPER_42 = I_XFER_STATUS + I_TRANSFER_COUNT;
 
         /* Call helpers with calculated addresses */
         ptr = get_addr_low(0x59 + I_CMD_SLOT_INDEX);
         /* FUN_CODE_1755 would write here */
 
         ptr = get_slot_addr_4e();
-        *ptr = I_WORK_40;
+        *ptr = I_XFER_STATUS;
 
         ptr = get_slot_addr_7c();
-        *ptr = I_WORK_40;
+        *ptr = I_XFER_STATUS;
 
         /* Write 1 to slot addr 71 */
         ptr = get_slot_addr_71();
@@ -2766,8 +2766,8 @@ uint8_t scsi_dma_transfer_process(uint8_t param)
     /* Simplified: just return success for valid transfers */
     if (I_TAG_STATUS < 2) {
         /* Simple case */
-        G_STATE_HELPER_41 = I_WORK_41;
-        G_STATE_HELPER_42 = (I_WORK_41 + I_TRANSFER_COUNT) & 0x1F;
+        G_STATE_HELPER_41 = I_SLOT_START_INDEX;
+        G_STATE_HELPER_42 = (I_SLOT_START_INDEX + I_TRANSFER_COUNT) & 0x1F;
         return I_TRANSFER_COUNT;
     }
 
@@ -2803,8 +2803,8 @@ uint8_t scsi_dma_transfer_process(uint8_t param)
     }
 
     /* Final state update */
-    G_STATE_HELPER_41 = I_WORK_41;
-    G_STATE_HELPER_42 = (I_WORK_41 + I_TRANSFER_COUNT) & 0x1F;
+    G_STATE_HELPER_41 = I_SLOT_START_INDEX;
+    G_STATE_HELPER_42 = (I_SLOT_START_INDEX + I_TRANSFER_COUNT) & 0x1F;
 
     return I_TRANSFER_COUNT;
 }
@@ -3037,12 +3037,12 @@ static void usb_store_work_01b4(uint8_t param) {
  *   4ff6: clr a
  *   4ff7-4ffa: clear R4-R7
  *   4ffb: mov r0, #0x0e
- *   4ffd: lcall 0x1b20        ; usb_func_1b20
+ *   4ffd: lcall 0x1b20        ; usb_store_idata_at_offset
  *   5000: add a, #0x11
- *   5002: lcall 0x1b14        ; usb_func_1b14
+ *   5002: lcall 0x1b14        ; usb_copy_xdata_to_idata12
  *   5005: add a, #0x16
  *   5007: sjmp 0x5020
- *   5009: lcall 0x1b23        ; usb_func_1b23
+ *   5009: lcall 0x1b23        ; usb_get_boot_status
  *   500c: add a, #0x11
  *   500e: lcall 0x1bc3        ; usb_reset_interface
  *   5011: lcall 0x0d84        ; xdata_load_dword
@@ -3069,19 +3069,19 @@ void scsi_core_dispatch(uint8_t param_2)
 
     if ((param_2 & 0x01) == 0) {
         /* Path when bit 0 is clear */
-        result = usb_func_1b20(0x0E);
-        result = usb_func_1b14(result + 0x11);
+        result = usb_store_idata_at_offset(0x0E);
+        result = usb_copy_xdata_to_idata12(result + 0x11);
         result = result + 0x16;
     } else {
         /* Path when bit 0 is set */
-        result = usb_func_1b23();
+        result = usb_get_boot_status();
         result = result + 0x11;
         usb_reset_interface(result);
 
         xdata_load_dword_noarg();
 
-        result = usb_func_1b20(0x0E);
-        result = usb_func_1b14(result + 0x15);
+        result = usb_store_idata_at_offset(0x0E);
+        result = usb_copy_xdata_to_idata12(result + 0x15);
         result = result + 0x1B;
     }
 

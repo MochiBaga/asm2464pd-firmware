@@ -1827,8 +1827,8 @@ uint8_t pcie_tlp_handler_b104(void)
     G_STATE_COUNTER_HI = 0;
 
     /* Clear IDATA counters */
-    I_WORK_51 = 0;
-    I_WORK_52 = 0;
+    I_LOOP_COUNTER = 0;
+    I_POLL_STATUS = 0;
 
     /* Main processing loop */
     do {
@@ -1839,8 +1839,8 @@ uint8_t pcie_tlp_handler_b104(void)
         flash_set_mode_enable();
 
         /* Store local counters to TLP config area */
-        G_STATE_COUNTER_LO = I_WORK_51;
-        G_STATE_COUNTER_0AA5 = I_WORK_52;
+        G_STATE_COUNTER_LO = I_LOOP_COUNTER;
+        G_STATE_COUNTER_0AA5 = I_POLL_STATUS;
 
         /* Write flash command 0x02, get addr length result */
         flash_cmd_result = tlp_write_flash_cmd(0x02);
@@ -1872,8 +1872,8 @@ uint8_t pcie_tlp_handler_b104(void)
             G_TLP_COUNT_HI = G_TLP_COUNT_HI - ((G_TLP_COUNT_LO < current_pending) ? 1 : 0);
 
             /* Update local counters */
-            I_WORK_52 = I_WORK_52 + current_pending;
-            I_WORK_51 = I_WORK_51 + ((I_WORK_52 < current_pending) ? 1 : 0);
+            I_POLL_STATUS = I_POLL_STATUS + current_pending;
+            I_LOOP_COUNTER = I_LOOP_COUNTER + ((I_POLL_STATUS < current_pending) ? 1 : 0);
         } else {
             /* Clear processed counts */
             G_TLP_COUNT_HI = 0;

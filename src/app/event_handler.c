@@ -750,7 +750,7 @@ void reg_wait_bit_set(uint16_t addr)
 }
 
 /*
- * usb_func_1b14 - USB address helper function
+ * usb_copy_xdata_to_idata12 - USB address helper function
  * Address: 0x1b14-0x1b1f (12 bytes, falls through to 0x1b20)
  *
  * Takes param in A, computes DPTR from param + R2*256, reads 4 bytes
@@ -769,7 +769,7 @@ void reg_wait_bit_set(uint16_t addr)
  *
  * Used by protocol.c scsi_core_dispatch.
  */
-uint8_t usb_func_1b14(uint8_t param)
+uint8_t usb_copy_xdata_to_idata12(uint8_t param)
 {
     /* Read 4 bytes from XDATA address (param as low byte, R2 as high)
      * For simplicity, assuming R2=0, so address is just param */
@@ -782,12 +782,12 @@ uint8_t usb_func_1b14(uint8_t param)
     dst[2] = src[2];
     dst[3] = src[3];
 
-    /* Return value at 0x0009 (like usb_func_1b23) */
+    /* Return value at 0x0009 (like usb_get_boot_status) */
     return G_BOOT_STATUS_0009;
 }
 
 /*
- * usb_func_1b20 - USB helper function / IDATA write
+ * usb_store_idata_at_offset - USB helper function / IDATA write
  * Address: 0x1b20-0x1b22 (3 bytes)
  *
  * Calls 0x0db9 which writes R4-R7 to 4 bytes at IDATA[R0].
@@ -797,13 +797,13 @@ uint8_t usb_func_1b14(uint8_t param)
  *
  * Original disassembly:
  *   1b20: lcall 0x0db9      ; Write R4-R7 to IDATA[@R0]
- *   1b23: (continues to usb_func_1b23)
+ *   1b23: (continues to usb_get_boot_status)
  *
  * Note: The actual implementation continues into 1b23, so it:
  * 1. Writes 4 bytes to IDATA[param]
  * 2. Returns the value at XDATA 0x0009
  */
-uint8_t usb_func_1b20(uint8_t param)
+uint8_t usb_store_idata_at_offset(uint8_t param)
 {
     /* Write 4 bytes to IDATA address specified by param */
     /* The values to write would be in R4-R7 from the caller */
@@ -811,15 +811,15 @@ uint8_t usb_func_1b20(uint8_t param)
     __idata uint8_t *dst = (__idata uint8_t *)param;
 
     /* For now, the write is stubbed as we don't have R4-R7 values */
-    /* The function continues to usb_func_1b23 logic */
+    /* The function continues to usb_get_boot_status logic */
     (void)dst;
 
-    /* Return the value at 0x0009 (like usb_func_1b23) */
+    /* Return the value at 0x0009 (like usb_get_boot_status) */
     return G_BOOT_STATUS_0009;
 }
 
 /*
- * usb_func_1b23 - USB helper function
+ * usb_get_boot_status - USB helper function
  * Address: 0x1b23-0x1b2a (8 bytes)
  *
  * Reads 3 bytes from 0x0007-0x0009 and returns the third byte (0x0009).
@@ -831,7 +831,7 @@ uint8_t usb_func_1b20(uint8_t param)
  *   1b29: mov a, r1         ; Return R1 (third byte at 0x0009)
  *   1b2a: ret
  */
-uint8_t usb_func_1b23(void)
+uint8_t usb_get_boot_status(void)
 {
     /* Read the third byte of the 3-byte value at 0x0007 */
     return G_BOOT_STATUS_0009;
@@ -1764,11 +1764,11 @@ void state_transfer_calc_120d(void)
  *
  * Algorithm:
  *   1. Check if param >= 0x40, if so return 0 (out of bounds)
- *   2. Write I_WORK_40 to REG_SCSI_DMA_STATUS_L and G_STATE_HELPER_41
- *   3. Write I_WORK_40 + I_TRANSFER_COUNT to G_STATE_HELPER_42
+ *   2. Write I_XFER_STATUS to REG_SCSI_DMA_STATUS_L and G_STATE_HELPER_41
+ *   3. Write I_XFER_STATUS + I_TRANSFER_COUNT to G_STATE_HELPER_42
  *   4. Call addr_setup_0059 with 0x59 + I_CMD_SLOT_INDEX
- *   5. Call mem_write_via_ptr with I_WORK_40
- *   6. Call helper_166a with I_WORK_40 (writes to computed slot)
+ *   5. Call mem_write_via_ptr with I_XFER_STATUS
+ *   6. Call helper_166a with I_XFER_STATUS (writes to computed slot)
  *   7. Write 1 to slot and return 1
  *
  * Parameters:
@@ -1786,26 +1786,26 @@ uint8_t state_transfer_setup_12aa(uint8_t param)
         return 0;  /* Out of bounds */
     }
 
-    /* Write I_WORK_40 to SCSI DMA status register */
-    REG_SCSI_DMA_STATUS_L = I_WORK_40;
+    /* Write I_XFER_STATUS to SCSI DMA status register */
+    REG_SCSI_DMA_STATUS_L = I_XFER_STATUS;
 
-    /* Store I_WORK_40 to state helper variables */
-    G_STATE_HELPER_41 = I_WORK_40;
+    /* Store I_XFER_STATUS to state helper variables */
+    G_STATE_HELPER_41 = I_XFER_STATUS;
 
-    /* Compute and store I_WORK_40 + I_TRANSFER_COUNT */
-    sum = I_WORK_40 + I_TRANSFER_COUNT;
+    /* Compute and store I_XFER_STATUS + I_TRANSFER_COUNT */
+    sum = I_XFER_STATUS + I_TRANSFER_COUNT;
     G_STATE_HELPER_42 = sum;
 
     /* Call addr_setup_0059 with 0x59 + I_CMD_SLOT_INDEX */
     /* This sets up address at 0x0059 + I_CMD_SLOT_INDEX */
     addr_setup_0059(0x59 + I_CMD_SLOT_INDEX);
 
-    /* Call mem_write_via_ptr with I_WORK_40 */
-    /* This increments pointer and writes I_WORK_40 */
-    mem_write_via_ptr(I_WORK_40);
+    /* Call mem_write_via_ptr with I_XFER_STATUS */
+    /* This increments pointer and writes I_XFER_STATUS */
+    mem_write_via_ptr(I_XFER_STATUS);
 
-    /* Call helper_166a: writes I_WORK_40 to DPTR, then computes new DPTR = 0x7C + I_CMD_SLOT_INDEX */
-    /* This stores I_WORK_40 to the current address, then computes slot pointer */
+    /* Call helper_166a: writes I_XFER_STATUS to DPTR, then computes new DPTR = 0x7C + I_CMD_SLOT_INDEX */
+    /* This stores I_XFER_STATUS to the current address, then computes slot pointer */
     slot_ptr = (__xdata uint8_t *)(0x007C + I_CMD_SLOT_INDEX);
 
     /* helper_15b6: write A to DPTR and increment DPTR */
@@ -2090,23 +2090,23 @@ __xdata uint8_t *get_ptr_04xx_raw_1660(uint8_t low_byte, uint8_t carry)
 }
 
 /*
- * get_ptr_04b7_idx55_1696 - Get pointer to 0x04B7 + I_WORK_55
+ * get_ptr_04b7_idx55_1696 - Get pointer to 0x04B7 + I_VENDOR_STATE
  * Address: 0x1696-0x16a1 (12 bytes)
  *
  * Disassembly:
  *   1696: mov a, #0xb7        ; A = 0xB7
- *   1698: add a, 0x55         ; A = 0xB7 + I_WORK_55
+ *   1698: add a, 0x55         ; A = 0xB7 + I_VENDOR_STATE
  *   169a: mov 0x82, a         ; DPL = A
  *   169c: clr a
  *   169d: addc a, #0x04       ; DPH = 0x04 + carry
  *   169f: mov 0x83, a
  *   16a1: ret
  *
- * Computes DPTR = 0x04B7 + I_WORK_55
+ * Computes DPTR = 0x04B7 + I_VENDOR_STATE
  */
 __xdata uint8_t *get_ptr_04b7_idx55_1696(void)
 {
-    uint8_t low = 0xB7 + I_WORK_55;
+    uint8_t low = 0xB7 + I_VENDOR_STATE;
     uint16_t addr = 0x0400 + low;
     if (low < 0xB7) {
         addr += 0x0100;  /* Handle overflow carry */
@@ -2235,25 +2235,25 @@ uint16_t read_0472_pair_171d(void)
 }
 
 /*
- * write_idx41_plus2_17d8 - Write I_WORK_41+2 and I_WORK_41+3 to DPTR
+ * write_idx41_plus2_17d8 - Write I_SLOT_START_INDEX+2 and I_SLOT_START_INDEX+3 to DPTR
  * Address: 0x17d8-0x17e2 (11 bytes)
  *
  * Disassembly:
- *   17d8: mov a, 0x41         ; A = I_WORK_41
- *   17da: add a, #0x02        ; A = I_WORK_41 + 2
+ *   17d8: mov a, 0x41         ; A = I_SLOT_START_INDEX
+ *   17da: add a, #0x02        ; A = I_SLOT_START_INDEX + 2
  *   17dc: movx @dptr, a       ; Write to DPTR
- *   17dd: mov a, 0x41         ; A = I_WORK_41
- *   17df: add a, #0x03        ; A = I_WORK_41 + 3
+ *   17dd: mov a, 0x41         ; A = I_SLOT_START_INDEX
+ *   17df: add a, #0x03        ; A = I_SLOT_START_INDEX + 3
  *   17e1: movx @dptr, a       ; Write to DPTR again
  *   17e2: ret
  *
- * Writes I_WORK_41+2 and I_WORK_41+3 to consecutive DPTR locations.
+ * Writes I_SLOT_START_INDEX+2 and I_SLOT_START_INDEX+3 to consecutive DPTR locations.
  * Note: The second write overwrites the same location (bug or intentional).
  */
 void write_idx41_plus2_17d8(__xdata uint8_t *ptr)
 {
-    *ptr = I_WORK_41 + 2;
-    *ptr = I_WORK_41 + 3;
+    *ptr = I_SLOT_START_INDEX + 2;
+    *ptr = I_SLOT_START_INDEX + 3;
 }
 
 /*

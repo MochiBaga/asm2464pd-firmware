@@ -646,7 +646,7 @@ void timer_trigger_e726(void)
  * Sets up TLP type in R7 (0x04/0x05 or 0x44/0x45) and writes to REG_PCIE_FMT_TYPE.
  *
  * Algorithm:
- *   1. Clear G_ERROR_CODE_06EA, set I_WORK_51 = 0
+ *   1. Clear G_ERROR_CODE_06EA, set I_LOOP_COUNTER = 0
  *   2. Loop: for (i=0; i<12; i++) call helper_9a53(i)
  *   3. Check IDATA[0x60] bit 0:
  *      - If set: R7 = (IDATA[0x61] != 0) ? 0x45 : 0x44
@@ -666,7 +666,7 @@ void delay_loop_adb0(void)
 
     /* Clear error code and work variable */
     G_ERROR_CODE_06EA = 0;
-    I_WORK_51 = 0;
+    I_LOOP_COUNTER = 0;
 
     /* Loop 12 times - helper_9a53 does status polling */
     for (i = 0; i < 12; i++) {
