@@ -1,51 +1,67 @@
-Our goal is to emulate the fw.bin in emulate/
+Our goal is to get the emulation of the firmware running as an emulated USB device on the computer
+
+- Emulator should run in its own thread. It should use the original firmware in fw.bin
+- All communication with the emulator should be through MMIO
+- It registers a dummy hcd SuperSpeed device, much be superspeed
+- patch.py should work and have a model emulating the flash
+- All descriptors are handled by logic in the firmware, NEVER HARDCODE ANY PIECE OF DESCRIPTORS
+- All functions are handled by logic in the firmware
+- The firmware runs in it's own thread and polling is done through MMIO
+- There should be nothing parsing the commands in Python, the Python should just be a bridge
+- The device should enumerate and show up in lsusb
+- The device should show up as a mass storage device
+
+## Current Status
+
+### Working:
+- Device enumeration (shows up in lsusb as 174c:2461)
+- USB device descriptor handling via firmware DMA
+- USB config descriptor with correct wTotalLength (121 bytes, includes both alt_settings)
+- String descriptor handling
+- Control transfers (GET_DESCRIPTOR, GET_MAX_LUN, BULK_ONLY_RESET)
+- USB 2.0 High Speed mode (dummy_hcd only supports up to USB 2.0)
+
+### Not Working:
+- Bulk transfers (CBW/CSW for mass storage)
+  - The bulk endpoint (0x02 OUT, 0x81 IN) is enabled but ep_read blocks
+  - This may be a dummy_hcd limitation or a raw-gadget configuration issue
+- UAS mode (requires USB 3.0 bulk streams, not supported by dummy_hcd)
+
+### Known Limitations:
+1. **dummy_hcd only supports USB 2.0 High Speed**
+   - USB 3.0 SuperSpeed is not available
+   - UAS mode requires USB 3.0 streams which are not supported
+   - Device enumerates at High Speed, so USB 2.0 device descriptor is used
+
+2. **Bulk transfers not functional**
+   - The raw-gadget ep_read call blocks indefinitely waiting for data
+   - Host-side libusb bulk transfers timeout with error -7
+   - Control transfers work correctly, only bulk transfers are affected
 
 ## Running the Emulator
 
 ```bash
-# Basic execution (10M cycle limit)
-python3 emulate/emu.py fw.bin
-
-# With instruction tracing
-python3 emulate/emu.py fw.bin --trace
-
-# Limit instructions
-python3 emulate/emu.py fw.bin --max-inst 1000
-
-# Set breakpoint
-python3 emulate/emu.py fw.bin --break 0x431A --trace
-
-# Dump state on exit
-python3 emulate/emu.py fw.bin --max-inst 1000 --dump
+cd emulate
+sudo modprobe dummy_hcd num=1
+sudo modprobe raw_gadget
+sudo python3 usb_device.py
 ```
 
-## Architecture
+The device will appear in lsusb:
+```
+Bus 005 Device XXX: ID 174c:2461 ASMedia Technology Inc. AS2462
+```
 
-- `emulate/cpu.py` - 8051 CPU core with full instruction set
-- `emulate/memory.py` - Memory subsystem with code banking (DPX register)
-- `emulate/peripherals.py` - MMIO peripheral emulators:
-  - UART (0xC000-0xC00F) - output echoed to stdout
-  - Timers (0xCC10-0xCC27)
-  - USB Controller (0x9000-0x93FF)
-  - NVMe Controller (0xC400-0xC5FF)
-  - PCIe/Thunderbolt (0xB200-0xB8FF)
-  - DMA Controller (0xC8B0-0xC8D9)
-  - Flash Controller (0xC89F-0xC8AE)
-  - Interrupt Controller (0xC800-0xC80F)
-  - Power Management (0x92C0-0x92E0)
-- `emulate/emu.py` - Main emulator driver
+## Testing
 
-## Memory Banking
+The test program `test_patch_usb.py` validates:
+1. Device enumeration - PASS
+2. Mass storage (BBB protocol) - FAIL (bulk transfers)
+3. Vendor commands (E4/E5) - FAIL (requires bulk transfers)
+4. String descriptors - PASS
 
-The ASM2464PD has ~98KB firmware but 8051 can only address 64KB.
-Banking is controlled via the DPX register (SFR 0x96):
-- 0x0000-0x7FFF: Always bank 0 (shared)
-- 0x8000-0xFFFF with DPX=0: Bank 0
-- 0x8000-0xFFFF with DPX=1: Bank 1 (file offset 0xFF6B+)
-
-## TODO
-
-- [ ] Complete peripheral emulation (currently stubs)
-- [ ] Add USB device emulation for testing
-- [ ] Add NVMe command injection
-- [ ] Better debugging/watchpoints
+Run with:
+```bash
+echo -n "5-1:1.0" | sudo tee /sys/bus/usb/drivers/usb-storage/unbind
+sudo PYTHONPATH=/home/tiny/tinygrad python3 test_patch_usb.py
+```

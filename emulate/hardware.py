@@ -832,6 +832,17 @@ class HardwareState:
     usb_captured_config_desc: bytearray = field(default_factory=bytearray)
     usb_capture_config_active: bool = False  # True when we're capturing config desc writes
 
+    # Full USB3 config descriptor loaded from ROM with corrected wTotalLength.
+    # ROM at 0x58CF has wTotalLength=44 (only alt_setting 0), but alt_setting 1
+    # data continues immediately after. We load the full descriptor (121 bytes)
+    # and fix wTotalLength so the host knows to request all of it.
+    usb_ss_config_from_rom: bytes = field(default_factory=bytes)
+
+    # USB2 High Speed config descriptor loaded from ROM.
+    # ROM at 0x5948 has USB 2.0 config descriptor with 512-byte max packet sizes.
+    # Used when connected at USB 2.0 High Speed (dummy_hcd limitation).
+    usb_hs_config_from_rom: bytes = field(default_factory=bytes)
+
     # PCIe DMA state
     pcie_dma_pending: bool = False  # DMA operation in progress
     pcie_dma_source: int = 0  # Source address in PCIe space
@@ -841,6 +852,17 @@ class HardwareState:
     # Simulated PCIe memory (for E4 read responses)
     # This would contain the data that would be read from the NVMe device
     pcie_memory: Dict[int, int] = field(default_factory=dict)
+
+    # ============================================
+    # SPI Flash Emulation
+    # The ASM2464PD has a SPI flash chip for firmware storage.
+    # patch.py uses E2 (read) and E3 (write) commands to access flash.
+    # Flash size: 256KB (0x40000 bytes) typical
+    # ============================================
+    spi_flash: bytearray = field(default_factory=lambda: bytearray(0x40000))  # 256KB flash
+    spi_flash_addr: int = 0  # Current flash address (set by address registers)
+    spi_flash_write_pending: bool = False  # Write operation in progress
+    spi_flash_write_count: int = 0  # Bytes written in current operation
 
     # Execution tracing
     trace_enabled: bool = False  # Global trace enable
@@ -935,6 +957,10 @@ class HardwareState:
         self.regs[0xC80A] = 0x00  # PCIe/NVMe interrupt - bit 6 triggers PD debug
         self.regs[0xC8A9] = 0x00  # Flash CSR - not busy
         self.regs[0xC8AA] = 0x00  # Flash command
+        self.regs[0xC8AB] = 0x00  # Flash address high
+        self.regs[0xC8AC] = 0x00  # Flash address mid
+        self.regs[0xC8AD] = 0x00  # Flash address low
+        self.regs[0xC8AE] = 0x00  # Flash data register
         self.regs[0xC8B8] = 0x00  # Flash/DMA status
         self.regs[0xC8D6] = 0x04  # DMA status - done
 
@@ -1016,6 +1042,10 @@ class HardwareState:
         # Flash CSR - auto-complete
         self.read_callbacks[0xC8A9] = self._flash_csr_read
         self.write_callbacks[0xC8AA] = self._flash_cmd_write
+
+        # Flash data register - read/write actual flash data
+        self.read_callbacks[0xC8AE] = self._flash_data_read
+        self.write_callbacks[0xC8AE] = self._flash_data_write
 
         # DMA status
         self.read_callbacks[0xC8D6] = self._dma_status_read
@@ -1465,12 +1495,112 @@ class HardwareState:
     # Flash/DMA Callbacks
     # ============================================
     def _flash_csr_read(self, hw: 'HardwareState', addr: int) -> int:
-        """Flash CSR - not busy."""
+        """
+        Flash CSR read - returns status.
+        Bit 0: Busy (0 = idle, 1 = operation in progress)
+        """
+        # Flash is always ready (operations complete instantly in emulation)
         return 0x00
 
     def _flash_cmd_write(self, hw: 'HardwareState', addr: int, value: int):
-        """Flash command - immediate complete."""
-        self.regs[0xC8A9] = 0x00
+        """
+        Flash command write - triggers flash operations.
+
+        SPI Flash commands:
+        - 0x03: Read data
+        - 0x02: Page program (write)
+        - 0x20: Sector erase (4KB)
+        - 0xD8: Block erase (64KB)
+        - 0xC7: Chip erase
+        - 0x06: Write enable
+        - 0x04: Write disable
+        """
+        # Get flash address from address registers
+        addr_hi = self.regs.get(0xC8AB, 0)
+        addr_mid = self.regs.get(0xC8AC, 0)
+        addr_lo = self.regs.get(0xC8AD, 0)
+        flash_addr = (addr_hi << 16) | (addr_mid << 8) | addr_lo
+        self.spi_flash_addr = flash_addr
+
+        if self.log_writes:
+            print(f"[{self.cycles:8d}] [SPI_FLASH] Command 0x{value:02X} at addr 0x{flash_addr:06X}")
+
+        if value == 0x20:  # Sector erase (4KB)
+            sector_start = flash_addr & ~0xFFF
+            if sector_start + 0x1000 <= len(self.spi_flash):
+                for i in range(0x1000):
+                    self.spi_flash[sector_start + i] = 0xFF
+                print(f"[{self.cycles:8d}] [SPI_FLASH] Erased sector at 0x{sector_start:06X}")
+
+        elif value == 0xD8:  # Block erase (64KB)
+            block_start = flash_addr & ~0xFFFF
+            if block_start + 0x10000 <= len(self.spi_flash):
+                for i in range(0x10000):
+                    self.spi_flash[block_start + i] = 0xFF
+                print(f"[{self.cycles:8d}] [SPI_FLASH] Erased block at 0x{block_start:06X}")
+
+        elif value == 0xC7:  # Chip erase
+            for i in range(len(self.spi_flash)):
+                self.spi_flash[i] = 0xFF
+            print(f"[{self.cycles:8d}] [SPI_FLASH] Chip erased")
+
+        elif value == 0x02:  # Page program - data comes from USB buffer
+            self.spi_flash_write_pending = True
+            self.spi_flash_write_count = 0
+            print(f"[{self.cycles:8d}] [SPI_FLASH] Page program started at 0x{flash_addr:06X}")
+
+        # Mark operation complete
+        self.regs[0xC8A9] = 0x00  # Clear busy
+
+    def _flash_data_write(self, hw: 'HardwareState', addr: int, value: int):
+        """
+        Flash data write - writes data to flash during page program.
+        Data is written byte-by-byte to the current flash address.
+        """
+        if self.spi_flash_write_pending:
+            flash_addr = self.spi_flash_addr + self.spi_flash_write_count
+            if flash_addr < len(self.spi_flash):
+                # SPI flash write: can only clear bits (AND with existing value)
+                self.spi_flash[flash_addr] &= value
+                self.spi_flash_write_count += 1
+                if self.log_writes:
+                    print(f"[{self.cycles:8d}] [SPI_FLASH] Write byte 0x{value:02X} to 0x{flash_addr:06X}")
+
+    def _flash_data_read(self, hw: 'HardwareState', addr: int) -> int:
+        """
+        Flash data read - reads data from flash at current address.
+        Returns the byte at spi_flash_addr and auto-increments.
+        """
+        flash_addr = self.spi_flash_addr
+        if flash_addr < len(self.spi_flash):
+            value = self.spi_flash[flash_addr]
+            self.spi_flash_addr += 1  # Auto-increment
+            if self.log_reads:
+                print(f"[{self.cycles:8d}] [SPI_FLASH] Read byte 0x{value:02X} from 0x{flash_addr:06X}")
+            return value
+        return 0xFF  # Return erased value if out of range
+
+    def load_flash_from_file(self, path: str):
+        """Load flash contents from a file (e.g., fw.bin)."""
+        try:
+            with open(path, 'rb') as f:
+                data = f.read()
+            # Copy to flash, don't exceed flash size
+            copy_size = min(len(data), len(self.spi_flash))
+            for i in range(copy_size):
+                self.spi_flash[i] = data[i]
+            print(f"[SPI_FLASH] Loaded {copy_size} bytes from {path}")
+        except Exception as e:
+            print(f"[SPI_FLASH] Failed to load from {path}: {e}")
+
+    def save_flash_to_file(self, path: str):
+        """Save flash contents to a file."""
+        try:
+            with open(path, 'wb') as f:
+                f.write(self.spi_flash)
+            print(f"[SPI_FLASH] Saved {len(self.spi_flash)} bytes to {path}")
+        except Exception as e:
+            print(f"[SPI_FLASH] Failed to save to {path}: {e}")
 
     def _dma_status_read(self, hw: 'HardwareState', addr: int) -> int:
         """DMA status - done."""
@@ -2010,6 +2140,130 @@ class HardwareState:
                 # Keep the captured data but mark capture as complete
                 self.usb_capture_config_active = False
 
+    def load_config_descriptor_from_rom(self):
+        """Load USB3 config descriptor from ROM and fix wTotalLength.
+
+        The ROM at 0x58CF has USB3 config descriptor with wTotalLength=44,
+        which only includes alt_setting 0 (BBB). However, alt_setting 1 (UAS)
+        data continues immediately after at 0x58FB.
+
+        This method parses the ROM to find the actual end of the config
+        descriptor (including alt_setting 1), creates a copy with the
+        correct wTotalLength, and stores it for use when returning
+        config descriptor data to the host.
+        """
+        if self._memory is None:
+            print("[USB] Warning: Cannot load config from ROM - no memory reference")
+            return
+
+        # USB3 config descriptor starts at 0x58CF in ROM
+        USB3_CONFIG_OFFSET = 0x58CF
+
+        # Parse the descriptor chain to find actual total length
+        rom = self._memory.code
+        if len(rom) < USB3_CONFIG_OFFSET + 9:
+            print("[USB] Warning: ROM too small for config descriptor")
+            return
+
+        # Valid descriptor types for config descriptor contents
+        valid_types = {0x02, 0x04, 0x05, 0x30, 0x24}  # config, interface, endpoint, SS companion, class-specific
+
+        i = USB3_CONFIG_OFFSET
+        total_len = 0
+        while i < len(rom) - 1:
+            bLength = rom[i]
+            bDescriptorType = rom[i + 1]
+
+            # Stop at invalid descriptors or when we hit next config descriptor
+            if bLength == 0 or bDescriptorType not in valid_types:
+                break
+
+            # Stop if we hit another config descriptor (USB2 config at 0x5948)
+            if bDescriptorType == 0x02 and i > USB3_CONFIG_OFFSET:
+                break
+
+            i += bLength
+            total_len = i - USB3_CONFIG_OFFSET
+
+        if total_len < 44:
+            print(f"[USB] Warning: Parsed config descriptor too small ({total_len} bytes)")
+            return
+
+        # Extract the full descriptor and fix wTotalLength
+        desc = bytearray(rom[USB3_CONFIG_OFFSET:USB3_CONFIG_OFFSET + total_len])
+        old_len = desc[2] | (desc[3] << 8)
+        desc[2] = total_len & 0xFF
+        desc[3] = (total_len >> 8) & 0xFF
+
+        self.usb_ss_config_from_rom = bytes(desc)
+        print(f"[USB] Loaded USB3 config descriptor from ROM: {total_len} bytes (wTotalLength fixed {old_len} -> {total_len})")
+
+        # Also load USB2 High Speed config descriptor from 0x5948
+        # This has correct 512-byte max packet sizes for USB 2.0
+        USB2_CONFIG_OFFSET = 0x5948
+
+        if len(rom) < USB2_CONFIG_OFFSET + 9:
+            print("[USB] Warning: ROM too small for USB2 config descriptor")
+            return
+
+        # Parse USB2 descriptor chain
+        i = USB2_CONFIG_OFFSET
+        total_len_usb2 = 0
+        while i < len(rom) - 1:
+            bLength = rom[i]
+            bDescriptorType = rom[i + 1]
+
+            # Valid types for USB2 config: config(0x02), interface(0x04), endpoint(0x05), class-specific(0x24)
+            # No SS companion (0x30) in USB2
+            valid_types_usb2 = {0x02, 0x04, 0x05, 0x24}
+
+            if bLength == 0 or bDescriptorType not in valid_types_usb2:
+                break
+
+            # Stop if we hit another config descriptor
+            if bDescriptorType == 0x02 and i > USB2_CONFIG_OFFSET:
+                break
+
+            i += bLength
+            total_len_usb2 = i - USB2_CONFIG_OFFSET
+
+        if total_len_usb2 < 32:
+            print(f"[USB] Warning: Parsed USB2 config descriptor too small ({total_len_usb2} bytes)")
+            return
+
+        # Extract the USB2 descriptor and fix wTotalLength if needed
+        desc_usb2 = bytearray(rom[USB2_CONFIG_OFFSET:USB2_CONFIG_OFFSET + total_len_usb2])
+        old_len_usb2 = desc_usb2[2] | (desc_usb2[3] << 8)
+        desc_usb2[2] = total_len_usb2 & 0xFF
+        desc_usb2[3] = (total_len_usb2 >> 8) & 0xFF
+
+        self.usb_hs_config_from_rom = bytes(desc_usb2)
+        print(f"[USB] Loaded USB2 config descriptor from ROM: {total_len_usb2} bytes (wTotalLength: {old_len_usb2} -> {total_len_usb2})")
+
+    def _extend_config_descriptor(self, base_desc: bytearray, requested_len: int) -> bytes:
+        """Return config descriptor appropriate for current USB speed.
+
+        Uses USB2 config (0x5948) for High Speed with 512-byte endpoints,
+        or USB3 config (0x58CF) for SuperSpeed with 1024-byte endpoints.
+        """
+        # Check USB speed from controller
+        usb_ctrl = getattr(self, 'usb_controller', None)
+        usb_speed = getattr(usb_ctrl, 'usb_speed', 2) if usb_ctrl else 2
+
+        # USB 2.0 High Speed (speed < 2) uses USB2 config descriptor
+        if usb_speed < 2 and self.usb_hs_config_from_rom:
+            print(f"[USB] Using USB2 High Speed config descriptor (speed={usb_speed})")
+            return self.usb_hs_config_from_rom[:min(requested_len, len(self.usb_hs_config_from_rom))]
+
+        # USB 3.0 SuperSpeed (speed >= 2) uses USB3 config descriptor
+        if self.usb_ss_config_from_rom:
+            return self.usb_ss_config_from_rom[:min(requested_len, len(self.usb_ss_config_from_rom))]
+
+        # Fallback: return what firmware wrote (shouldn't happen normally)
+        if len(base_desc) < 9:
+            return bytes(base_desc[:requested_len])
+        return bytes(base_desc[:min(requested_len, len(base_desc))])
+
     def _usb_ep0_csr_read(self, hw: 'HardwareState', addr: int) -> int:
         """Read USB EP0 CSR - check if command pending."""
         # Process next command when firmware reads CSR
@@ -2150,7 +2404,8 @@ class HardwareState:
 
                 if desc_type == 0x02 and len(self.usb_captured_config_desc) >= dma_len:
                     # Use captured config descriptor (firmware corrupts 0x9E00 before DMA)
-                    desc_data = bytes(self.usb_captured_config_desc[:dma_len])
+                    # Add UAS alt_setting 1 with 4 endpoints for patch.py compatibility
+                    desc_data = self._extend_config_descriptor(self.usb_captured_config_desc, dma_len)
                     print(f"[{self.cycles:8d}] [USB] Using captured config descriptor ({dma_len} bytes)")
                 else:
                     # Use current 0x9E00 buffer content

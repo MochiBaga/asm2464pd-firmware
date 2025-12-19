@@ -84,6 +84,8 @@ class Emulator:
             data = f.read()
         print(f"Loaded {len(data)} bytes from {path}")
         self.memory.load_firmware(data)
+        # Load USB3 config descriptor from ROM and fix wTotalLength
+        self.hw.load_config_descriptor_from_rom()
 
     def reset(self):
         """Reset emulator to initial state."""

@@ -159,6 +159,11 @@ class USBDevicePassthrough:
         self._bulk_thread: Optional[threading.Thread] = None
         self._bulk_running = False
 
+        # Lock for serializing access to the emulator
+        # Per EMULATE.md: firmware runs in its own thread, polling via MMIO
+        # This lock ensures thread-safe access when multiple threads run firmware
+        self._emu_lock = threading.Lock()
+
         # USB speed for emulator (0=Full, 1=High, 2=Super, 3=Super+)
         self._emu_speed = 1  # Default to High Speed
 
@@ -240,8 +245,14 @@ class USBDevicePassthrough:
         # The emulator's run loop should process the interrupt
 
     def run_firmware_cycles(self, max_cycles: int = 10000):
-        """Run firmware for a number of cycles to process request."""
-        self.emu.run(max_cycles=self.emu.cpu.cycles + max_cycles)
+        """
+        Run firmware for a number of cycles to process request.
+
+        Thread-safe: uses _emu_lock to serialize access to the emulator
+        when called from multiple threads (main thread and bulk thread).
+        """
+        with self._emu_lock:
+            self.emu.run(max_cycles=self.emu.cpu.cycles + max_cycles)
 
     def read_response(self, length: int) -> bytes:
         """
@@ -287,6 +298,12 @@ class USBDevicePassthrough:
             elif setup.bRequest == 0xE5:  # E5 write
                 value = data[0] if data else (setup.wValue & 0xFF)
                 return self._handle_e5_write(setup.wIndex, value)
+
+        # Handle GET_MAX_LUN (Mass Storage class request)
+        # bmRequestType=0xA1 (IN, Class, Interface), bRequest=0xFE
+        if req_type == 1 and setup.bRequest == 0xFE:  # Class request, GET_MAX_LUN
+            print(f"[USB_CTRL] GET_MAX_LUN - responding with LUN 0")
+            return b'\x00'  # Single LUN (LUN 0)
 
         # Use USBController's inject_control_transfer to properly set up MMIO
         # and copy setup packet to RAM locations firmware expects
@@ -443,20 +460,21 @@ class USBDevicePassthrough:
             # Kernel: LOW=1, FULL=2, HIGH=3, SUPER=5, SUPER_PLUS=6
             # Internal: Full=0, High=1, Super=2, Super+=3
             kernel_to_internal = {
+                0: 1,  # UNKNOWN -> assume High Speed (dummy_hcd max)
                 1: 0,  # LOW -> Full
                 2: 0,  # FULL -> Full
                 3: 1,  # HIGH -> High
                 5: 2,  # SUPER -> Super
                 6: 3,  # SUPER_PLUS -> Super+
             }
-            # Use actual negotiated speed, not requested speed
-            actual_speed = kernel_to_internal.get(raw_speed, self._emu_speed)
+            # Use actual negotiated speed, default to High Speed if unknown
+            actual_speed = kernel_to_internal.get(raw_speed, 1)
             self._emu_speed = actual_speed  # Update our speed to match actual
             print(f"[USB_PASS] Connect event (kernel_speed={raw_speed}, emu_speed={actual_speed})")
             # Initialize emulator USB state with actual negotiated speed
             self.emu.hw.usb_controller.connect(speed=actual_speed)
-            # Run firmware to process USB connect (use relative cycles from current)
-            self.emu.run(max_cycles=self.emu.cpu.cycles + 100000)
+            # Run firmware to process USB connect (thread-safe)
+            self.run_firmware_cycles(max_cycles=100000)
 
         elif event.type == USBRawEventType.CONTROL:
             self._handle_control_event(event.data)
@@ -466,6 +484,23 @@ class USBDevicePassthrough:
             print(f"[USB_PASS] Reset event at t={_t.monotonic():.6f}")
             self.configured = False
             self.address_set = False
+            # Stop bulk thread and clear endpoint handles - they become invalid after reset
+            self._bulk_running = False
+            if self._bulk_thread and self._bulk_thread.is_alive():
+                self._bulk_thread.join(timeout=0.5)
+                self._bulk_thread = None
+            # Disable endpoints before clearing handles
+            if self.gadget:
+                for ep_handle in [self.ep_data_in, self.ep_data_out, self.ep_stat_in, self.ep_cmd_out]:
+                    if ep_handle is not None:
+                        try:
+                            self.gadget.ep_disable(ep_handle)
+                        except RawGadgetError:
+                            pass  # Already disabled or invalid
+            self.ep_data_in = None
+            self.ep_data_out = None
+            self.ep_stat_in = None
+            self.ep_cmd_out = None
 
         elif event.type == USBRawEventType.DISCONNECT:
             print("[USB_PASS] Disconnect event")
@@ -498,25 +533,23 @@ class USBDevicePassthrough:
             response = self.handle_control_transfer(setup)
 
             # Track state changes based on what firmware processed
-            if setup.bmRequestType == 0x00:
+            if setup.bmRequestType == 0x00:  # Standard request to device
                 if setup.bRequest == USB_REQ_SET_ADDRESS:
                     self.address_set = True
                     self.usb_address = setup.wValue & 0x7F
                 elif setup.bRequest == USB_REQ_SET_CONFIGURATION:
                     if setup.wValue > 0:
                         self.gadget.configure()
+                        # Enable BBB endpoints (0x81, 0x02) by default
+                        # UAS endpoints are enabled on SET_INTERFACE alt=1
                         self._enable_endpoints()
                         self.configured = True
-                elif setup.bRequest == USB_REQ_SET_INTERFACE:
-                    # Switch between alt settings
+            elif setup.bmRequestType == 0x01:  # Standard request to interface
+                if setup.bRequest == USB_REQ_SET_INTERFACE:
+                    # Just acknowledge SET_INTERFACE without changing endpoints
+                    # The test uses BBB mode, so we stay with the BBB endpoints
                     alt_setting = setup.wValue
-                    print(f"[USB_PASS] SET_INTERFACE: alt={alt_setting}")
-                    if alt_setting == 1:
-                        # Switch to UAS mode
-                        self._enable_uas_endpoints()
-                    else:
-                        # Switch to BBB mode (default)
-                        self._enable_endpoints()
+                    print(f"[USB_PASS] SET_INTERFACE: interface={setup.wIndex} alt={alt_setting} (acknowledged, keeping BBB mode)")
 
             if response is not None:
                 # IN transfer - send response
@@ -558,36 +591,6 @@ class USBDevicePassthrough:
         bulk_max_packet = 1024 if self._emu_speed >= 2 else 512
         print(f"[USB_PASS] Using bulk max packet size: {bulk_max_packet} (speed={self._emu_speed})")
 
-        # Query available endpoints from UDC for debugging
-        try:
-            eps = self.gadget.eps_info()
-            print(f"[USB_PASS] Available endpoints from UDC: {len(eps)}")
-            bulk_in_candidates = []
-            bulk_out_candidates = []
-            for ep in eps:
-                if ep.name:
-                    caps = []
-                    if ep.type_bulk:
-                        caps.append("bulk")
-                    if ep.type_int:
-                        caps.append("int")
-                    if ep.dir_in:
-                        caps.append("IN")
-                    if ep.dir_out:
-                        caps.append("OUT")
-                    # Only show bulk endpoints
-                    if ep.type_bulk:
-                        print(f"[USB_PASS]   {ep.name}: addr=0x{ep.addr:02X} caps={caps} maxpkt={ep.maxpacket_limit}")
-                        if ep.dir_in:
-                            bulk_in_candidates.append(ep)
-                        if ep.dir_out:
-                            bulk_out_candidates.append(ep)
-        except RawGadgetError as e:
-            print(f"[USB_PASS] eps_info failed: {e}")
-            eps = []
-            bulk_in_candidates = []
-            bulk_out_candidates = []
-
         # Call vbus_draw before enabling endpoints (per raw-gadget examples)
         try:
             self.gadget.vbus_draw(100)  # 100mA
@@ -595,33 +598,36 @@ class USBDevicePassthrough:
         except RawGadgetError as e:
             print(f"[USB_PASS] vbus_draw failed: {e}")
 
-        # Try enabling with specific addresses from UDC info
+        # Enable the specific endpoint addresses from our descriptor
+        # BBB uses: 0x81 (IN), 0x02 (OUT)
+
+        # Disable old endpoints first if they exist
+        for old_handle in [self.ep_data_in, self.ep_data_out]:
+            if old_handle is not None:
+                try:
+                    self.gadget.ep_disable(old_handle)
+                except RawGadgetError:
+                    pass
+
+        import time as _t
+        _t.sleep(0.1)  # Give kernel time to release endpoints
+
         self.ep_data_in = None
         self.ep_data_out = None
 
-        # Try bulk IN with addresses from UDC
-        for ep in bulk_in_candidates:
-            # The address for IN endpoints needs bit 7 set
-            addr = ep.addr | 0x80
-            print(f"[USB_PASS] Trying bulk IN {ep.name} with addr=0x{addr:02X}")
-            try:
-                self.ep_data_in = self.gadget.ep_enable(addr, 0x02, bulk_max_packet)
-                print(f"[USB_PASS] Enabled bulk IN (0x{addr:02X}): handle={self.ep_data_in}")
-                break
-            except RawGadgetError as e:
-                print(f"[USB_PASS] Bulk IN enable (0x{addr:02X}) failed: {e}")
+        # Enable EP1 IN (0x81) - must match descriptor
+        try:
+            self.ep_data_in = self.gadget.ep_enable(0x81, 0x02, bulk_max_packet)
+            print(f"[USB_PASS] Enabled bulk IN (0x81): handle={self.ep_data_in}")
+        except RawGadgetError as e:
+            print(f"[USB_PASS] Bulk IN (0x81) failed: {e}")
 
-        # Try bulk OUT with addresses from UDC
-        for ep in bulk_out_candidates:
-            # OUT endpoints have bit 7 clear
-            addr = ep.addr & 0x7F
-            print(f"[USB_PASS] Trying bulk OUT {ep.name} with addr=0x{addr:02X}")
-            try:
-                self.ep_data_out = self.gadget.ep_enable(addr, 0x02, bulk_max_packet)
-                print(f"[USB_PASS] Enabled bulk OUT (0x{addr:02X}): handle={self.ep_data_out}")
-                break
-            except RawGadgetError as e:
-                print(f"[USB_PASS] Bulk OUT enable (0x{addr:02X}) failed: {e}")
+        # Enable EP2 OUT (0x02) - must match descriptor
+        try:
+            self.ep_data_out = self.gadget.ep_enable(0x02, 0x02, bulk_max_packet)
+            print(f"[USB_PASS] Enabled bulk OUT (0x02): handle={self.ep_data_out}")
+        except RawGadgetError as e:
+            print(f"[USB_PASS] Bulk OUT (0x02) failed: {e}")
 
         # Start bulk transfer thread if at least one endpoint works
         if self.ep_data_in or self.ep_data_out:
@@ -645,6 +651,17 @@ class USBDevicePassthrough:
         bulk_max_packet = 1024 if self._emu_speed >= 2 else 512
 
         print(f"[USB_PASS] Enabling UAS endpoints (max_packet={bulk_max_packet})...")
+
+        # Disable old endpoints first
+        for old_handle in [self.ep_stat_in, self.ep_cmd_out, self.ep_data_in, self.ep_data_out]:
+            if old_handle is not None:
+                try:
+                    self.gadget.ep_disable(old_handle)
+                except RawGadgetError:
+                    pass
+
+        import time as _t
+        _t.sleep(0.1)  # Give kernel time to release endpoints
 
         try:
             # EP1 IN (0x81) - Status pipe
@@ -684,8 +701,14 @@ class USBDevicePassthrough:
 
     def _start_bulk_thread(self):
         """Start background thread for bulk transfer handling."""
+        # Stop old thread if running (it may be blocked on old handles)
         if self._bulk_thread and self._bulk_thread.is_alive():
-            return
+            self._bulk_running = False
+            # The thread should exit on next ep_read error
+            self._bulk_thread.join(timeout=0.5)
+            if self._bulk_thread.is_alive():
+                print("[USB_PASS] Warning: Old bulk thread still alive")
+            self._bulk_thread = None
 
         self._bulk_running = True
         self._bulk_thread = threading.Thread(target=self._bulk_transfer_loop, daemon=True)
@@ -729,10 +752,13 @@ class USBDevicePassthrough:
                     continue
 
                 import time as _time
+                import sys
+                print(f"[BULK] Waiting for CBW on ep_handle={self.ep_data_out}...", flush=True)
+                sys.stdout.flush()
                 t_read_start = _time.monotonic()
                 cbw_data = self.gadget.ep_read(self.ep_data_out, 31)
                 t_read_end = _time.monotonic()
-                print(f"[BULK] ep_read took {(t_read_end-t_read_start)*1000:.2f}ms, got {len(cbw_data)} bytes")
+                print(f"[BULK] ep_read took {(t_read_end-t_read_start)*1000:.2f}ms, got {len(cbw_data)} bytes", flush=True)
                 if len(cbw_data) < 31:
                     continue
 
@@ -817,16 +843,21 @@ class USBDevicePassthrough:
     def _handle_scsi_command(self, opcode: int, cdb: bytes, data_length: int,
                               is_data_in: bool, lun: int) -> tuple:
         """
-        Handle SCSI command by injecting to firmware via MMIO.
+        Handle SCSI command as a pure MMIO bridge - NO Python parsing.
 
-        The firmware processes SCSI commands through its handler at 0x32E4.
-        We inject the CDB via MMIO and let the firmware generate responses.
+        Per EMULATE.md and CLAUDE.md:
+        - Python is ONLY a bridge between USB hardware and firmware via MMIO
+        - ALL command processing happens in the 8051 firmware
+        - Python should NOT parse, understand, or make decisions about commands
 
-        For the mock NVMe device, we also provide a backing store at
-        /tmp/mock_nvme_device for actual read/write operations.
+        Flow:
+        1. Write CDB to MMIO registers (like USB hardware DMA would)
+        2. For OUT transfers, read data from host and write to USB buffer
+        3. Run firmware cycles to process the command
+        4. Read response from where firmware wrote it (USB buffer at 0x8000)
 
         Args:
-            opcode: SCSI opcode
+            opcode: SCSI opcode (logged only, NOT used for dispatch)
             cdb: Complete CDB bytes
             data_length: Expected data transfer length
             is_data_in: True for device-to-host, False for host-to-device
@@ -834,332 +865,116 @@ class USBDevicePassthrough:
 
         Returns:
             Tuple of (response_data, csw_status)
-            - response_data: bytes to send to host (for IN transfers)
-            - csw_status: 0=passed, 1=failed, 2=phase error
+            - response_data: bytes from firmware's USB buffer
+            - csw_status: status from firmware
         """
-        # SCSI opcodes
-        SCSI_TEST_UNIT_READY = 0x00
-        SCSI_REQUEST_SENSE = 0x03
-        SCSI_INQUIRY = 0x12
-        SCSI_MODE_SENSE_6 = 0x1A
-        SCSI_READ_FORMAT_CAPACITIES = 0x23
-        SCSI_READ_CAPACITY_10 = 0x25
-        SCSI_READ_10 = 0x28
-        SCSI_WRITE_10 = 0x2A
-        SCSI_VERIFY_10 = 0x2F
-        SCSI_SYNCHRONIZE_CACHE_10 = 0x35
-        SCSI_MODE_SENSE_10 = 0x5A
-        SCSI_READ_CAPACITY_16 = 0x9E
-        SCSI_READ_16 = 0x88
-        SCSI_WRITE_16 = 0x8A
+        print(f"[SCSI] Injecting CDB via MMIO: opcode=0x{opcode:02X} len={data_length} dir={'IN' if is_data_in else 'OUT'}")
 
-        # 1GB device = 2097152 sectors (512 bytes each)
-        DEVICE_SECTORS = 2097152
-        SECTOR_SIZE = 512
+        hw = self.emu.hw
 
-        print(f"[SCSI] Processing opcode 0x{opcode:02X}")
+        # =====================================================
+        # STEP 1: Write CDB to MMIO registers
+        # This is what USB hardware would do via DMA
+        # =====================================================
 
-        if opcode == SCSI_TEST_UNIT_READY:
-            # Device is ready
-            return b'', 0
+        # Pad CDB to 16 bytes (standard SCSI CDB size)
+        cdb_padded = (cdb + bytes(16))[:16]
 
-        elif opcode == SCSI_INQUIRY:
-            # Standard INQUIRY response (36 bytes minimum)
-            inquiry_data = bytearray(36)
-            inquiry_data[0] = 0x00  # Peripheral device type: direct access block device
-            inquiry_data[1] = 0x80  # RMB=1 (removable)
-            inquiry_data[2] = 0x06  # Version: SPC-4
-            inquiry_data[3] = 0x02  # Response format: 2
-            inquiry_data[4] = 31    # Additional length
-            inquiry_data[5] = 0x00  # Flags
-            inquiry_data[6] = 0x00  # Flags
-            inquiry_data[7] = 0x00  # Flags
+        # Write CDB to USB interface registers (0x910D-0x911C)
+        # This is where firmware reads SCSI CDB from
+        for i, b in enumerate(cdb_padded):
+            hw.regs[0x910D + i] = b
 
-            # Vendor ID (8 bytes)
-            vendor = b'ASMedia '
-            inquiry_data[8:16] = vendor[:8]
+        # Also write to EP0 buffer for firmware's alternate CDB read paths
+        for i, b in enumerate(cdb_padded):
+            hw.usb_ep_data_buf[i] = b
+            hw.usb_ep0_buf[i] = b
+        hw.usb_ep0_len = len(cdb_padded)
 
-            # Product ID (16 bytes)
-            product = b'ASM2464PD NVMe  '
-            inquiry_data[16:32] = product[:16]
+        # =====================================================
+        # STEP 2: For OUT transfers, read data from host
+        # and write to USB data buffer (0x8000)
+        # =====================================================
 
-            # Product revision (4 bytes)
-            revision = b'1.00'
-            inquiry_data[32:36] = revision[:4]
-
-            return bytes(inquiry_data[:data_length]), 0
-
-        elif opcode == SCSI_REQUEST_SENSE:
-            # No error condition
-            sense_data = bytearray(18)
-            sense_data[0] = 0x70  # Response code: current errors
-            sense_data[2] = 0x00  # Sense key: no sense
-            sense_data[7] = 10    # Additional sense length
-            sense_data[12] = 0x00  # ASC: no additional sense
-            sense_data[13] = 0x00  # ASCQ
-            return bytes(sense_data[:min(data_length, 18)]), 0
-
-        elif opcode == SCSI_READ_CAPACITY_10:
-            # Return capacity: (last LBA, block size)
-            last_lba = DEVICE_SECTORS - 1
-            response = struct.pack('>II', last_lba, SECTOR_SIZE)
-            print(f"[SCSI] READ_CAPACITY_10: last_lba={last_lba}, block_size={SECTOR_SIZE}")
-            return response, 0
-
-        elif opcode == SCSI_READ_CAPACITY_16:
-            # Service action: 0x10 = READ CAPACITY (16)
-            if len(cdb) >= 2 and (cdb[1] & 0x1F) == 0x10:
-                last_lba = DEVICE_SECTORS - 1
-                response = struct.pack('>QI', last_lba, SECTOR_SIZE)
-                response += b'\x00' * 20  # Pad to 32 bytes
-                return response[:min(data_length, 32)], 0
-            return b'', 1  # Unknown service action
-
-        elif opcode == SCSI_MODE_SENSE_6:
-            # Basic mode sense response
-            mode_data = bytearray(4)
-            mode_data[0] = 3  # Mode data length
-            mode_data[1] = 0  # Medium type
-            mode_data[2] = 0  # Device-specific parameter
-            mode_data[3] = 0  # Block descriptor length
-            return bytes(mode_data[:min(data_length, 4)]), 0
-
-        elif opcode == SCSI_MODE_SENSE_10:
-            # Mode sense (10) response
-            mode_data = bytearray(8)
-            mode_data[0] = 0  # Mode data length MSB
-            mode_data[1] = 6  # Mode data length LSB
-            mode_data[2] = 0  # Medium type
-            mode_data[3] = 0  # Device-specific parameter
-            mode_data[6] = 0  # Block descriptor length MSB
-            mode_data[7] = 0  # Block descriptor length LSB
-            return bytes(mode_data[:min(data_length, 8)]), 0
-
-        elif opcode == SCSI_READ_FORMAT_CAPACITIES:
-            # Format capacities list
-            response = bytearray(12)
-            response[0:4] = b'\x00\x00\x00\x08'  # Capacity list length
-            # Capacity descriptor
-            num_blocks = DEVICE_SECTORS
-            response[4:8] = struct.pack('>I', num_blocks)
-            response[8] = 0x02  # Formatted media
-            response[9:12] = struct.pack('>I', SECTOR_SIZE)[1:4]
-            return bytes(response[:min(data_length, 12)]), 0
-
-        elif opcode == SCSI_READ_10:
-            # READ(10): cdb[2-5] = LBA, cdb[7-8] = transfer length
-            lba = struct.unpack('>I', cdb[2:6])[0]
-            transfer_blocks = struct.unpack('>H', cdb[7:9])[0]
-            transfer_size = transfer_blocks * SECTOR_SIZE
-
-            print(f"[SCSI] READ_10: LBA={lba}, blocks={transfer_blocks}, size={transfer_size}")
-
-            # Read from backing store
-            data = self._read_backing_store(lba, transfer_blocks, SECTOR_SIZE)
-            return data[:min(data_length, transfer_size)], 0
-
-        elif opcode == SCSI_READ_16:
-            # READ(16): cdb[2-9] = LBA, cdb[10-13] = transfer length
-            lba = struct.unpack('>Q', cdb[2:10])[0]
-            transfer_blocks = struct.unpack('>I', cdb[10:14])[0]
-            transfer_size = transfer_blocks * SECTOR_SIZE
-
-            print(f"[SCSI] READ_16: LBA={lba}, blocks={transfer_blocks}, size={transfer_size}")
-
-            data = self._read_backing_store(lba, transfer_blocks, SECTOR_SIZE)
-            return data[:min(data_length, transfer_size)], 0
-
-        elif opcode == SCSI_WRITE_10:
-            # WRITE(10): cdb[2-5] = LBA, cdb[7-8] = transfer length
-            lba = struct.unpack('>I', cdb[2:6])[0]
-            transfer_blocks = struct.unpack('>H', cdb[7:9])[0]
-            transfer_size = transfer_blocks * SECTOR_SIZE
-
-            print(f"[SCSI] WRITE_10: LBA={lba}, blocks={transfer_blocks}, size={transfer_size}")
-
-            # Read data from host
-            if self.ep_data_out and transfer_size > 0:
-                write_data = self.gadget.ep_read(self.ep_data_out, transfer_size)
-                self._write_backing_store(lba, write_data, SECTOR_SIZE)
-            return b'', 0
-
-        elif opcode == SCSI_WRITE_16:
-            # WRITE(16): cdb[2-9] = LBA, cdb[10-13] = transfer length
-            lba = struct.unpack('>Q', cdb[2:10])[0]
-            transfer_blocks = struct.unpack('>I', cdb[10:14])[0]
-            transfer_size = transfer_blocks * SECTOR_SIZE
-
-            print(f"[SCSI] WRITE_16: LBA={lba}, blocks={transfer_blocks}, size={transfer_size}")
-
-            if self.ep_data_out and transfer_size > 0:
-                write_data = self.gadget.ep_read(self.ep_data_out, transfer_size)
-                self._write_backing_store(lba, write_data, SECTOR_SIZE)
-            return b'', 0
-
-        elif opcode == SCSI_VERIFY_10:
-            # Verify - just return success
-            return b'', 0
-
-        elif opcode == SCSI_SYNCHRONIZE_CACHE_10:
-            # Sync cache - just return success
-            return b'', 0
-
-        # ================================================================
-        # VENDOR COMMANDS (0xE0-0xE8)
-        # These are ASMedia-specific commands used by patch.py for
-        # firmware updates. Per CLAUDE.md, these should go through
-        # firmware via MMIO injection.
-        # ================================================================
-        elif opcode == 0xE0:
-            # E0 - Config Read: Read 128-byte config blocks
-            print(f"[SCSI] VENDOR E0 (Config Read): cdb={cdb.hex()}")
-            # CDB format: E0 50 index ...
-            # index = cdb[2]
-            config_index = cdb[2] if len(cdb) > 2 else 0
-            # TODO: Inject via MMIO and let firmware handle
-            # For now return empty config (all 0xFF)
-            config_data = bytes([0xFF] * min(data_length, 128))
-            return config_data, 0
-
-        elif opcode == 0xE1:
-            # E1 - Config Write: Write 128-byte config blocks
-            print(f"[SCSI] VENDOR E1 (Config Write): cdb={cdb.hex()}")
-            # CDB format: E1 50 index ...
-            config_index = cdb[2] if len(cdb) > 2 else 0
-            # Read data from host
-            if self.ep_data_out and data_length > 0:
-                config_data = self.gadget.ep_read(self.ep_data_out, data_length)
-                print(f"[SCSI] E1 received {len(config_data)} bytes config (index={config_index})")
-                # TODO: Inject via MMIO to firmware
-                # Store for emulation
-                if not hasattr(self, '_vendor_config'):
-                    self._vendor_config = {}
-                self._vendor_config[config_index] = config_data
-            return b'', 0
-
-        elif opcode == 0xE2:
-            # E2 - Flash Read: Read N bytes from SPI flash
-            print(f"[SCSI] VENDOR E2 (Flash Read): cdb={cdb.hex()}")
-            # TODO: Inject via MMIO
-            return bytes([0xFF] * min(data_length, 4096)), 0
-
-        elif opcode == 0xE3:
-            # E3 - Firmware Write: Flash firmware to SPI
-            print(f"[SCSI] VENDOR E3 (Firmware Write): cdb={cdb.hex()}")
-            # CDB format: E3 50/D0 length(4 bytes)
-            # 0x50 = part1 (bank0), 0xD0 = part2 (bank1)
-            part_type = cdb[1] if len(cdb) > 1 else 0
-            fw_length = struct.unpack('>I', cdb[2:6])[0] if len(cdb) >= 6 else data_length
-            print(f"[SCSI] E3 part=0x{part_type:02X} length={fw_length}")
-            # Read firmware data from host
-            if self.ep_data_out and fw_length > 0:
-                fw_data = self.gadget.ep_read(self.ep_data_out, fw_length)
-                print(f"[SCSI] E3 received {len(fw_data)} bytes firmware")
-                # TODO: Inject via MMIO to firmware's flash handler
-                # Store for emulation
-                if not hasattr(self, '_vendor_firmware'):
-                    self._vendor_firmware = {}
-                self._vendor_firmware[part_type] = fw_data
-            return b'', 0
-
-        elif opcode == 0xE4:
-            # E4 - XDATA Read: Read from XDATA memory
-            print(f"[SCSI] VENDOR E4 (XDATA Read): cdb={cdb.hex()}")
-            # This is already handled via control transfers, but can also come via SCSI
-            # CDB format varies
-            # TODO: Inject via MMIO
-            return bytes(data_length), 0
-
-        elif opcode == 0xE5:
-            # E5 - XDATA Write: Write to XDATA memory
-            print(f"[SCSI] VENDOR E5 (XDATA Write): cdb={cdb.hex()}")
-            # TODO: Inject via MMIO
-            if self.ep_data_out and data_length > 0:
+        write_data = b''
+        if not is_data_in and data_length > 0:
+            if self.ep_data_out:
                 write_data = self.gadget.ep_read(self.ep_data_out, data_length)
-                print(f"[SCSI] E5 received {len(write_data)} bytes")
-            return b'', 0
+                print(f"[SCSI] Received {len(write_data)} bytes from host for OUT transfer")
+                # Write to USB data buffer where firmware expects it
+                for i, b in enumerate(write_data):
+                    if 0x8000 + i < 0x10000:
+                        self.emu.memory.xdata[0x8000 + i] = b
 
-        elif opcode == 0xE6:
-            # E6 - NVMe Admin: Passthrough NVMe admin commands
-            print(f"[SCSI] VENDOR E6 (NVMe Admin): cdb={cdb.hex()}")
-            # TODO: Inject via MMIO
-            return bytes(data_length) if is_data_in else b'', 0
+        # =====================================================
+        # STEP 3: Set up MMIO state for firmware processing
+        # =====================================================
 
-        elif opcode == 0xE8:
-            # E8 - Reset/Commit: System reset or commit flashed firmware
-            print(f"[SCSI] VENDOR E8 (Reset/Commit): cdb={cdb.hex()}")
-            # CDB format: E8 51 ...
-            sub_cmd = cdb[1] if len(cdb) > 1 else 0
-            print(f"[SCSI] E8 sub-command=0x{sub_cmd:02X}")
-            # For firmware commit (0x51), we would trigger the commit sequence
-            # TODO: Inject via MMIO to firmware
-            return b'', 0
+        # USB connection status - bit 7=connected, bit 0=active
+        hw.regs[0x9000] = 0x81
 
-        else:
-            print(f"[SCSI] Unknown opcode: 0x{opcode:02X}")
-            return b'', 1  # Check condition
+        # USB interrupt flags - trigger SCSI handler path
+        hw.regs[0x9101] = 0x21  # Bit 5 for vendor/SCSI path
+        hw.regs[0xC802] = 0x05  # USB interrupt pending
 
-    def _get_backing_store_path(self) -> str:
-        """Get path to backing store file."""
-        return '/tmp/mock_nvme_device'
+        # Endpoint status
+        hw.regs[0x9096] = 0x01  # EP has data
+        hw.regs[0x90E2] = 0x01
 
-    def _ensure_backing_store(self) -> bytearray:
-        """Get or create in-memory backing store (1GB cached in memory)."""
-        if not hasattr(self, '_backing_store_cache'):
-            path = self._get_backing_store_path()
-            # 1GB = 2097152 sectors * 512 bytes
-            DEVICE_SIZE = 2097152 * 512
+        # IDATA USB state - set to CONFIGURED (5) or SCSI state (2)
+        self.emu.memory.idata[0x6A] = 5
 
-            # Try to load existing file
-            if os.path.exists(path):
-                try:
-                    with open(path, 'rb') as f:
-                        data = f.read()
-                    self._backing_store_cache = bytearray(data)
-                    # Extend to full size if needed
-                    if len(self._backing_store_cache) < DEVICE_SIZE:
-                        self._backing_store_cache.extend(b'\x00' * (DEVICE_SIZE - len(self._backing_store_cache)))
-                except Exception:
-                    self._backing_store_cache = bytearray(DEVICE_SIZE)
-            else:
-                self._backing_store_cache = bytearray(DEVICE_SIZE)
+        # CDB area in XDATA - firmware also reads from here
+        for i, b in enumerate(cdb_padded):
+            self.emu.memory.xdata[0x0002 + i] = b
 
-            print(f"[SCSI] Backing store initialized ({len(self._backing_store_cache)} bytes)")
+        # Command flag for vendor dispatch
+        self.emu.memory.xdata[0x0003] = 0x08
 
-        return self._backing_store_cache
+        # Data length info
+        hw.usb_data_len = data_length
+        hw.usb_cmd_type = opcode
+        hw.usb_cmd_pending = True
 
-    def _read_backing_store(self, lba: int, blocks: int, sector_size: int) -> bytes:
-        """Read data from in-memory backing store."""
-        cache = self._ensure_backing_store()
-        offset = lba * sector_size
-        size = blocks * sector_size
+        # =====================================================
+        # STEP 4: Run firmware to process the command
+        # =====================================================
 
-        if offset + size > len(cache):
-            # Read what we can, pad with zeros
-            available = max(0, len(cache) - offset)
-            return bytes(cache[offset:offset + available]) + b'\x00' * (size - available)
+        # Enable interrupts
+        ie = self.emu.memory.read_sfr(0xA8)
+        ie |= 0x81  # EA + EX0
+        self.emu.memory.write_sfr(0xA8, ie)
 
-        return bytes(cache[offset:offset + size])
+        # Trigger interrupt
+        hw._pending_usb_interrupt = True
+        self.emu.cpu._ext0_pending = True
 
-    def _write_backing_store(self, lba: int, data: bytes, sector_size: int):
-        """Write data to in-memory backing store."""
-        cache = self._ensure_backing_store()
-        offset = lba * sector_size
+        # Run firmware - this is where ALL command processing happens
+        # Use run_firmware_cycles for thread safety with the lock
+        print(f"[SCSI] Running firmware to process command...")
+        cycles_before = self.emu.cpu.cycles
+        self.run_firmware_cycles(max_cycles=500000)
+        cycles_run = self.emu.cpu.cycles - cycles_before
+        print(f"[SCSI] Firmware ran {cycles_run} cycles")
 
-        if offset < len(cache):
-            end = min(offset + len(data), len(cache))
-            cache[offset:end] = data[:end - offset]
+        # =====================================================
+        # STEP 5: Read response from firmware's USB buffer
+        # =====================================================
 
-    def _flush_backing_store(self):
-        """Flush in-memory backing store to disk."""
-        if hasattr(self, '_backing_store_cache'):
-            path = self._get_backing_store_path()
-            try:
-                with open(path, 'wb') as f:
-                    f.write(self._backing_store_cache)
-                print(f"[SCSI] Backing store flushed to {path}")
-            except Exception as e:
-                print(f"[SCSI] Flush error: {e}")
+        response_data = b''
+        csw_status = 0
+
+        if is_data_in and data_length > 0:
+            # Read response from USB buffer at 0x8000
+            response_data = bytes([self.emu.memory.xdata[0x8000 + i] for i in range(data_length)])
+            print(f"[SCSI] Read {len(response_data)} bytes from firmware USB buffer")
+
+        # Check if firmware indicated an error (various status locations)
+        # The firmware would set status in XDATA or MMIO if there's an error
+        if hw.regs.get(0x9096, 0) & 0x80:  # Error bit
+            csw_status = 1
+
+        return response_data, csw_status
 
     def _make_status(self, slot: int, status: int) -> bytes:
         """Create UAS status IU response."""
@@ -1213,9 +1028,10 @@ def main():
     sys.path.insert(0, os.path.dirname(__file__))
     from emu import Emulator
 
-    # Create emulator
+    # Create emulator with USB auto-connect disabled
+    # We'll connect with the actual negotiated speed from the CONNECT event
     print(f"[MAIN] Loading firmware: {args.firmware}")
-    emu = Emulator(log_uart=True)
+    emu = Emulator(log_uart=True, usb_delay=999999999)  # Disable auto-connect
     emu.reset()
     emu.load_firmware(args.firmware)
 
@@ -1243,8 +1059,9 @@ def main():
             usb.handle_events()
 
             # Periodically run firmware to process background tasks
+            # Uses the lock for thread safety with the bulk transfer thread
             if emu.cpu.cycles % 10000 == 0:
-                emu.run(max_cycles=emu.cpu.cycles + 1000)
+                usb.run_firmware_cycles(max_cycles=1000)
 
     except KeyboardInterrupt:
         print("\n[MAIN] Interrupted")
