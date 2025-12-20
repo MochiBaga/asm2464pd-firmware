@@ -714,7 +714,7 @@ void usb_copy_status_to_buffer(void)
 
 /*
  * usb_clear_idata_indexed - Clear indexed IDATA location
- * Address: 0x3168-0x3180 (25 bytes)
+ * Address: 0x3169-0x3180 (24 bytes)
  *
  * Calculates address 0x00C2 + IDATA[0x38] and clears that XDATA location,
  * then returns pointer to 0x00E5 + IDATA[0x38].
@@ -1427,7 +1427,7 @@ void usb_set_ep0_mode_bit(void)
 
 /*
  * usb_get_config_offset_0456 - Get config offset in 0x04XX region
- * Address: 0x1be8-0x1bf5 (14 bytes)
+ * Address: 0x1be9-0x1bf5 (13 bytes)
  *
  * Reads G_SYS_STATUS_PRIMARY, adds 0x56, returns pointer to 0x04XX.
  *
@@ -1683,7 +1683,7 @@ uint8_t usb_dec_indexed_counter(void)
 
 /*
  * usb_copy_xdata_to_idata12 - Address calculation and store helper
- * Address: 0x1b14-0x1b13 (bytes overlap - actually 0x1b14-0x1b2a, 23 bytes)
+ * Address: 0x1b15-0x1b13 (bytes overlap - actually 0x1b15-0x1b2a, 23 bytes)
  *
  * Takes R1:R2 (address), stores to DPTR, calls 0x0D84, then calls
  * idata_store_dword with R0=0x12, then calls 0x0DDD with DPTR=0x0007.
@@ -1994,7 +1994,7 @@ void usb_set_ep0_config_bit0(void)
 
 /*
  * usb_calc_status_table_ptr - Calculate address 0x0456 + G_SYS_STATUS_PRIMARY
- * Address: 0x1be8-0x1bf5 (14 bytes)
+ * Address: 0x1be9-0x1bf5 (13 bytes)
  *
  * Returns pointer into system status table based on G_SYS_STATUS_PRIMARY.
  */
@@ -2035,7 +2035,7 @@ __xdata uint8_t *usb_calc_work_area_ptr(void)
 
 /*
  * usb_check_scsi_ctrl_nonzero - Check SCSI control counter
- * Address: 0x1c22-0x1c29 (8 bytes)
+ * Address: 0x1c23-0x1c29 (7 bytes)
  *
  * Reads G_SCSI_CTRL (0x0171), subtracts 0 with borrow, returns carry flag.
  */
@@ -2046,7 +2046,7 @@ uint8_t usb_check_scsi_ctrl_nonzero(void)
 
 /*
  * usb_lookup_code_table_5cad - Lookup in table 0x5CAD
- * Address: 0x1c2a-0x1c39 (16 bytes)
+ * Address: 0x1c2b-0x1c39 (15 bytes)
  *
  * Multiplies IDATA[0x3C] by 2, adds to 0x5CAD, reads code table.
  * Returns value from USB descriptor/endpoint configuration table.
@@ -2062,7 +2062,7 @@ uint8_t usb_lookup_code_table_5cad(uint8_t input)
 
 /*
  * usb_calc_dma_work_offset - Add values and mask, store result
- * Address: 0x1c3a-0x1c49 (16 bytes)
+ * Address: 0x1c3b-0x1c49 (15 bytes)
  *
  * Reads DPTR, adds to 0x0216, masks to 5 bits, stores to 0x01B4.
  * Calculates DMA work offset for transfer operations.
@@ -2103,7 +2103,7 @@ uint8_t usb_get_nvme_dev_status_masked(uint8_t input)
 
 /*
  * usb_load_pcie_txn_count - Read from address + 0x05A8, store to 0x05A6
- * Address: 0x1c5d-0x1c6c (16 bytes)
+ * Address: 0x1c5e-0x1c6c (15 bytes)
  *
  * Reads DPTR, adds 0xA8, reads from 0x05XX, stores to G_PCIE_TXN_COUNT_LO.
  * Loads PCIe transaction count from indexed location.
@@ -2305,7 +2305,7 @@ void usb_copy_idata_16_to_xdata(__xdata uint8_t *ptr)
 
 /*
  * usb_clear_nvme_status_bit1 - Clear bit 1 of C401
- * Address: 0x1cd4-0x1cdb (8 bytes)
+ * Address: 0x1cd5-0x1cdb (7 bytes)
  *
  * Reads 0xC401, masks off bit 1 (ANL with 0xFD), writes back.
  *
@@ -3085,7 +3085,7 @@ uint8_t usb_get_indexed_config_0171(void)
 
 /*
  * usb_func_1b05 - Store to indexed address 0x0171+
- * Address: 0x1b05-0x1b13 (15 bytes)
+ * Address: 0x1b06-0x1b13 (14 bytes)
  *
  * Stores R7 to address 0x0171 + IDATA[0x43].
  */
@@ -3167,7 +3167,7 @@ void usb_set_mode_bit(void)
 
 /*
  * usb_func_1be8 - Read USB config and compare
- * Address: 0x1be8-0x1bf0 (9 bytes)
+ * Address: 0x1be9-0x1bf0 (8 bytes)
  *
  * Reads 0x90E0, masks with 0x03, compares with #0x01.
  * Returns carry flag result.
@@ -3736,7 +3736,7 @@ void usb_reg_write_9093(void)
 
 /*
  * usb_func_1c5d - Read indexed value from 0x05xx and store to 0x05A6
- * Address: 0x1c5d-0x1c6c (16 bytes)
+ * Address: 0x1c5e-0x1c6c (15 bytes)
  *
  * Reads index from ptr, computes address 0x05A8 + index, reads value
  * from that address, and stores to G_PCIE_TXN_COUNT_LO (0x05A6).

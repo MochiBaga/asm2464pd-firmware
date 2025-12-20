@@ -14,7 +14,7 @@
 
 /*
  * pd_debug_print_flp - Print flash/link power status
- * Bank 1 Address: 0xB103-0xB148 (approx 70 bytes) [actual addr: 0x1306E]
+ * Bank 1 Address: 0xB103-0xB278 (374 bytes) [actual addr: 0x1306E-0x131E3]
  *
  * Outputs "[flp=XX]" where XX is the flash/link power status.
  * Reads PHY vendor control register 0xC6DB bit 0 for status.
@@ -33,7 +33,7 @@
  *   b118: mov r2, #0x21
  *   b11a: mov r1, #0xb8          ; string addr = 0x21B8 "]"
  *   b11c: lcall 0x53fa           ; uart_puts
- *   ... (continues with additional status updates)
+ *   ... (continues with additional status updates through 0xB278)
  */
 void pd_debug_print_flp(void)
 {
@@ -65,7 +65,7 @@ void pd_debug_print_flp(void)
 
 /*
  * pd_internal_state_init - Initialize internal PD state machine
- * Address: 0xB806-0xB86A (approx 100 bytes)
+ * Address: 0xB806-0xB8A8 (163 bytes)
  *
  * Outputs "[InternalPD_StateInit]" and initializes PD state variables.
  *
@@ -111,7 +111,7 @@ void pd_debug_print_flp(void)
  *   b849: sjmp +3
  *   b84b: mov a, #0x01
  *   b84d: movx @dptr, a          ; XDATA[0x07D2] = 0x01
- *   ... (continues with more initialization)
+ *   ... (continues with more initialization through 0xB8A8)
  */
 void pd_internal_state_init(void)
 {
@@ -161,18 +161,18 @@ void pd_internal_state_init(void)
 
 /*
  * pd_state_handler - Main PD state machine handler
- * Bank 1 Address: 0xB0F5-0xB103 (14 bytes) [actual addr: 0x13060]
+ * Bank 1 Address: 0xB0FA-0xB102 (9 bytes) [actual addr: 0x13065-0x1306D]
  *
  * Called during PD state transitions. Clears R4-R7 and calls state helper.
  *
  * Original disassembly:
- *   b0f5: clr a
- *   b0fb: mov r7, a
- *   b0fc: mov r6, a
- *   b0fd: mov r5, a
- *   b0fe: mov r4, a
- *   b0ff: lcall 0xb739           ; PD state helper
- *   b102: ret
+ *   b0fa: clr a                  ; 0x13065
+ *   b0fb: mov r7, a              ; 0x13066
+ *   b0fc: mov r6, a              ; 0x13067
+ *   b0fd: mov r5, a              ; 0x13068
+ *   b0fe: mov r4, a              ; 0x13069
+ *   b0ff: lcall 0xb739           ; 0x1306a - PD state helper
+ *   b102: ret                    ; 0x1306d
  *
  * Note: After this returns, execution falls through to 0xB103 (pd_debug_print_flp)
  */

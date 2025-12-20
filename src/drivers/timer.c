@@ -29,163 +29,154 @@ extern void config_helper_dual(uint8_t r7, uint8_t r5);
 
 /*
  * timer_idle_timeout_handler - Handle idle timeout events
- * Address: 0x0520-0x0523 (4 bytes)
+ * Address: 0x0507-0x050A (4 bytes)
  *
- * Dispatches to 0xB4BA which processes Timer3 idle timeout.
- * Reads 0xCC23 (Timer3 CSR), acks with 0x02, checks 0xCC81 for
- * idle state and processes timeout conditions.
+ * Dispatches to 0xA79C which processes idle timeout.
  * Called when bit 0 of 0xC806 (system interrupt status) is set.
  *
  * Original disassembly:
- *   0520: mov dptr, #0xb4ba
- *   0523: ajmp 0x0300
+ *   0507: mov dptr, #0xa79c
+ *   050a: ajmp 0x0300
  */
 void timer_idle_timeout_handler(void)
 {
-    jump_bank_0(0xB4BA);
+    jump_bank_0(0xA79C);
 }
 
 /*
  * timer_uart_debug_output - Output debug information via UART
- * Address: 0x052f-0x0532 (4 bytes)
+ * Address: 0x0516-0x0519 (4 bytes)
  *
- * Dispatches to 0xAF5E which outputs debug characters to UART.
- * Writes newline (0x0A, 0x0D) to 0xC001, outputs register values
- * from 0xE40F/0xE410, formats with separators (':', ']').
+ * Dispatches to 0xAE89 which outputs debug characters to UART.
  * Called when bit 6 of 0xC80A (PCIe/NVMe interrupt status) is set.
  *
  * Original disassembly:
- *   052f: mov dptr, #0xaf5e
- *   0532: ajmp 0x0300
+ *   0516: mov dptr, #0xae89
+ *   0519: ajmp 0x0300
  */
 void timer_uart_debug_output(void)
 {
-    jump_bank_0(0xAF5E);
+    jump_bank_0(0xAE89);
 }
 
 /*
  * timer_pcie_link_event - Handle PCIe link state events
- * Address: 0x0593-0x0596 (4 bytes)
+ * Address: 0x0570-0x0573 (4 bytes)
  *
- * Dispatches to 0xC105 which handles PCIe link state changes.
- * Calls 0xBCDE/0xBCAF for PCIe status checks, reads 0x09FA for
- * link state, handles PHY and error recovery via 0xCA0D/0xE74E.
+ * Dispatches to 0xBF1C which handles PCIe link state changes.
  * Called when bit 4 of 0xC80A is set (when event flags & 0x83).
  *
  * Original disassembly:
- *   0593: mov dptr, #0xc105
- *   0596: ajmp 0x0300
+ *   0570: mov dptr, #0xbf1c
+ *   0573: ajmp 0x0300
  */
 void timer_pcie_link_event(void)
 {
-    jump_bank_0(0xC105);
+    jump_bank_0(0xBF1C);
 }
 
 /*
  * timer_pcie_async_event - Handle asynchronous PCIe events
- * Address: 0x061a-0x061d (4 bytes)
+ * Address: 0x05F2-0x05F5 (4 bytes)
  *
- * Dispatches to Bank 1 at 0xA066 (file 0x12066) for async PCIe
- * event processing. Handles link training, reset recovery, and
- * asynchronous notifications from the PCIe controller.
+ * Dispatches to Bank 1 at 0xA08B for async PCIe event processing.
+ * Handles link training, reset recovery, and asynchronous notifications.
  * Called when bit 5 of 0xC80A is set (when event flags & 0x83).
  *
  * Original disassembly:
- *   061a: mov dptr, #0xa066
- *   061d: ajmp 0x0311
+ *   05f2: mov dptr, #0xa08b
+ *   05f5: ajmp 0x0311
  */
 void timer_pcie_async_event(void)
 {
-    jump_bank_1(0xA066);
+    jump_bank_1(0xA08B);
 }
 
 /*
  * timer_system_event_stub - Placeholder for system event handling
- * Address: 0x0642-0x0645 (4 bytes)
+ * Address: 0x061a-0x061d (4 bytes)
  *
- * Dispatches to Bank 1 at 0xEF4E (file 0x16F4E) which is currently
- * all NOPs (empty handler stub). Reserved for future system events.
+ * Dispatches to Bank 1 at 0xEEDD (file 0x16E48) for system event processing.
  * Called when bit 4 of 0xC806 (system interrupt status) is set.
  *
  * Original disassembly:
- *   0642: mov dptr, #0xef4e
- *   0645: ajmp 0x0311
+ *   061a: mov dptr, #0xeedd
+ *   061d: ajmp 0x0311
  */
 void timer_system_event_stub(void)
 {
-    jump_bank_1(0xEF4E);
+    jump_bank_1(0xEEDD);
 }
 
 /*
  * timer_pcie_error_handler - Handle PCIe/NVMe error conditions
- * Address: 0x0570-0x0573 (4 bytes)
+ * Address: 0x054d-0x0550 (4 bytes)
  *
- * Dispatches to Bank 1 at 0xE911 (file 0x16911) near error_clear_e760_flags.
- * Handles PCIe and NVMe error conditions by clearing/setting error flags
- * in the 0xE760-0xE763 register region.
+ * Dispatches to Bank 1 at 0xE924 (file 0x1688F) for error handling.
+ * Handles PCIe and NVMe error conditions.
  * Called when 0xC80A low nibble is non-zero (PCIe/NVMe error flags).
  *
  * Original disassembly:
- *   0570: mov dptr, #0xe911
- *   0573: ajmp 0x0311
+ *   054d: mov dptr, #0xe924
+ *   0550: ajmp 0x0311
  */
 void timer_pcie_error_handler(void)
 {
-    jump_bank_1(0xE911);
+    jump_bank_1(0xE924);
 }
 
 /*
  * timer_nvme_completion - Handle NVMe command completion
- * Address: 0x0499-0x049c (4 bytes)
+ * Address: 0x048f-0x0492 (4 bytes)
  *
- * Dispatches to Bank 1 at 0xC0A5 (file 0x140A5) for NVMe completion
+ * Dispatches to Bank 1 at 0xC0E5 (file 0x14050) for NVMe completion
  * processing. Checks command status at 0x0B02, calls DMA helpers,
  * and processes completion queue entries.
  * Called after PHY bits are cleared when NVMe event (0xEC06) is detected.
  *
  * Original disassembly:
- *   0499: mov dptr, #0xc0a5
- *   049c: ajmp 0x0311
+ *   048f: mov dptr, #0xc0e5
+ *   0492: ajmp 0x0311
  */
 void timer_nvme_completion(void)
 {
-    jump_bank_1(0xC0A5);
+    jump_bank_1(0xC0E5);
 }
 
 /*
  * timer0_isr - Timer0 Interrupt Service Routine
- * Address: 0x4486-0x4531 (172 bytes)
+ * Address: 0x44D7-0x4582 (172 bytes)
  *
  * Main periodic interrupt handler. Polls multiple hardware status registers
  * and dispatches to various handlers based on flags:
  *
- * - 0xC806 bit 0: Call 0x0520 (timer tick)
- * - 0xCC33 bit 2: Write 0x04 to 0xCC33, call 0x0390
- * - 0xC80A bit 6: Call 0x052f
+ * - 0xC806 bit 0: Call 0x0507 (idle timeout -> 0xA79C)
+ * - 0xCC33 bit 2: Write 0x04 to 0xCC33, call 0x038b
+ * - 0xC80A bit 6: Call 0x0516 (UART debug -> 0xAE89)
  * - When 0x09F9 & 0x83 != 0:
- *   - 0xC80A bit 5: Call 0x061a
- *   - 0xC80A bit 4: Call 0x0593
- *   - 0xEC06 bit 0: Write 0x01 to 0xEC04, check 0x0AF1
- *     - 0x0AF1 bit 5: Clear bits 6,7 of 0xE7E3
- *     - Call 0x0499
- * - 0xC80A & 0x0F != 0: Call 0x0570
- * - 0xC806 bit 4: Call 0x0642
+ *   - 0xC80A bit 5: Call 0x05f2 (async event -> Bank1 0xA08B)
+ *   - 0xC80A bit 4: Call 0x0570 (link event -> 0xBF1C)
+ *   - 0xEC06 bit 0: Write 0x01 to 0xEC04, check 0x0AF0 bit 5
+ *     - If bit 5 set: Clear bits 6,7 of 0xE7E3
+ *     - Call 0x048f (NVMe completion -> Bank1 0xC0E5)
+ * - 0xC80A & 0x0F != 0: Call 0x054d (error handler -> Bank1 0xE924)
+ * - 0xC806 bit 4: Call 0x061a (system event -> Bank1 0xEEDD)
  *
  * Original disassembly:
- *   4486: push 0xe0      ; save ACC
- *   4488: push 0xf0      ; save B
- *   448a: push 0x83      ; save DPH
- *   448c: push 0x82      ; save DPL
- *   448e: push 0xd0      ; save PSW
- *   4490: mov 0xd0, #0x00 ; select register bank 0
- *   4493: push 0x00-0x07 ; save R0-R7
- *   44a3: mov dptr, #0xc806
- *   44a6: movx a, @dptr
- *   44a7: jnb 0xe0.0, 0x44ad  ; check bit 0
- *   44aa: lcall 0x0520
+ *   44d7: push acc       ; save ACC
+ *   44d9: push b         ; save B
+ *   44db: push dph       ; save DPH
+ *   44dd: push dpl       ; save DPL
+ *   44df: push psw       ; save PSW
+ *   44e1: mov psw, #0x00 ; select register bank 0
+ *   44e4-44f2: push r0-r7 ; save R0-R7
+ *   44f4: mov dptr, #0xc806
+ *   44f7: movx a, @dptr
+ *   44f8: jnb acc.0, 0x44fe  ; check bit 0
+ *   44fb: lcall 0x0507
  *   ...
- *   4517-452f: pop R7-R0, PSW, DPL, DPH, B, ACC
- *   4531: reti
+ *   4568-4580: pop r7-r0, psw, dpl, dph, b, acc
+ *   4582: reti
  */
 void timer0_isr(void) __interrupt(1) __using(0)
 {
@@ -304,19 +295,19 @@ void timer0_wait_done(void)
 
 /*
  * timer1_check_and_ack - Check Timer1 done and acknowledge
- * Address: 0x3094-0x30a0 (13 bytes)
+ * Address: 0x20be-0x2111 (84 bytes)
  *
  * Checks if Timer1 CSR bit 1 (done) is set. If so, writes 0x02 to
- * acknowledge/clear the done flag, then calls dispatch at 0x04D5.
+ * acknowledge/clear the done flag, then calls dispatch at 0x525b.
  *
  * Original disassembly:
- *   3094: mov dptr, #0xcc17   ; Timer1 CSR
- *   3097: movx a, @dptr
- *   3098: jnb 0xe0.1, 0x30a1  ; if bit 1 not set, skip
- *   309b: mov a, #0x02
- *   309d: movx @dptr, a       ; write 0x02 to ack
- *   309e: lcall 0x04d5        ; dispatch handler
- *   30a1: setb 0xa8.7         ; set EA (enable interrupts)
+ *   20be: mov dptr, #0xcc17   ; Timer1 CSR
+ *   20c1: movx a, @dptr
+ *   20c2: jnb acc.1, 0x2111   ; if bit 1 not set, skip
+ *   20c5: clr ie.7            ; disable interrupts
+ *   20c7: mov a, #0x02
+ *   20c9: movx @dptr, a       ; write 0x02 to ack
+ *   20ca: lcall 0x525b        ; dispatch handler
  */
 void timer1_check_and_ack(void)
 {
@@ -332,36 +323,17 @@ void timer1_check_and_ack(void)
 
 /*
  * timer_link_status_handler - Timer/Link status handler
- * Address: 0x04d0-0x04d4 (5 bytes) -> dispatches to 0xCE79
+ * Address: 0x04d0-0x04d3 (4 bytes) -> dispatches to 0xE0B4
  *
- * Function at 0xCE79 (94 bytes):
- * Handles timer and link status checks:
- * 1. Checks REG_LINK_STATUS_CC3F bits 1,2 and calls helper if set
- * 2. Configures timer/link registers (0xCC30, 0xCC33, 0xCC3B, etc.)
- * 3. Clears bits in PHY_CONFIG (0xC233)
- * 4. Performs timing delays with polling
- * 5. Polls status registers until link ready
+ * Function at 0xE0B4:
+ * Handles timer and link status checks.
  *
  * Original disassembly:
- *   ce79: mov dptr, #0xcc3f
- *   ce7c: movx a, @dptr       ; read REG_LINK_STATUS_CC3F
- *   ce7d: jb 0xe0.1, 0xce84   ; if bit 1 set, call helper
- *   ce80: movx a, @dptr
- *   ce81: jnb 0xe0.2, 0xce87  ; if bit 2 not set, skip helper
- *   ce84: lcall 0xd0d3        ; clear bits in CC3F, set flags
- *   ce87: lcall 0xcf28        ; configure timer regs
- *   ce8a: lcall 0x0610        ; dispatch to bank 1 0xED02
- *   ce8d: mov dptr, #0xc233
- *   ce90: movx a, @dptr
- *   ce91: anl a, #0xfc        ; clear bits 0-1
- *   ce93: movx @dptr, a
- *   ce94: lcall 0xbd5e        ; set bit 2, clear bit 2 of @DPTR
- *   ce97-cea6: timing delay loop
- *   cea7-ceab: more timing delay
- *   ceb0-cec5: poll 0xE712 and 0xCC11 until ready
- *   cec6: lcall 0xe8ef
- *   cecb: lcall 0xdd42
- *   cece: ljmp 0xd996
+ *   04d0: mov dptr, #0xe0b4
+ *   04d3: ajmp 0x0300
+ *
+ * NOTE: Implementation below needs review against actual 0xE0B4 code.
+ * Previous analysis incorrectly referenced 0xCE79.
  */
 void timer_link_status_handler(void)
 {
@@ -448,88 +420,50 @@ void timer_link_status_handler(void)
 }
 
 /*
- * system_interrupt_handler - System Interrupt Handler
- * Address: 0x0520-0x0524 (5 bytes) -> dispatches to bank 0 0xB4BA
+ * system_interrupt_handler - System Interrupt Handler (State Init)
+ * Address: 0x0520-0x0523 (4 bytes) -> dispatches to 0x8A81
  *
- * Function at 0xB4BA:
- * System interrupt handler called when system status bit 0 is set.
- * Handles link status changes and timer events.
+ * Function at 0x8A81:
+ * Initializes state variables for system event handling.
+ * Called when system status bit 0 is set.
  *
- * Algorithm:
- *   1. Read 0xCC23, check bit 1
- *   2. If bit 1 set: call 0xE3D8, write 0x02 to 0xCC23
- *   3. Read 0xCC81, check bit 1
- *   4. If bit 1 set: read 0x07BD, compare with 0x0E or 0x0D
- *   5. Configure 0xCC81 with value 0x02
- *   6. Check 0x07BC and dispatch accordingly
+ * Initializes:
+ *   G_09F4 = 0x03, G_09F5 = 0x01, G_09F6 = 0x01
+ *   G_09F7 = 0x03, G_09F8 = 0x01
+ *   G_0A56 = 0x00
  *
  * Original disassembly:
- *   b4ba: mov dptr, #0xcc23
- *   b4bd: movx a, @dptr
- *   b4be: jnb 0xe0.1, 0xb4ca     ; if bit 1 not set, skip
- *   b4c1: lcall 0xe3d8           ; helper
- *   b4c4: mov dptr, #0xcc23
- *   b4c7: mov a, #0x02
- *   b4c9: movx @dptr, a          ; write 0x02
- *   ... (continues with state machine)
+ *   0520: mov dptr, #0x8a81
+ *   0523: ajmp 0x0300
+ *
+ *   8a81: mov dptr, #0x09f4
+ *   8a84: mov a, #0x03
+ *   8a86: movx @dptr, a      ; G_09F4 = 0x03
+ *   8a87: inc dptr
+ *   8a88: mov a, #0x01
+ *   8a8a: movx @dptr, a      ; G_09F5 = 0x01
+ *   ...
  */
 void system_interrupt_handler(void)
 {
-    uint8_t val;
-    uint8_t state;
-
-    /* Read timer 3 CSR and check bit 1 */
-    val = REG_TIMER3_CSR;
-    if (val & TIMER_CSR_EXPIRED) {
-        /* Call helper 0xE3D8 */
-        /* Write 0x02 to acknowledge */
-        REG_TIMER3_CSR = TIMER_CSR_EXPIRED;
-    }
-
-    /* Read CPU interrupt control and check ACK bit */
-    val = REG_CPU_INT_CTRL;
-    if (val & CPU_INT_CTRL_ACK) {
-        /* Read state from G_FLASH_OP_COUNTER */
-        state = G_FLASH_OP_COUNTER;
-
-        if (state == 0x0E || state == 0x0D) {
-            /* Acknowledge interrupt */
-            REG_CPU_INT_CTRL = CPU_INT_CTRL_ACK;
-
-            /* Check G_FLASH_CMD_TYPE for further dispatch */
-            val = G_FLASH_CMD_TYPE;
-            if (val != 0) {
-                /* Call helper 0xE529 with R7=0x3B */
-            }
-            /* Call helper 0xD676 */
-        } else {
-            /* Call 0xE90B for other states */
-            REG_CPU_INT_CTRL = CPU_INT_CTRL_ACK;
-        }
-    }
-
-    /* Read CPU DMA interrupt and check bit 1 */
-    val = REG_CPU_DMA_INT;
-    if (val & 0x02) {
-        REG_CPU_DMA_INT = 0x02;  /* Acknowledge */
-    }
+    /* Dispatch to 0x8A81 which initializes state variables */
+    jump_bank_0(0x8A81);
 }
 
 /*
  * system_timer_handler - System Timer Handler
- * Address: 0x0642-0x0646 (5 bytes)
+ * Address: 0x061a-0x061d (4 bytes)
  *
- * Dispatches to bank 1 code at 0xEF4E (file offset 0x16EB9)
- * Called from ext1_isr when system status bit 4 is set.
+ * Same as timer_system_event_stub - dispatches to Bank 1 at 0xEEDD.
+ * Called from timer0_isr when system status bit 4 of 0xC806 is set.
  *
  * Original disassembly:
- *   0642: mov dptr, #0xef4e
- *   0645: ajmp 0x0311
+ *   061a: mov dptr, #0xeedd
+ *   061d: ajmp 0x0311
  */
-extern void error_handler_system_timer(void);  /* Bank 1: file 0x16F4E */
 void system_timer_handler(void)
 {
-    error_handler_system_timer();
+    jump_bank_1(0xEEDD);
 }
 
 /*

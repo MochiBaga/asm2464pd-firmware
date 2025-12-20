@@ -1319,7 +1319,7 @@ void helper_1cc8(void)
 void carry_flag_check(void)
 {
     /*
-     * Based on 0x1c22-0x1c29:
+     * Based on 0x1c23-0x1c29:
      *   1c22: mov dptr, #0x0171
      *   1c25: movx a, @dptr      ; Read G_QUEUE_STATUS
      *   1c26: setb c             ; Set carry
@@ -1671,7 +1671,7 @@ void usb_status_copy_to_buffer(void)
 
 /*
  * helper_3168 - Calculate address from IDATA 0x38
- * Address: 0x3168-0x3178 (17 bytes)
+ * Address: 0x3169-0x3178 (16 bytes)
  *
  * Computes DPTR = 0x00C2 + IDATA[0x38], then clears value at DPTR.
  * Then computes DPTR = 0x00E5 + IDATA[0x38].
@@ -3148,7 +3148,7 @@ uint32_t xdata_read_0a7e_329f(void)
 
 /*
  * protocol_state_dispatcher_32a5 - Complex protocol state machine dispatcher
- * Address: 0x32a5-0x33fe (346 bytes)
+ * Address: 0x32a6-0x33fe (345 bytes)
  *
  * This is a major protocol handler that dispatches based on:
  *   - IDATA[0x6A] - current state (must be 0x02 for main handling)
@@ -3564,7 +3564,7 @@ void phy_link_ctrl_update(uint8_t param)
 
 /*
  * protocol_finalize - Protocol finalization
- * Address: 0xd17a-0xd196 (29 bytes, first return path)
+ * Address: 0xd17b-0xd196 (29 bytes, first return path)
  *
  * Calls multiple sub-helpers and returns a status value in r7.
  * Returns 0 on success, non-zero otherwise.
@@ -3781,7 +3781,7 @@ void config_helper_dual(uint8_t r7, uint8_t r5)
 
 /*
  * helper_95af - Set command status to 0x06
- * Address: 0x95af-0x95b5 (7 bytes)
+ * Address: 0x95b0-0x95b5 (6 bytes)
  *
  * Original disassembly:
  *   95af: mov dptr, #0x07c4  ; G_CMD_STATUS

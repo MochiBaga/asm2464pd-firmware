@@ -14,33 +14,32 @@
 
 /*
  * cmd_check_busy - Check if command engine is busy
- * Address: 0xe09a-0xe0c3 (42 bytes)
+ * Address: 0xde5a-0xde83 (42 bytes)
  *
  * Checks multiple status bits to determine if engine is busy.
  * Returns 1 if busy, 0 if ready.
  *
  * Original disassembly:
- *   e09a: mov dptr, #0xe402   ; Status flags
- *   e09d: movx a, @dptr
- *   e09e: anl a, #0x02        ; Check bit 1 (busy)
- *   e0a0: clr c
- *   e0a1: rrc a
- *   e0a2: jnz 0xe0c1          ; If busy, return 1
- *   e0a4: mov dptr, #0xe41c   ; Busy status
- *   e0a7: movx a, @dptr
- *   e0a8: jb 0xe0.0, 0xe0c1   ; If bit 0 set, return 1
- *   e0ab: mov dptr, #0xe402
- *   e0ae: movx a, @dptr
- *   e0af: anl a, #0x04        ; Check bit 2
- *   e0b1-b3: rrc; rrc; anl #0x3f
- *   e0b5: jnz 0xe0c1          ; If set, return 1
- *   e0b7: movx a, @dptr
- *   e0b8: anl a, #0x08        ; Check bit 3
- *   e0ba-bd: rrc; rrc; rrc; anl #0x1f
- *   e0bf: jz 0xe0c4           ; If clear, return 0
- *   e0c1: mov r7, #0x01       ; Return 1 (busy)
- *   e0c3: ret
- *   e0c4: (implied return 0)
+ *   de5a: mov dptr, #0xe402   ; Status flags
+ *   de5d: movx a, @dptr
+ *   de5e: anl a, #0x02        ; Check bit 1 (busy)
+ *   de60: clr c
+ *   de61: rrc a
+ *   de62: jnz 0xde81          ; If busy, return 1
+ *   de64: mov dptr, #0xe41c   ; Busy status
+ *   de67: movx a, @dptr
+ *   de68: jb acc.0, 0xde81    ; If bit 0 set, return 1
+ *   de6b: mov dptr, #0xe402
+ *   de6e: movx a, @dptr
+ *   de6f: anl a, #0x04        ; Check bit 2
+ *   de71-73: rrc; rrc; anl #0x3f
+ *   de75: jnz 0xde81          ; If set, return 1
+ *   de77: movx a, @dptr
+ *   de78: anl a, #0x08        ; Check bit 3
+ *   de7a-7d: rrc; rrc; rrc; anl #0x1f
+ *   de7f: jz 0xde84           ; If clear, return 0
+ *   de81: mov r7, #0x01       ; Return 1 (busy)
+ *   de83: ret
  */
 uint8_t cmd_check_busy(void)
 {
@@ -75,17 +74,17 @@ uint8_t cmd_check_busy(void)
 
 /*
  * cmd_start_trigger - Start command via trigger register
- * Address: 0x9605-0x960e (10 bytes)
+ * Address: 0x9558-0x9561 (10 bytes)
  *
  * Sets bit 0 of 0xE41C to trigger command start.
  *
  * Original disassembly:
- *   9605: mov dptr, #0xe41c   ; Busy status
- *   9608: movx a, @dptr
- *   9609: anl a, #0xfe        ; Clear bit 0
- *   960b: orl a, #0x01        ; Set bit 0
- *   960d: movx @dptr, a
- *   960e: ret
+ *   9558: mov dptr, #0xe41c   ; Busy status
+ *   955b: movx a, @dptr
+ *   955c: anl a, #0xfe        ; Clear bit 0
+ *   955e: orl a, #0x01        ; Set bit 0
+ *   9560: movx @dptr, a
+ *   9561: ret
  */
 void cmd_start_trigger(void)
 {
@@ -96,19 +95,19 @@ void cmd_start_trigger(void)
 
 /*
  * cmd_write_issue_bits - Write bits to issue register
- * Address: 0x960f-0x9616 (8 bytes)
+ * Address: 0x9562-0x9569 (8 bytes)
  *
  * Extracts bits 6-7 from r6 (param) and writes to DPTR.
  * Used to write issue field bits.
  *
  * Original disassembly:
- *   960f: mov a, r6
- *   9610: swap a              ; Shift bits 4-7 to 0-3
- *   9611: rrc a               ; Rotate right twice
- *   9612: rrc a
- *   9613: anl a, #0x03        ; Keep only bits 0-1
- *   9615: movx @dptr, a
- *   9616: ret
+ *   9562: mov a, r6
+ *   9563: swap a              ; Shift bits 4-7 to 0-3
+ *   9564: rrc a               ; Rotate right twice
+ *   9565: rrc a
+ *   9566: anl a, #0x03        ; Keep only bits 0-1
+ *   9568: movx @dptr, a
+ *   9569: ret
  */
 void cmd_write_issue_bits(uint8_t param) __reentrant
 {
@@ -175,7 +174,7 @@ uint8_t cmd_combine_lba_alt(uint8_t val)
 
 /*
  * cmd_set_op_counter - Set operation counter
- * Address: 0x965d-0x9663 (7 bytes)
+ * Address: 0x965e-0x9663 (6 bytes)
  *
  * Sets G_FLASH_OP_COUNTER to 0x05.
  *
@@ -336,7 +335,7 @@ void cmd_setup_read_write(void)
 
 /*
  * cmd_issue_tag_and_wait - Issue command with tag and wait
- * Address: 0x95a8-0x95b5 (14 bytes)
+ * Address: 0x95a9-0x95b5 (13 bytes)
  *
  * Writes issue value to 0xE424, tag to 0xE425, then sets
  * G_CMD_STATUS to 0x06.
@@ -524,7 +523,7 @@ void cmd_call_e120_setup(void)
 
 /*
  * cmd_clear_cc9a_setup - Clear CC9A and setup CC99
- * Address: 0x95b6-0x95c8 (19 bytes)
+ * Address: 0x95b7-0x95c8 (18 bytes)
  *
  * Writes 0 to 0xCC9A, 0x50 to 0xCC9B, 0x04 then 0x02 to 0xCC99.
  *
@@ -869,7 +868,7 @@ uint16_t cmd_set_op_counter_1(void)
 
 /*
  * cmd_wait_and_store_counter - Wait for completion and store counter
- * Address: 0x969d-0x96a5 (9 bytes)
+ * Address: 0x969e-0x96a5 (8 bytes)
  *
  * Stores A to G_FLASH_OP_COUNTER, calls cmd_wait_completion, returns R7.
  *
@@ -1952,7 +1951,7 @@ void cmd_engine_clear(void)
  * for NVMe or SCSI command processing. The original firmware has
  * overlapping code entry points at 0xaa36 and 0xaa37.
  *
- * Main body (0xaa40-0xab0d):
+ * Main body (0xaa41-0xab0d):
  *   1. Check G_CMD_MODE (0x07ca) for mode 2/3
  *   2. Call cmd_trigger_params and cmd_param_setup
  *   3. Set up command LBA registers (E426-E429)

@@ -512,7 +512,7 @@ void power_set_suspended_and_event_cad6(void)
 
 /*
  * power_toggle_usb_bit2_caed - Toggle USB bit 2
- * Address: 0xcaed-0xcafa (14 bytes)
+ * Address: 0xcaee-0xcafa (13 bytes)
  *
  * Reads USB status, sets bit 2, writes back, then reads again,
  * clears bit 2, writes back. This toggles bit 2 as a pulse.

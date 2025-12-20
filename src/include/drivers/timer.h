@@ -100,21 +100,23 @@
  *   - Results in ~1ms tick at 114MHz / 8 / 40 ≈ 356kHz → ~2.8us per tick
  *
  * ===========================================================================
- * TIMER0 ISR FLOW (0x4486)
+ * TIMER0 ISR FLOW (0x44D7-0x4582)
  * ===========================================================================
  * The Timer0 ISR handles various system events:
  *
- *   1. Save context (ACC, B, DPTR, PSW, R0-R7)
- *   2. Check 0xC806 bit 0 → timer_idle_timeout_handler (0xB4BA)
- *   3. Check 0xCC33 bit 2 → clear flag, dispatch to 0xCD10
- *   4. Check 0xC80A bit 6 → timer_uart_debug_output (0xAF5E)
- *   5. If 0x09F9 & 0x83:
- *      - Check 0xC80A bit 5 → timer_pcie_async_event (0xA066)
- *      - Check 0xC80A bit 4 → timer_pcie_link_event (0xC105)
- *      - Check 0xEC06 bit 0 → timer_nvme_completion (0xC0A5)
- *   6. Check 0xC80A & 0x0F → timer_pcie_error_handler (0xE911)
- *   7. Check 0xC806 bit 4 → timer_system_event_stub (0xEF4E)
- *   8. Restore context and RETI
+ *   1. Save context (ACC, B, DPTR, PSW, R0-R7) - 0x44D7-0x44F2
+ *   2. Check 0xC806 bit 0 → call 0x0507 → 0xA79C (idle timeout) - 0x44F4
+ *   3. Check 0xCC33 bit 2 → write 0x04, call 0x038B - 0x44FE
+ *   4. Check 0xC80A bit 6 → call 0x0516 → 0xAE89 (UART debug) - 0x450B
+ *   5. If 0x09F9 & 0x83 != 0: - 0x4515
+ *      - Check 0xC80A bit 5 → call 0x05F2 → Bank1 0xA08B (async event)
+ *      - Check 0xC80A bit 4 → call 0x0570 → 0xBF1C (link event)
+ *      - Check 0xEC06 bit 0 → write 0x01 to 0xEC04, check 0x0AF0 bit 5
+ *        - If bit 5 set: clear bits 6,7 of 0xE7E3
+ *        - Call NVMe completion handler
+ *   6. Check 0xC80A & 0x0F → call error handler
+ *   7. Check 0xC806 bit 4 → call system event stub
+ *   8. Restore context and RETI - 0x455E-0x4582
  *
  * ===========================================================================
  * INTERRUPT STATUS REGISTERS
@@ -160,24 +162,24 @@
 #include "../types.h"
 
 /* Timer ISR and control */
-void timer0_isr(void) __interrupt(1) __using(0);                /* 0x0520-0x0523 (vector) */
-void timer0_csr_ack(void);                      /* 0x95c2-0x95c8 */
-void timer0_wait_done(void);                    /* 0xad95-0xada1 */
-void timer1_check_and_ack(void);                /* 0x3094-0x30a0 */
+void timer0_isr(void) __interrupt(1) __using(0);                /* 0x44D7-0x4582 (ISR body) */
+void timer0_csr_ack(void);                      /* writes 0x04 then 0x02 to timer CSR */
+void timer0_wait_done(void);                    /* poll timer CSR bit 1, then ack */
+void timer1_check_and_ack(void);                /* 0x20be-0x2111 */
 
-/* Timer event handlers */
-void timer_idle_timeout_handler(void);          /* 0x04d0-0x04d4 -> 0xce79 */
-void timer_uart_debug_output(void);             /* 0x0520-0x0524 -> 0xb4ba */
-void timer_pcie_link_event(void);               /* 0x0642-0x0646 */
-void timer_pcie_async_event(void);              /* 0xe883-0xe88d (Bank 1) */
-void timer_system_event_stub(void);             /* 0x0499-0x049c */
-void timer_pcie_error_handler(void);            /* 0x052f-0x0532 */
-void timer_nvme_completion(void);               /* 0x0593-0x0596 */
-void timer_link_status_handler(void);           /* 0x061a-0x061d */
+/* Timer event handlers - dispatch stubs that jump to actual handlers */
+void timer_idle_timeout_handler(void);          /* 0x0507 -> 0xA79C (idle timeout) */
+void timer_uart_debug_output(void);             /* 0x0516 -> 0xAE89 (UART debug) */
+void timer_pcie_link_event(void);               /* 0x0570 -> 0xBF1C (PCIe link) */
+void timer_pcie_async_event(void);              /* 0x05F2 -> Bank1 0xA08B (async) */
+void timer_system_event_stub(void);             /* 0x061a -> Bank1 0xEEDD (system event) */
+void timer_pcie_error_handler(void);            /* 0x054d -> Bank1 0xE924 (error) */
+void timer_nvme_completion(void);               /* 0x048f -> Bank1 0xC0E5 (NVMe) */
+void timer_link_status_handler(void);           /* 0x04d0 -> 0xE0B4 (link status) */
 
 /* System handlers */
-void system_interrupt_handler(void);            /* 0x4486-0x4531 */
-void system_timer_handler(void);                /* 0x0570-0x0573 */
+void system_interrupt_handler(void);            /* 0x0520 -> 0x8A81 (state init) */
+void system_timer_handler(void);                /* 0x061a -> Bank1 0xEEDD */
 
 /* Timer configuration */
 void timer_wait(uint8_t timeout_lo, uint8_t timeout_hi, uint8_t mode);  /* 0xe726-0xe72f (Bank 1) */

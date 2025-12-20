@@ -64,7 +64,7 @@ void nvme_set_usb_mode_bit(void)
 
 /*
  * nvme_get_config_offset - Get configuration offset address
- * Address: 0x1be8-0x1bf5 (14 bytes)
+ * Address: 0x1be9-0x1bf5 (13 bytes)
  *
  * Reads from 0x0464, adds 0x56 to form address in 0x04XX region,
  * and returns that address.
@@ -184,7 +184,7 @@ __xdata uint8_t *nvme_calc_idata_offset(void)
 
 /*
  * nvme_check_scsi_ctrl - Check SCSI control status
- * Address: 0x1c22-0x1c29 (8 bytes, after store)
+ * Address: 0x1c23-0x1c29 (8 bytes, after store)
  *
  * Reads SCSI control from 0x0171 and checks if non-zero.
  * Returns with carry set if value is zero.
@@ -356,7 +356,7 @@ uint8_t nvme_get_data_ctrl_upper(void)
 
 /*
  * nvme_clear_status_bit1 - Clear bit 1 of NVMe status register
- * Address: 0x1cd4-0x1cdb (8 bytes)
+ * Address: 0x1cd5-0x1cdb (7 bytes)
  *
  * Reads status, clears bit 1, writes back.
  * Bit 1 is typically an error/interrupt flag.
@@ -526,7 +526,7 @@ void nvme_ring_doorbell(__xdata uint8_t *doorbell)
 
 /*
  * nvme_read_and_sum_index - Read value and calculate indexed address
- * Address: 0x1c3a-0x1c49 (16 bytes)
+ * Address: 0x1c3b-0x1c49 (15 bytes)
  *
  * Reads from DPTR, adds to value from 0x0216, masks to 5 bits,
  * then writes to 0x01B4.
@@ -578,7 +578,7 @@ void nvme_write_params_to_dma(uint8_t val)
 
 /*
  * nvme_calc_addr_from_dptr - Calculate address from DPTR value + 0xA8
- * Address: 0x1c5d-0x1c6c (16 bytes)
+ * Address: 0x1c5e-0x1c6c (15 bytes)
  *
  * Reads from DPTR, adds 0xA8, forms address in 0x05XX region,
  * reads that address and stores to 0x05A6.
@@ -654,7 +654,7 @@ uint8_t nvme_get_pcie_count_config(void)
 
 /*
  * nvme_calc_dptr_0500_base - Calculate DPTR = 0x0500 + A (with carry)
- * Address: 0x3257-0x325e (8 bytes)
+ * Address: 0x3258-0x325e (7 bytes)
  *
  * Sets DPTR to 0x0500 + A. If carry is set from previous operation,
  * it will be added to the high byte.
@@ -794,7 +794,7 @@ uint8_t nvme_get_link_status_masked(void)
 
 /*
  * nvme_set_ep_ctrl_bits - Set control bits on EP register (bits 1 and 2)
- * Address: 0x320c-0x3218 (13 bytes)
+ * Address: 0x320d-0x3218 (12 bytes)
  *
  * Sets bit 1 on register, then sets bit 2 on same register.
  * Used for endpoint control configuration.
@@ -1487,7 +1487,7 @@ void usb_data_handler(__xdata uint8_t *ptr)
 
 /*
  * nvme_get_table_5cad_entry - Get table entry from 0x5CAD table
- * Address: 0x1c2a-0x1c2f (6 bytes)
+ * Address: 0x1c2b-0x1c2f (5 bytes)
  *
  * Reads from table at 0x5CAD indexed by IDATA[0x3C] * 2 + param.
  *
@@ -2326,7 +2326,7 @@ uint8_t nvme_cmd_store_and_read(uint8_t param, __xdata uint8_t *ptr)
 
 /*
  * nvme_cmd_read_offset - Read value at offset+1 from pointer
- * Address: 0x9580-0x959f
+ * Address: 0x9581-0x959f
  */
 uint8_t nvme_cmd_read_offset(__xdata uint8_t *ptr)
 {
@@ -2370,7 +2370,7 @@ void nvme_cmd_issue_simple(uint8_t param)
 
 /*
  * nvme_cmd_issue_with_tag - Issue command with explicit tag
- * Address: 0x95a8-0x95aa
+ * Address: 0x95a9-0x95aa
  */
 void nvme_cmd_issue_with_tag(uint8_t param1, uint8_t param2)
 {
@@ -2392,7 +2392,7 @@ void nvme_cmd_store_pair_trigger(uint8_t param1, __xdata uint8_t *ptr, uint8_t p
 
 /*
  * nvme_cmd_set_state_6 - Set command state to 6
- * Address: 0x95af-0x95b5
+ * Address: 0x95b0-0x95b5
  */
 void nvme_cmd_set_state_6(void)
 {
@@ -2401,7 +2401,7 @@ void nvme_cmd_set_state_6(void)
 
 /*
  * nvme_timer_init_95b6 - Initialize timer/CSR
- * Address: 0x95b6-0x95be
+ * Address: 0x95b7-0x95be
  */
 void nvme_timer_init_95b6(void)
 {
@@ -2562,7 +2562,7 @@ void nvme_cmd_shift_2_mask3(uint8_t val, __xdata uint8_t *ptr)
 
 /*
  * nvme_set_flash_counter_5 - Set flash counter to 5
- * Address: 0x965d-0x9663
+ * Address: 0x965e-0x9663
  */
 void nvme_set_flash_counter_5(void)
 {
@@ -2627,7 +2627,7 @@ uint8_t nvme_lba_combine_07dc(__xdata uint8_t *ptr)
 
 /*
  * nvme_set_flash_counter_call_e1c6 - Set counter and call e1c6
- * Address: 0x969d-0x96a6
+ * Address: 0x969e-0x96a6
  */
 uint8_t nvme_set_flash_counter_call_e1c6(uint8_t param1, uint8_t param2)
 {

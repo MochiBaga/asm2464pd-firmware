@@ -29,16 +29,16 @@ void uart_putc(uint8_t ch)
 
 /*
  * uart_newline - Print carriage return and line feed
- * Address: 0xaf5e-0xaf66 (9 bytes, in bank 1)
+ * Address: 0xae89-0xae91 (9 bytes, part of debug_output_handler)
  *
- * Outputs standard CR+LF sequence for newline.
+ * Outputs standard LF+CR sequence for newline.
  *
  * Original disassembly:
- *   af5e: mov dptr, #0xc001   ; UART THR
- *   af61: mov a, #0x0a        ; LF
- *   af63: movx @dptr, a       ; write LF
- *   af64: mov a, #0x0d        ; CR
- *   af66: movx @dptr, a       ; write CR
+ *   ae89: mov dptr, #0xc001   ; UART THR
+ *   ae8c: mov a, #0x0a        ; LF
+ *   ae8e: movx @dptr, a       ; write LF
+ *   ae8f: mov a, #0x0d        ; CR
+ *   ae91: movx @dptr, a       ; write CR
  */
 void uart_newline(void)
 {
@@ -48,7 +48,7 @@ void uart_newline(void)
 
 /*
  * uart_puthex - Print a byte as two hex characters
- * Address: 0x51c7-0x51ee (40 bytes)
+ * Address: 0x520c-0x5233 (40 bytes)
  *
  * Outputs the hex representation of a byte to the UART.
  * Uses '0'-'9' for values 0-9, 'A'-'F' for 10-15.
@@ -60,35 +60,32 @@ void uart_newline(void)
  *   R5: first nibble base character
  *
  * Original disassembly:
- *   51c7: mov a, r7           ; get val
- *   51c8: swap a              ; high nibble to low
- *   51c9: anl a, #0x0f        ; mask
- *   51cb: mov r6, a           ; save nibble
- *   51cc: clr c
- *   51cd: subb a, #0x0a       ; compare to 10
- *   51cf: mov r5, #0x37       ; '7' for >= 10
- *   51d1: jnc 51d5            ; skip if >= 10
- *   51d3: mov r5, #0x30       ; '0' for < 10
- *   51d5: mov a, r5           ; get base
- *   51d6: add a, r6           ; add nibble
- *   51d7: mov dptr, #0xc001   ; UART THR
- *   51da: movx @dptr, a       ; write char
- *   51db: mov a, r7           ; get val again
- *   51dc: anl a, #0x0f        ; low nibble
- *   51de: mov r6, a           ; save nibble
- *   51df: clr c
- *   51e0: subb a, #0x0a       ; compare
- *   51e2: mov r7, #0x37       ; '7' (reuses val's register!)
- *   51e4: jnc 51e8            ; skip if >= 10
- *   51e6: mov r7, #0x30       ; '0'
- *   51e8: mov a, r7           ; get base
- *   51e9: add a, r6           ; add nibble
- *   51ea: mov dptr, #0xc001   ; UART THR
- *   51ed: movx @dptr, a       ; write char
- *   51ee: ret
- *
- * Note: Keil v9.60 produces functionally equivalent code with
- * instruction reordering (constant load before compare).
+ *   520c: mov a, r7           ; get val
+ *   520d: swap a              ; high nibble to low
+ *   520e: anl a, #0x0f        ; mask
+ *   5210: mov r6, a           ; save nibble
+ *   5211: clr c
+ *   5212: subb a, #0x0a       ; compare to 10
+ *   5214: mov r5, #0x37       ; '7' for >= 10
+ *   5216: jnc 521a            ; skip if >= 10
+ *   5218: mov r5, #0x30       ; '0' for < 10
+ *   521a: mov a, r5           ; get base
+ *   521b: add a, r6           ; add nibble
+ *   521c: mov dptr, #0xc001   ; UART THR
+ *   521f: movx @dptr, a       ; write char
+ *   5220: mov a, r7           ; get val again
+ *   5221: anl a, #0x0f        ; low nibble
+ *   5223: mov r6, a           ; save nibble
+ *   5224: clr c
+ *   5225: subb a, #0x0a       ; compare
+ *   5227: mov r7, #0x37       ; '7' (reuses val's register!)
+ *   5229: jnc 522d            ; skip if >= 10
+ *   522b: mov r7, #0x30       ; '0'
+ *   522d: mov a, r7           ; get base
+ *   522e: add a, r6           ; add nibble
+ *   522f: mov dptr, #0xc001   ; UART THR
+ *   5232: movx @dptr, a       ; write char
+ *   5233: ret
  */
 void uart_puthex(uint8_t val)
 {
@@ -128,7 +125,7 @@ void uart_putdigit(uint8_t digit)
 
 /*
  * uart_puts - Print a null-terminated string from code memory
- * Address: 0x538d-0x53a6 (26 bytes)
+ * Address: 0x538e-0x53a6 (25 bytes)
  *
  * Outputs characters from a code memory pointer until null terminator.
  * Uses generic memory read helper at 0x0bc8 to read from code space.
@@ -167,7 +164,7 @@ void uart_puts(__code const char *str)
 
 /*
  * debug_output_handler - Main debug output handler
- * Address: 0xAF5E-0xB030 (210 bytes)
+ * Address: 0xAE89-0xAF5D (213 bytes)
  *
  * This is the main debug output function that prints debug trace messages
  * to the UART in the format: "\nXX:YY]" followed by flag-specific handlers.

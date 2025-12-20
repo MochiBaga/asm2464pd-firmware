@@ -210,9 +210,9 @@ uint8_t pcie_get_completion_status(void);   /* 0x99eb-0x99f5 */
 uint8_t pcie_get_link_speed(void);          /* 0x9a60-0x9a6b */
 uint8_t pcie_get_link_speed_masked(void);   /* 0x9a30-0x9a3a */
 void pcie_set_byte_enables(uint8_t byte_en);/* 0x9a74-0x9a7e */
-void pcie_set_byte_enables_0f(void);        /* 0x9a95-0x9a9b */
+void pcie_set_byte_enables_0f(void);        /* 0x9905-0x990b */
 uint8_t pcie_read_completion_data(void);    /* 0x9902-0x990b */
-void pcie_write_status_complete(void);      /* 0x990c-0x9915 */
+void pcie_write_status_complete(void);      /* 0x99f2-0x99f8 */
 void pcie_write_status_error(void);         /* 0x99f6-0x99ff */
 void pcie_write_status_done(void);          /* 0x9a00-0x9a08 */
 uint8_t pcie_check_status_complete(void);   /* 0x9a09-0x9a0f */
@@ -238,10 +238,10 @@ void pcie_store_r6_to_05a6(uint8_t val);    /* 0x998a-0x9995 */
 
 /* PCIe completion handling */
 uint8_t pcie_wait_for_completion(void);     /* 0x9996-0x999c */
-uint8_t pcie_poll_and_read_completion(void);/* 0x99af-0x99bb */
+uint8_t pcie_poll_and_read_completion(void);/* 0x99b0-0x99bb */
 
 /* TLP operations */
-uint8_t pcie_setup_memory_tlp(void);        /* 0x99bc-0x99c5 */
+uint8_t pcie_setup_memory_tlp(void);        /* 0x99bd-0x99c5 */
 void pcie_write_tlp_addr_low(uint8_t val);  /* 0x99c6-0x99cd */
 void pcie_setup_config_tlp(void);           /* 0x99ce-0x99d4 */
 uint8_t pcie_tlp_handler_b104(void);        /* 0xb104-0xb1ca */
@@ -276,7 +276,7 @@ uint8_t pcie_calc_queue_idx(uint8_t val);   /* 0x9af0-0x9aff */
 /* PCIe store operations */
 void pcie_store_to_05b8(uint8_t idx, uint8_t val);      /* 0x9b00-0x9b0f */
 void pcie_read_and_store_idata(__xdata uint8_t *ptr);   /* 0x9b10-0x9b1f */
-void pcie_store_r7_to_05b7(uint8_t idx, uint8_t val);   /* 0x9b20-0x9b2f */
+void pcie_store_r7_to_05b7(uint8_t idx, uint8_t val);   /* 0x99bd-0x99c5 */
 void pcie_set_0a5b_flag(__xdata uint8_t *ptr, uint8_t val);  /* 0x9b30-0x9b3f */
 void pcie_inc_0a5b(void);                   /* 0x9b40-0x9b4f */
 void pcie_lookup_and_store_idata(uint8_t idx, uint16_t base);  /* 0x9b50-0x9b5f */

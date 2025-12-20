@@ -40,14 +40,14 @@
 #include "../types.h"
 
 /* UART output functions */
-void uart_putc(uint8_t ch);                     /* 0x5398-0x53a0 */
-void uart_newline(void);                        /* 0xaf5e-0xaf66 (Bank 1) */
-void uart_puthex(uint8_t val);                  /* 0x51c7-0x51ee */
-void uart_putdigit(uint8_t digit);              /* 0x51e6-0x51ee */
-void uart_puts(__code const char *str);         /* 0x538d-0x53a6 */
+void uart_putc(uint8_t ch);                     /* inline - writes to 0xC001 */
+void uart_newline(void);                        /* 0xae89-0xae91 (part of debug handler) */
+void uart_puthex(uint8_t val);                  /* 0x520c-0x5233 */
+void uart_putdigit(uint8_t digit);              /* 0x522b-0x5233 (tail of puthex) */
+void uart_puts(__code const char *str);         /* 0x53fa (called from 0xae98) */
 
 /* Debug output handler */
-void debug_output_handler(void);                /* 0xaf5e-0xb030 (Bank 1) */
+void debug_output_handler(void);                /* 0xae89-0xaf5d */
 
 /* Low-level UART functions */
 uint8_t uart_read_byte_dace(void);              /* 0xdace-0xdaea */

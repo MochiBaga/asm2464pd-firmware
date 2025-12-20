@@ -160,15 +160,15 @@ uint8_t pcie_read_completion_data(void)
 
 /*
  * pcie_write_status_complete - Write completion status flag
- * Address: 0x9a95-0x9a9b (7 bytes)
+ * Address: 0x99f2-0x99f8 (7 bytes)
  *
  * Writes 0x04 to status register to indicate completion/busy clear.
  *
  * Original disassembly:
- *   9a95: mov dptr, #0xb296     ; REG_PCIE_STATUS
- *   9a98: mov a, #0x04
- *   9a9a: movx @dptr, a         ; write 4
- *   9a9b: ret
+ *   99f2: mov dptr, #0xb296     ; REG_PCIE_STATUS
+ *   99f5: mov a, #0x04
+ *   99f7: movx @dptr, a         ; write 4
+ *   99f8: ret
  */
 void pcie_write_status_complete(void)
 {
@@ -1463,7 +1463,7 @@ void pcie_init_b296_regs(void)
 
 /*
  * pcie_read_and_store_idata - Read DPTR and store to IDATA
- * Address: 0x99af-0x99bb (13 bytes)
+ * Address: 0x99b0-0x99bb (12 bytes)
  *
  * Reads 2 bytes from DPTR+1, adds 2 to second byte,
  * stores to IDATA[0x64:0x63] with carry propagation.
@@ -1495,7 +1495,7 @@ void pcie_read_and_store_idata(__xdata uint8_t *ptr)
 
 /*
  * pcie_store_r7_to_05b7 - Store R7 to table at 0x05B7
- * Address: 0x99bc-0x99c5 (10 bytes)
+ * Address: 0x99bd-0x99c5 (9 bytes)
  *
  * Sets DPTR=0x05B7, stores R7, multiplies by 0x22.
  *
@@ -2284,7 +2284,7 @@ void nvme_cmd_setup_b779(void)
  * tlp_init_addr_buffer - Initialize TLP address buffer
  * Address: 0xb820-0xb832 (19 bytes)
  *
- * Clears the flash/TLP address buffer at 0x0AAD-0x0AB0 to zero (32-bit),
+ * Clears the flash/TLP address buffer at 0x0aae-0x0AB0 to zero (32-bit),
  * and clears 0x0AB1-0x0AB2 (length).
  *
  * Original disassembly:
@@ -2304,7 +2304,7 @@ void nvme_cmd_setup_b779(void)
  */
 void tlp_init_addr_buffer(void)
 {
-    /* Clear 32-bit address at 0x0AAD-0x0AB0 */
+    /* Clear 32-bit address at 0x0aae-0x0AB0 */
     G_FLASH_ADDR_0 = 0;
     G_FLASH_ADDR_1 = 0;
     G_FLASH_ADDR_2 = 0;
@@ -3107,7 +3107,7 @@ extern void xdata_cond_write(void);
 
 /*
  * pcie_handler_e890 - Bank 1 PCIe link state reset handler
- * Address: 0xe890-0xe89a, 0xe83d-0xe84a, 0xe711-0xe725 (Bank 1)
+ * Address: 0xe890-0xe89a, 0xe83d-0xe84a, 0xe712-0xe725 (Bank 1)
  *
  * Resets PCIe extended registers and waits for completion.
  *
@@ -3413,7 +3413,7 @@ extern void timer_wait(uint8_t timeout_lo, uint8_t timeout_hi, uint8_t mode);
 
 /*
  * pcie_lane_config_helper - PCIe Lane Configuration State Machine
- * Address: 0xdb2f-0xdb92 (100 bytes, Bank 0)
+ * Address: 0xdb30-0xdb92 (100 bytes, Bank 0)
  *
  * Purpose: Configures PCIe lane state for link training with target lane count.
  * This is CRITICAL for eGPU - it trains the PCIe link.
@@ -3926,7 +3926,7 @@ void flash_dma_trigger_handler(void)
         return;
     }
 
-    /* Store state to XDATA work area (0x0AAD-0x0AB0) */
+    /* Store state to XDATA work area (0x0aae-0x0AB0) */
     /* Original stores R4:R5:R6:R7 = 0:0:0:I_FLASH_STATE_4D */
     G_FLASH_ADDR_0 = I_FLASH_STATE_4D;
     G_FLASH_ADDR_1 = 0;
@@ -4746,7 +4746,7 @@ void pcie_txn_array_calc(void)
 
 /*
  * pcie_txn_table_lookup - USB/Transfer table lookup helper
- * Address: 0x1c5d-0x1c6b (15 bytes)
+ * Address: 0x1c5e-0x1c6b (14 bytes)
  *
  * Reads a value from a table based on G_SYS_STATUS_PRIMARY (0x0464)
  * and stores result in G_PCIE_TXN_COUNT_LO (0x05a6).

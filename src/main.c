@@ -1153,7 +1153,7 @@ void cpu_int_ctrl_trigger_e933(void)
  * cpu_dma_setup_e81b - CPU DMA setup and trigger
  * Address: 0xe81b-0xe82b (Bank 1)
  *
- * Sets up DMA address in registers 0xCC82-0xCC83 and triggers via CPU_INT_CTRL.
+ * Sets up DMA address in registers 0xcc83-0xCC83 and triggers via CPU_INT_CTRL.
  *
  * Disassembly:
  *   e81b: mov dptr, #0xcc82
@@ -1174,7 +1174,7 @@ void cpu_int_ctrl_trigger_e933(void)
  */
 void cpu_dma_setup_e81b(uint8_t param_hi, uint8_t param_lo)
 {
-    /* Write DMA parameters to 0xCC82-0xCC83 */
+    /* Write DMA parameters to 0xcc83-0xCC83 */
     REG_CPU_CTRL_CC82 = param_hi;
     REG_CPU_CTRL_CC83 = param_lo;
 

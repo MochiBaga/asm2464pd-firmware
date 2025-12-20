@@ -269,14 +269,14 @@ uint8_t usb_get_indexed_status(void);       /* 0x17a9-0x17c0 */
 
 /* USB address calculation */
 __xdata uint8_t *usb_calc_addr_with_offset(uint8_t offset);     /* 0x1752-0x175c */
-__xdata uint8_t *usb_clear_idata_indexed(void);                 /* 0x3168-0x3180 */
+__xdata uint8_t *usb_clear_idata_indexed(void);                 /* 0x3169-0x3180 */
 __xdata uint8_t *usb_calc_dptr_0108(uint8_t index);             /* 0x31d5-0x31df */
 __xdata uint8_t *usb_calc_dptr_with_0c(uint8_t val);            /* 0x31e0-0x31e9 */
 __xdata uint8_t *usb_calc_dptr_direct(uint8_t val);             /* 0x31ea-0x31f3 */
 __xdata uint8_t *usb_calc_queue_addr(uint8_t index);            /* 0x176b-0x1778 */
 __xdata uint8_t *usb_calc_queue_addr_next(uint8_t index);       /* 0x1779-0x1786 */
 __xdata uint8_t *usb_calc_indexed_addr(void);                   /* 0x179d-0x17a8 */
-__xdata uint8_t *usb_get_config_offset_0456(void);              /* 0x1be8-0x1bf5 */
+__xdata uint8_t *usb_get_config_offset_0456(void);              /* 0x1be9-0x1bf5 */
 __xdata uint8_t *usb_calc_ep_queue_ptr(void);                   /* 0x1b2b-0x1b37 */
 __xdata uint8_t *usb_calc_idx_counter_ptr(uint8_t val);         /* 0x1b38-0x1b46 */
 __xdata uint8_t *usb_calc_status_table_ptr(void);               /* 0x17d8-0x17e7 */
@@ -299,7 +299,7 @@ uint8_t usb_get_ep_config_indexed(void);                /* 0x1b96-0x1ba4 */
 uint16_t usb_read_buf_addr_pair(void);                  /* 0x1ba5-0x1bad */
 uint8_t usb_get_idata_0x12_field(void);                 /* 0x1bae-0x1bc0 */
 uint8_t usb_dec_indexed_counter(void);                  /* 0x1af9-0x1b13 */
-uint8_t usb_read_ep_status_indexed(uint8_t input);      /* 0x1b14-0x1b2a */
+uint8_t usb_read_ep_status_indexed(uint8_t input);      /* 0x1b15-0x1b2a */
 uint8_t usb_get_ep_config_by_status(void);              /* 0x1818-0x1827 */
 uint16_t usb_get_buf_addr(void);                        /* 0x1828-0x1837 */
 uint8_t usb_get_idata12_high_bits(void);                /* 0x1838-0x1847 */
@@ -315,7 +315,7 @@ void usb_reset_interface_full(void);                    /* 0x1878-0x18ff */
 void usb_reset_interface(uint8_t param);                /* event_handler.c - sets up DPTR */
 
 /* USB data operations */
-void usb_xdata_copy_with_offset(uint8_t addr_lo, uint8_t addr_hi);  /* 0x1b14-0x1b2a */
+void usb_xdata_copy_with_offset(uint8_t addr_lo, uint8_t addr_hi);  /* 0x1b15-0x1b2a */
 void usb_nvme_dev_status_update(void);                  /* 0x1b47-0x1b5f */
 uint16_t usb_marshal_idata_to_xdata(void);              /* 0x1b60-0x1b7d */
 void usb_copy_idata_09_to_6b(void);                     /* 0x1b7e-0x1b85 */
@@ -328,7 +328,7 @@ void usb_load_pcie_txn_count(__xdata uint8_t *ptr);     /* 0x1930-0x193f */
 void usb_subtract_from_idata16(uint8_t hi, uint8_t lo); /* 0x1940-0x194f */
 uint8_t usb_get_nvme_cmd_type(void);                    /* 0x1950-0x195f */
 void usb_core_protocol_dispatch(void);                  /* 0x1960-0x196f */
-void usb_inc_param_counter(void);                       /* 0x1970-0x197f */
+void usb_inc_param_counter(void);                       /* 0x1971-0x197f */
 void usb_copy_idata_16_to_xdata(__xdata uint8_t *ptr);  /* 0x1980-0x198f */
 void usb_clear_nvme_status_bit1(void);                  /* 0x1990-0x199f */
 void usb_add_nvme_param_20(void);                       /* 0x19a0-0x19af */

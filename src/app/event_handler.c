@@ -634,7 +634,7 @@ uint8_t state_helper_15af(void)
 
 /*
  * flash_func_1679 - Address calculation helper
- * Address: 0x1679-0x1686 (14 bytes)
+ * Address: 0x167a-0x1686 (13 bytes)
  *
  * Computes an address in the 0x04xx region:
  * DPTR = 0x0477 + (A * 4)
@@ -751,7 +751,7 @@ void reg_wait_bit_set(uint16_t addr)
 
 /*
  * usb_copy_xdata_to_idata12 - USB address helper function
- * Address: 0x1b14-0x1b1f (12 bytes, falls through to 0x1b20)
+ * Address: 0x1b15-0x1b1f (12 bytes, falls through to 0x1b20)
  *
  * Takes param in A, computes DPTR from param + R2*256, reads 4 bytes
  * from that address, then writes to IDATA[0x12] and returns value at 0x0009.
@@ -839,7 +839,7 @@ uint8_t usb_get_boot_status(void)
 
 /*
  * usb_reset_interface - Set DPTR from param
- * Address: 0x1bc3-0x1bca (8 bytes)
+ * Address: 0x1bc4-0x1bca (7 bytes)
  *
  * Takes param in A, computes DPTR from param (low) + R2 (high).
  * This is used to set up a pointer for subsequent operations.
@@ -2017,7 +2017,7 @@ void write_ff_to_ce40_offset_1607(uint8_t offset)
 
 /*
  * get_ptr_044e_offset_165e - Get pointer to 0x044E + offset
- * Address: 0x165e-0x1667 (10 bytes)
+ * Address: 0x165f-0x1667 (9 bytes)
  *
  * Disassembly:
  *   165e: add a, #0x4e        ; A = A + 0x4E

@@ -162,7 +162,7 @@ uint8_t power_check_state_dde2(void);           /* 0xdde2-0xde15 */
 
 /* Power event handlers */
 void power_set_suspended_and_event_cad6(void);  /* 0xcad6-0xcaec */
-void power_toggle_usb_bit2_caed(void);          /* 0xcaed-0xcafa */
+void power_toggle_usb_bit2_caed(void);          /* 0xcaee-0xcafa */
 void power_set_phy_bit1_cafb(void);             /* 0xcafb-0xcb08 */
 void phy_power_init_d916(uint8_t param);        /* 0xd916-0xd995 */
 void power_clear_init_flag(void);               /* 0xcb09-0xcb14 */

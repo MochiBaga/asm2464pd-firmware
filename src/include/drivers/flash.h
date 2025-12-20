@@ -189,8 +189,8 @@ void flash_read(uint32_t addr, uint8_t len);    /* TBD */
 void flash_erase_sector(uint32_t addr);         /* TBD */
 
 /* Flash dispatch stubs */
-void flash_dispatch_stub_873a(void);            /* 0x873a-0x8742 */
-void flash_dispatch_stub_8743(void);            /* 0x8743-0x874b */
+void flash_dispatch_stub_873a(void);            /* 0x873b-0x8742 */
+void flash_dispatch_stub_8743(void);            /* 0x8744-0x874b */
 void flash_dispatch_stub_874c(void);            /* 0x874c-0x8754 */
 void flash_dispatch_stub_8d6e(void);            /* 0x8d6e-0x8d76 */
 

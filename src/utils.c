@@ -168,7 +168,7 @@ uint32_t xdata_load_dword(__xdata uint8_t *ptr)
 
 /*
  * idata_load_dword_alt - Load 32-bit value from IDATA (alternate register allocation)
- * Address: 0x0d90-0x0d9c (13 bytes)
+ * Address: 0x0d91-0x0d9c (12 bytes)
  *
  * Original function loads 4 bytes from IDATA[@R0] into R0-R3.
  * Used for loading secondary parameters.
@@ -1356,7 +1356,7 @@ uint8_t banked_load_byte(uint8_t addrlo, uint8_t addrhi, uint8_t memtype)
 
 /*
  * banked_store_byte - Store byte to memory based on memory type
- * Address: 0x0be6-0x0bfc (23 bytes)
+ * Address: 0x0be7-0x0bfc (22 bytes)
  *
  * Stores A to memory at address R2:R1 based on memory type in R3.
  * R3=0x00: IDATA, R3=0x01: XDATA, R3=0xFE: PDATA, R3=0xFF: no-op
@@ -2160,7 +2160,7 @@ void dptr_calc_04b7_work23(void)
 
 /*
  * xdata_read_044e - Get pointer to 0x044E + offset
- * Address: 0x165e-0x1667 (10 bytes)
+ * Address: 0x165f-0x1667 (9 bytes)
  *
  * Adds 0x4E to offset and returns address in 0x04XX range.
  * In original assembly this sets DPTR; in C we return a pointer.

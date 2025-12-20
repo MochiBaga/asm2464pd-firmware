@@ -89,17 +89,17 @@
 #include "../types.h"
 
 /* Command engine control */
-uint8_t cmd_check_busy(void);                   /* 0xe09a-0xe0c3 */
-void cmd_start_trigger(void);                   /* 0x9605-0x960e */
-void cmd_write_issue_bits(uint8_t param) __reentrant;           /* 0x960f-0x9616 */
-void cmd_engine_clear(void);                    /* 0x9675-0x9683 */
-uint8_t cmd_wait_completion(void);              /* 0x968f-0x969c */
+uint8_t cmd_check_busy(void);                   /* 0xde5a-0xde83 */
+void cmd_start_trigger(void);                   /* 0x9558-0x9561 */
+void cmd_write_issue_bits(uint8_t param) __reentrant;           /* 0x9562-0x9569 */
+void cmd_engine_clear(void);                    /* 0x9683-0x968b */
+uint8_t cmd_wait_completion(void);              /* needs verification */
 
 /* Command setup */
-void cmd_setup_read_write(void);                /* 0x965d-0x9663 */
+void cmd_setup_read_write(void);                /* 0x965e-0x9663 */
 void cmd_issue_tag_and_wait(uint8_t issue, uint8_t tag);        /* 0xe1c6-0xe1ed */
 void cmd_setup_with_params(uint8_t issue_val, uint8_t tag_val); /* 0xb640-0xb68b */
-void cmd_config_e40b(void);                     /* 0x95a8-0x95b5 */
+void cmd_config_e40b(void);                     /* 0x95a9-0x95b5 */
 void cmd_call_e120_setup(void);                 /* 0x9b31-0x9b5a */
 void cmd_clear_cc9a_setup(void);                /* 0x955d-0x9565 */
 void cmd_call_e73a_setup(void);                 /* 0x9566-0x9583 */
@@ -107,7 +107,7 @@ void cmd_config_e400_e420(void);                /* 0x9584-0x959f */
 void cmd_setup_e424_e425(uint8_t issue);        /* 0x95a0-0x95b5 */
 
 /* Command parameters */
-uint8_t cmd_combine_lba_param(uint8_t val);     /* 0x95b6-0x95c8 */
+uint8_t cmd_combine_lba_param(uint8_t val);     /* 0x95b7-0x95c8 */
 uint8_t cmd_combine_lba_alt(uint8_t val);       /* 0x95c9-0x95d9 */
 void cmd_set_op_counter(void);                  /* 0x95da-0x95ea */
 uint16_t cmd_calc_slot_addr(void);              /* 0x95eb-0x95f8 */
@@ -128,7 +128,7 @@ void cmd_clear_5_bytes(__xdata uint8_t *ptr);   /* 0x9656-0x965c */
 void cmd_set_c801_bit4(void);                   /* 0x9664-0x966a */
 void cmd_clear_cc88_cc8a(void);                 /* 0x966b-0x9674 */
 uint8_t cmd_check_op_counter(void);             /* 0x9684-0x968e */
-void cmd_config_e405_e421(uint8_t param);       /* 0x969d-0x96a5 */
+void cmd_config_e405_e421(uint8_t param);       /* 0x969e-0x96a5 */
 uint8_t cmd_clear_bits(__xdata uint8_t *reg);   /* 0x96a6-0x96ad */
 void cmd_setup_delay(void);                     /* 0x96ae-0x96b6 */
 uint16_t cmd_set_op_counter_1(void);            /* 0x96b7-0x96be */

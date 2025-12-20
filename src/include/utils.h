@@ -16,7 +16,7 @@ void link_state_init_stub(void);                /* 0x9536 */
 
 /* IDATA dword operations */
 uint32_t idata_load_dword(__idata uint8_t *ptr);            /* 0x0d78-0x0d83 */
-uint32_t idata_load_dword_alt(__idata uint8_t *ptr);        /* 0x0d90-0x0d9c */
+uint32_t idata_load_dword_alt(__idata uint8_t *ptr);        /* 0x0d91-0x0d9c */
 void idata_store_dword(__idata uint8_t *ptr, uint32_t val); /* 0x0db9-0x0dc4 */
 
 /* XDATA dword operations */
@@ -91,7 +91,7 @@ void pdata_store_dword(__pdata uint8_t *ptr, uint32_t val); /* 0x0e4f-0x0e5a */
 /* Banked memory operations */
 void banked_store_dword(uint8_t dpl, uint8_t dph, uint8_t bank, uint32_t val);  /* 0x0ba9-0x0bc7 */
 uint8_t banked_load_byte(uint8_t addrlo, uint8_t addrhi, uint8_t memtype);      /* 0x0bc8-0x0bd4 */
-void banked_store_byte(uint8_t addrlo, uint8_t addrhi, uint8_t memtype, uint8_t val);  /* 0x0be6-0x0bfc */
+void banked_store_byte(uint8_t addrlo, uint8_t addrhi, uint8_t memtype, uint8_t val);  /* 0x0be7-0x0bfc */
 
 /* Banked register helper functions */
 void banked_store_and_load_bc9f(uint8_t val);          /* 0xbc9f-0xbca4: store val, then load */

@@ -645,7 +645,7 @@ uint8_t pcie_modify_and_read_a35f(void)
 
 /*
  * pcie_write_66_a365 - Write 0x66 to lane config registers
- * Address: 0xa365-0xa371 (13 bytes)
+ * Address: 0xa366-0xa371 (12 bytes)
  *
  * Writes 0x66 to registers 0x3C and 0x3D, increments R1 twice and returns.
  */
@@ -967,7 +967,7 @@ uint8_t queue_helper_aa09(void)
 
 /*
  * queue_helper_aa2b - Queue helper with power check
- * Address: 0xaa2b-0xaa32 (8 bytes)
+ * Address: 0xaa2c-0xaa32 (7 bytes)
  */
 uint8_t queue_helper_aa2b(void)
 {
